@@ -7,8 +7,8 @@ from rich.console import Console
 from pydantic import ValidationError, TypeAdapter
 
 from slideflow.presentation.presentation import Presentation
+from slideflow.utils.registry_loader import load_function_registry
 from slideflow.utils.config_loader import build_services, resolve_functions
-from slideflow.utils.registry_loader import load_function_registry, load_registry_from_entry_point
 from slideflow.commands.utils import print_banner, print_error_panel, print_warning_panel, print_success_message
 
 app = typer.Typer()
@@ -18,7 +18,7 @@ console = Console()
 def main(
     config_path: Path,
     registry: str = typer.Option(
-        None,
+        'registry.py',
         '--registry',
         help = 'Optional module path to a custom function registry (e.g. myproject.registry)'
     )
@@ -37,20 +37,14 @@ def main(
         print_error_panel(console, msg)
         raise typer.Exit(code = 1)
 
-    if registry:
+    if Path(registry).exists():
         try:
             function_registry = load_function_registry(registry)
         except Exception as e:
-            msg = f"Failed to load registry '{registry}': {e}"
-            print_error_panel(console, msg)
+            print_error_panel(console, f"Failed to load registry '{registry}': {e}")
             raise typer.Exit(code = 1)
     else:
-        try:
-            function_registry = load_registry_from_entry_point('default')
-        except Exception as e:
-            msg = f'No --registry provided and failed to load default entry point: {e}'
-            print_error_panel(console, msg)
-            raise typer.Exit(code = 1)
+        function_registry = {}
 
     try:
         raw = yaml.safe_load(config_path.read_text())

@@ -9,12 +9,12 @@ This document outlines all the commands available in the `slideflow` CLI and how
 **Builds a single presentation based on a YAML config.**
 
 ```bash
-slideflow build config.yml --registry myproject.registry
+slideflow build config.yml --registry registry.py
 ```
 
 ### Options:
 - `config.yml`: Path to the config file defining the presentation.
-- `--registry`: (Optional) Python path to a function registry.
+- `--registry`: (Optional) Path to a function registry.
 
 ---
 
@@ -23,14 +23,14 @@ slideflow build config.yml --registry myproject.registry
 **Builds multiple presentations using a parameter file and shared data manager.**
 
 ```bash
-slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --registry myproject.registry
+slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --registry registry.py
 ```
 
 ### Options:
 - `config.yml`: Base config file (used as a template).
 - `--param-file`: CSV file with one row per presentation (e.g., different stores, categories etc).
 - `--max-workers`: (Optional) Number of parallel threads.
-- `--registry`: (Optional) Python path to a function registry.
+- `--registry`: (Optional) Path to a function registry.
 
 ---
 
@@ -39,7 +39,7 @@ slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --re
 **Previews the structure of a single or bulk presentation config.**
 
 ```bash
-slideflow preview-bulk config.yml --param-file params.csv --registry myproject.registry
+slideflow preview-bulk config.yml --param-file params.csv --registry registry.py
 ```
 
 ---
@@ -49,7 +49,7 @@ slideflow preview-bulk config.yml --param-file params.csv --registry myproject.r
 **Validates the structure and schema of your config file.**
 
 ```bash
-slideflow validate config.yml --registry myproject.registry
+slideflow validate config.yml --registry registry.py
 ```
 
 ---
@@ -72,12 +72,6 @@ slideflow extract-sources run config.yml --format csv --output-dir ./outputs
 ## ℹ️ Notes
 
 - Function registries can be loaded from:
-  - `--registry` CLI flag
-  - Or from the `pyproject.toml` using an entry point like:
-
-```toml
-[project.entry-points.slideflow_registry]
-default = "myproject.registry:function_registry"
-```
+  - `--registry` <your-registry-file-path>
 
 - All configs use Pydantic for validation and support rich customization with preprocessing and value functions.

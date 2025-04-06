@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from slideflow.data.data_manager import DataManager
 from slideflow.presentation.presentation import Presentation
+from slideflow.utils.registry_loader import load_function_registry
 from slideflow.utils.config_loader import build_services, resolve_functions
-from slideflow.utils.registry_loader import load_function_registry, load_registry_from_entry_point
 from slideflow.commands.utils import print_banner, print_error_panel, print_success_table, print_success_message, inject_params_into_model
 
 app = typer.Typer()
@@ -58,7 +58,7 @@ def build_one_presentation(context: dict, base: Presentation, data_manager: Data
 def run(
     config_path: Path = typer.Argument(..., help = 'Path to the base YAML config file'),
     param_file: Optional[Path] = typer.Option(None, '--param-file', '-f', help = 'CSV file with parameter rows'),
-    registry: Optional[str] = typer.Option(None, '--registry', help = 'Module path exposing a function_registry'),
+    registry: Optional[str] = typer.Option('registry.py', '--registry', help = 'Module path exposing a function_registry'),
     max_workers: int = typer.Option(5, '--max-workers', '-w', help = 'Number of threads to run in parallel')
 ) -> None:
     """
@@ -75,20 +75,14 @@ def run(
         print_error_panel(console, msg)
         raise typer.Exit(code = 1)
 
-    if registry:
+    if Path(registry).exists():
         try:
             function_registry = load_function_registry(registry)
         except Exception as e:
-            msg = f"Failed to load registry '{registry}': {e}"
-            print_error_panel(console, msg)
+            print_error_panel(console, f"Failed to load registry '{registry}': {e}")
             raise typer.Exit(code = 1)
     else:
-        try:
-            function_registry = load_registry_from_entry_point('default')
-        except Exception as e:
-            msg = f'No --registry provided and failed to load default entry point: {e}'
-            print_error_panel(console, msg)
-            raise typer.Exit(code = 1)
+        function_registry = {}
 
     try:
         raw = yaml.safe_load(config_path.read_text())

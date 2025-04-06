@@ -7,7 +7,7 @@
   ___) | | | (_| |  __/  _| | (_) \ V  V /  
  |____/|_|_|\__,_|\___|_| |_|\___/ \_/\_/   
 
-         SlideFlow
+         Generate
      Beautiful slides.
        Direct from your data.
 ```
