@@ -20,7 +20,7 @@ console = Console()
 @app.command()
 def main(
     config_path: Path = typer.Argument(..., help = 'Path to the base config file'),
-    registry: Optional[str] = typer.Option(None, '--registry', help = 'Optional registry module path'),
+    registry: Optional[str] = typer.Option('registry.py', '--registry', help = 'Optional registry module path'),
     param_file: Optional[Path] = typer.Option(None, '--param-file', '-p', help = 'CSV of parameter rows'),
     limit: Optional[int] = typer.Option(None, '--limit', '-n', help = 'Limit number of previews')
 ) -> None:
