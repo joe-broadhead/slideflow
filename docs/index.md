@@ -1,6 +1,6 @@
-# Welcome to Slideflow Documentation
+# Welcome to SlideFlow Documentation
 
-**Slideflow** is an automated Google Slides presentation builder that integrates with various data sources to create customized presentations, complete with charts and data replacements.
+**SlideFlow** is an automated Google Slides presentation builder that integrates with various data sources to create customized presentations, complete with charts and data replacements.
 
 ## Features:
 - **Bulk presentation generation** using templates and data sources

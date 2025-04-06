@@ -1,4 +1,4 @@
-# Slideflow CLI Commands
+# SlideFlow CLI Commands
 
 This document outlines all the commands available in the `slideflow` CLI and how to use them.
 
