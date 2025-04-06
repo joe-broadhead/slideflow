@@ -39,7 +39,7 @@ slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --re
 **Previews the structure of a single or bulk presentation config.**
 
 ```bash
-slideflow preview-bulk config.yml --param-file params.csv --registry registry.py
+slideflow preview config.yml --param-file params.csv --registry registry.py
 ```
 
 ---
