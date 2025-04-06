@@ -1,0 +1,40 @@
+[project]
+name = "slideflow"
+version = "0.0.0"
+description = "Automated Google Slides presentation builder with charts and data replacements."
+authors = [
+    { name = "Joe Broadhead" }
+]
+dependencies = [
+    "typer[all]",
+    "pydantic>=2.0",
+    "pyyaml",
+    "pandas",
+    "rich",
+    "plotly",
+    "kaleido",
+    "Pillow",
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+    "httplib2",
+    "gitpython",
+    "dbt-core",
+    "dbt-databricks",
+    "databricks-sql-connector"
+]
+requires-python = ">=3.9"
+
+[project.scripts]
+slideflow = "slideflow.cli:main"
+
+[tool.setuptools]
+packages = ["slideflow"]
+
+[project.entry-points.slideflow_registry]
+default = "registry:function_registry"
+
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
