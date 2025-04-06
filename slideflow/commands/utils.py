@@ -33,17 +33,18 @@ def inject_params_into_model(presentation: Presentation, params: dict[str, str])
     return presentation
 
 def print_banner(console: Console) -> None:
-    console.print("""
+    console.print(r"""
 [bold blue]
   ____  _ _     _       __ _                
  / ___|| (_) __| | ___ / _| | _____      __ 
  \___ \| | |/ _` |/ _ \ |_| |/ _ \ \ /\ / / 
   ___) | | | (_| |  __/  _| | (_) \ V  V /  
  |____/|_|_|\__,_|\___|_| |_|\___/ \_/\_/   
-            
-            🚀 Slideflow CLI            
-        Build. Automate. Present.  
-[/bold blue]""")
+[/bold blue][bold magenta]
+         Generate
+     Beautiful slides.
+       Direct from your data.[/bold magenta]
+""")
 
 def print_section(console: Console, title: str) -> None:
     console.rule(f'[bold yellow]{title}[/bold yellow]')
