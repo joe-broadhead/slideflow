@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 from typing import Any, Callable, Dict, Optional
 from pydantic import BaseModel, Field, root_validator
 
+from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 from slideflow.chart.builtins.utils.color import BUILTIN_COLOR_FUNCTIONS
 from slideflow.chart.builtins.utils.format import BUILTIN_FORMAT_FUNCTIONS
 
@@ -161,20 +162,6 @@ class TableLayoutConfig(BaseModel):
     margin: Dict[str, int] = Field(default_factory = lambda: {'l': 0, 'r': 0, 't': 0, 'b': 0})
     height: int = 300
 
-class ChartConfig(BaseModel):
-    """
-    Base configuration class for any chart.
-
-    This class defines the required structure for identifying 
-    the type of chart being configured. It is intended to be subclassed 
-    by specific chart configuration models such as BarChartConfig or TableConfig.
-
-    Attributes:
-        chart_type (str): 
-            A string identifying the chart type (e.g., 'bar', 'table').
-    """
-    chart_type: str = Field(..., description = "Type of chart (e.g., 'table' etc.)")
-
 class TableConfig(ChartConfig):
     """
     Configuration class for table charts.
@@ -200,6 +187,7 @@ class TableConfig(ChartConfig):
         preprocess_fn_args (Optional[Dict[str, str]]): 
             Optional dictionary of keyword arguments passed to the `preprocess_fn`.
     """
+    chart_type: BuiltinChartType = Field('table', description = "Type of chart. Should be 'table'")
     column_map: Dict[str, str] = Field(..., description = 'Mapping from internal column names to display names.')
     columnwidth: Optional[list] = Field(default_factory = lambda: [])
     header: Optional[TableHeaderConfig] = Field(default_factory = TableHeaderConfig)

@@ -9,7 +9,14 @@ from pydantic import ValidationError, TypeAdapter
 from slideflow.presentation.presentation import Presentation
 from slideflow.utils.registry_loader import load_function_registry
 from slideflow.utils.config_loader import build_services, resolve_functions
-from slideflow.commands.utils import print_banner, print_error_panel, print_warning_panel, print_success_message
+from slideflow.commands.utils import (
+    print_banner,
+    print_error_panel,
+    print_warning_panel,
+    print_success_message,
+    create_drive_subfolder,
+    move_file_to_folder_id
+)
 
 app = typer.Typer()
 console = Console()
@@ -17,11 +24,9 @@ console = Console()
 @app.callback()
 def main(
     config_path: Path,
-    registry: str = typer.Option(
-        'registry.py',
-        '--registry',
-        help = 'Optional module path to a custom function registry (e.g. myproject.registry)'
-    )
+    registry: str = typer.Option('registry.py', '--registry', help = 'Optional module path to a custom function registry (e.g. myproject.registry)'),
+    root_folder_id: str = typer.Option(None, '--root-folder-id', help = 'Optional root Drive folder id to move the presentation into.'),
+    run_folder_name: str = typer.Option(None, '--run-folder-name', help = 'Optional run Drive folder name to create and then move the presentation into.')
 ) -> None:
     """
     Builds the full presentation and uploads it to Google Slides.
@@ -86,6 +91,19 @@ def main(
         print_success_message(console, msg)
     except Exception as e:
         msg = f'⚠️ Presentation built, but sharing failed: {e}'
+        print_warning_panel(console, msg)
+
+    try:
+        if root_folder_id:
+            if run_folder_name:
+                run_folder_id = create_drive_subfolder(presentation_data.drive_service, run_folder_name, root_folder_id)
+            else:
+                run_folder_id = root_folder_id
+            move_file_to_folder_id(presentation_data.drive_service, presentation_data.presentation_id, run_folder_id)
+            msg = f'Presentation moved to folder: https://drive.google.com/drive/folders/{run_folder_id}'
+            print_success_message(console, msg)
+    except Exception as e:
+        msg = f'⚠️ Presentation built, but moving directories failed: {e}'
         print_warning_panel(console, msg)
     
     end_time = time.time()

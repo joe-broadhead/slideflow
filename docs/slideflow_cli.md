@@ -9,12 +9,14 @@ This document outlines all the commands available in the `slideflow` CLI and how
 **Builds a single presentation based on a YAML config.**
 
 ```bash
-slideflow build config.yml --registry registry.py
+slideflow build config.yml --registry registry.py --root-folder-id abcd1234 --run-folder-name your_run_folder
 ```
 
 ### Options:
 - `config.yml`: Path to the config file defining the presentation.
 - `--registry`: (Optional) Path to a function registry.
+- `--root-folder-id`: (Optional) The drive id of the folder to save the presentation in.
+- `--run-folder-name`: (Optional) The name of the folder to save the presentation in inside the root folder.
 
 ---
 
@@ -23,7 +25,7 @@ slideflow build config.yml --registry registry.py
 **Builds multiple presentations using a parameter file and shared data manager.**
 
 ```bash
-slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --registry registry.py
+slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --registry registry.py --root-folder-id abcd1234 --run-folder-name your_run_folder
 ```
 
 ### Options:
@@ -31,6 +33,8 @@ slideflow build-bulk run config.yml --param-file params.csv --max-workers 4 --re
 - `--param-file`: CSV file with one row per presentation (e.g., different stores, categories etc).
 - `--max-workers`: (Optional) Number of parallel threads.
 - `--registry`: (Optional) Path to a function registry.
+- `--root-folder-id`: (Optional) The drive id of the folder to save the presentation in.
+- `--run-folder-name`: (Optional) The name of the folder to save the presentation in inside the root folder.
 
 ---
 

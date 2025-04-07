@@ -1,9 +1,13 @@
-from typing import List
+import logging
+from typing import List, Any
 from rich.table import Table
 from rich.panel import Panel
 from rich.console import Console
+from googleapiclient.errors import HttpError
 
 from slideflow.presentation.presentation import Presentation
+
+logger = logging.getLogger(__name__)
 
 def inject_params_into_model(presentation: Presentation, params: dict[str, str]) -> Presentation:
     """
@@ -71,3 +75,62 @@ def print_warning_panel(console: Console, msg: str) -> None:
 
 def print_success_message(console: Console, msg: str) -> None:
     console.print(f'\n[green]✅ {msg}[/green]')
+
+def create_drive_subfolder(
+    drive_service: Any,
+    name: str,
+    parent_id: str
+) -> str:
+    """
+    Creates a new folder with the specified name inside the given parent folder.
+
+    Args:
+        drive_service (Any): Authenticated Google Drive service instance.
+        name (str): Name of the new folder to create.
+        parent_id (str): ID of the parent folder.
+
+    Returns:
+        str: The ID of the newly created folder.
+
+    Raises:
+        HttpError: If an API call to Drive fails.
+    """
+    try:
+        logger.info(f"Creating subfolder '{name}' under parent '{parent_id}'")
+
+        file_metadata = {
+            'name': name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [parent_id],
+        }
+        file = drive_service.files().create(body = file_metadata, fields = 'id').execute()
+        folder_id = file['id']
+
+        logger.info(f"Created folder '{name}' with ID '{folder_id}'")
+        return folder_id
+
+    except HttpError as e:
+        logger.error(f"Failed to create folder '{name}' under parent '{parent_id}': {e}")
+        raise
+
+def move_file_to_folder_id(
+    drive_service: Any,
+    file_id: str,
+    folder_id: str
+) -> None:
+    try:
+        file = drive_service.files().get(fileId = file_id, fields = 'parents').execute()
+        previous_parents = ','.join(file.get('parents', []))
+
+        drive_service.files().update(
+            fileId = file_id,
+            addParents = folder_id,
+            removeParents = previous_parents,
+            fields = 'id, parents'
+        ).execute()
+
+        logger.info(f"Moved file '{file_id}' into folder '{folder_id}'")
+
+    except HttpError as e:
+        logger.error(f"Error moving file '{file_id}' to folder '{folder_id}': {e}")
+        raise
