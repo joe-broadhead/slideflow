@@ -87,10 +87,11 @@ class DBTManifestConnector(BaseModel):
         """
         cli = dbtRunner()
         original_cwd = os.getcwd()
-        os.chdir(self.project_dir)
 
         if self.compile:
             clone_dbt_package(self.package_url, self.project_dir)
+
+            os.chdir(self.project_dir)
 
             cli.invoke(['deps'])
             args = ['compile', '--profiles-dir', self.project_dir, '--target', self.target]
@@ -210,6 +211,7 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     """
     type: Literal['databricks_dbt'] = Field('databricks_dbt', description = 'DBT + Databricks data source.')
     model_alias: Annotated[str, Field(description = 'Model alias to execute.')]
+    package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
     project_dir: Annotated[str, Field(description = 'Path to dbt project.')]
     target: Annotated[Optional[str], Field(default = 'prod', description = 'dbt target environment.')]
     vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
