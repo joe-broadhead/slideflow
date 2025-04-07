@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 from typing import Any, Callable, Dict, Optional
 from pydantic import BaseModel, Field, root_validator
 
+from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 from slideflow.chart.builtins.utils.color import BUILTIN_COLOR_FUNCTIONS
 from slideflow.chart.builtins.utils.format import BUILTIN_FORMAT_FUNCTIONS
 
@@ -44,7 +45,7 @@ class BarLayoutConfig(BaseModel):
     xaxis_title: Optional[str] = None
     yaxis_title: Optional[str] = None
 
-class BarChartConfig(BaseModel):
+class BarChartConfig(ChartConfig):
     """
     Configuration for a bar chart including data mapping, formatting, sorting, and layout options.
 
@@ -65,7 +66,7 @@ class BarChartConfig(BaseModel):
         preprocess_fn_args (Optional[Dict[str, str]]): Parameters to pass into the `preprocess_fn`.
         text_col (Optional[str]): Optional column name to use for text labels. If not provided, defaults to `x_col` for horizontal charts and `y_col` for vertical charts.
     """
-    chart_type: str = Field('bar', description = "Type of chart. Should be 'bar'")
+    chart_type: BuiltinChartType = Field('bar', description = "Type of chart. Should be 'bar'")
     x_col: str = Field(..., description = 'DataFrame column to use for x-axis values.')
     y_col: str = Field(..., description = 'DataFrame column to use for y-axis labels.')
     orientation: str = Field('h', description = "Bar orientation: 'h' for horizontal, 'v' for vertical.")

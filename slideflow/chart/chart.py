@@ -1,29 +1,22 @@
 import uuid
-from enum import Enum
 from typing import Union, Callable, Any, Optional, Tuple, Annotated
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from slideflow.data.data_manager import DataManager
 from slideflow.data.connectors.base import DataSourceConfig
+from slideflow.chart.builtins.common import BuiltinChartType
 from slideflow.chart.utils import generate_figure_image, upload_image_to_drive
 from slideflow.chart.builtins.bar import BarChartConfig, create_configurable_bar
 from slideflow.chart.builtins.table import TableConfig, create_configurable_table
+from slideflow.chart.builtins.line import LineChartConfig, create_configurable_line
+from slideflow.chart.builtins.waterfall import WaterfallConfig, create_configurable_waterfall
 
 BUILT_IN_CHARTS = {
     'table': create_configurable_table,
-    'bar': create_configurable_bar
+    'bar': create_configurable_bar,
+    'waterfall': create_configurable_waterfall,
+    'line': create_configurable_line,
 }
-
-class BuiltinChartType(str, Enum):
-    """
-    Enumeration of built-in chart types supported by Slideflow.
-
-    Attributes:
-        table (str): A table-style chart.
-        bar (str): A horizontal or vertical bar chart.
-    """
-    table = 'table'
-    bar = 'bar'
 
 class Chart(BaseModel):
     """
@@ -57,7 +50,7 @@ class Chart(BaseModel):
         Union[BuiltinChartType, Callable[[Any], Any]],
         Field(description = 'Either a built-in chart type or a custom function.')
     ]
-    chart_config: Optional[Union[TableConfig, BarChartConfig]] = Field(
+    chart_config: Optional[Union[TableConfig, BarChartConfig, WaterfallConfig, LineChartConfig]] = Field(
         None, description = 'Optional configuration for the chart type'
     )
     data_source: DataSourceConfig = Field(..., description = 'Data source to be visualized')
