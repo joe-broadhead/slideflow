@@ -139,6 +139,8 @@ def run(
                 run_folder_id = create_drive_subfolder(base_presentation.drive_service, run_folder_name, root_folder_id)
             else:
                 run_folder_id = root_folder_id
+        else:
+            run_folder_id = root_folder_id
     except Exception as e:
         msg = f'⚠️ Presentation built, but moving directories failed: {e}'
         print_warning_panel(console, msg)
