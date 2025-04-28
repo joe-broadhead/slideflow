@@ -99,9 +99,12 @@ def main(
                 run_folder_id = create_drive_subfolder(presentation_data.drive_service, run_folder_name, root_folder_id)
             else:
                 run_folder_id = root_folder_id
-            move_file_to_folder_id(presentation_data.drive_service, presentation_data.presentation_id, run_folder_id)
-            msg = f'Presentation moved to folder: https://drive.google.com/drive/folders/{run_folder_id}'
-            print_success_message(console, msg)
+        else:
+            run_folder_id = root_folder_id
+
+        move_file_to_folder_id(presentation_data.drive_service, presentation_data.presentation_id, run_folder_id)
+        msg = f'Presentation moved to folder: https://drive.google.com/drive/folders/{run_folder_id}'
+        print_success_message(console, msg)
     except Exception as e:
         msg = f'⚠️ Presentation built, but moving directories failed: {e}'
         print_warning_panel(console, msg)
