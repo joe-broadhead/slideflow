@@ -81,6 +81,7 @@ def round(value: Any, ndigits: int = 2) -> float:
 def format_currency(
     value,
     currency_symbol = '€',
+    symbol_position = 'prefix',
     decimals = 2,
     negative_parens = False,
     thousands_sep = ',',
@@ -114,19 +115,82 @@ def format_currency(
         formatted = formatted.replace(',', 'TEMP').replace('.', decimal_sep)
         formatted = formatted.replace('TEMP', thousands_sep)
 
+    if symbol_position == 'prefix':
+        formatted = f'{currency_symbol}{formatted}'
+    else:
+        formatted = f'{formatted} {currency_symbol}'
+
     if numeric_value < 0:
         if negative_parens:
-            formatted = f'({currency_symbol}{formatted})'
+            formatted = f'({formatted})'
         else:
-            formatted = f'-{currency_symbol}{formatted}'
-    else:
-        formatted = f'{currency_symbol}{formatted}'
+            formatted = f'-{formatted}'
 
     return formatted
+
+def abbreviate_currency(
+    value: Any,
+    currency_symbol: str = '€',
+    symbol_position: str = 'prefix',
+    negative_parens: bool = False,
+    suffixes: List[tuple] = None,
+    decimals: int = 2,
+    thousands_sep: str = ',',
+    decimal_sep: str = '.'
+) -> str:
+    """
+    Abbreviates a number (e.g., 1,200 → 1.2K) and adds a currency symbol.
+
+    Args:
+        value: Numeric input.
+        currency_symbol (str): Symbol to add (default is '€').
+        symbol_position (str): 'prefix' or 'suffix'. Defaults to 'prefix'.
+        negative_parens (bool): Wrap negative values in parentheses if True.
+        suffixes (List[tuple]): Custom suffix thresholds. Defaults to [(1e12, 'T'), (1e9, 'B'), (1e6, 'M'), (1e3, 'K')].
+        decimals (int): Decimal places for values < 1K. Defaults to 2.
+        thousands_sep (str): Separator for thousands. Defaults to ','.
+        decimal_sep (str): Separator for decimals. Defaults to '.'.
+
+    Returns:
+        str: Abbreviated and formatted value with currency.
+    """
+    try:
+        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
+            numeric_value = float(value)
+            abs_val = abs(numeric_value)
+            suffixes = suffixes or [(1e12, 'T'), (1e9, 'B'), (1e6, 'M'), (1e3, 'K')]
+
+            for threshold, suffix in suffixes:
+                if abs_val >= threshold:
+                    abbreviated = f'{numeric_value / threshold:.1f}{suffix}'
+                    break
+            else:
+                formatted = f'{abs_val:,.{decimals}f}'
+                if thousands_sep != ',' or decimal_sep != '.':
+                    formatted = formatted.replace(',', 'TEMP').replace('.', decimal_sep).replace('TEMP', thousands_sep)
+                abbreviated = formatted
+
+            if symbol_position == 'prefix':
+                formatted = f'{currency_symbol}{abbreviated}'
+            else:
+                formatted = f'{abbreviated} {currency_symbol}'
+
+            if numeric_value < 0:
+                if negative_parens:
+                    formatted = f'({formatted})'
+                else:
+                    formatted = f'-{formatted}'
+
+            return formatted
+
+        return str(value)
+    except Exception:
+        return str(value)
 
 BUILTIN_FORMAT_FUNCTIONS = {
     'abbreviate': abbreviate,
     'percentage': percentage,
     'round': round,
     'format_currency': format_currency,
+    'abbreviate_currency': abbreviate_currency,
 }

@@ -1,6 +1,6 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union, List
 from pydantic import BaseModel, Field, root_validator
 
 from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
@@ -87,7 +87,7 @@ class TableHeaderConfig(BaseModel):
 
     Attributes:
         fill_color (str): 
-            Background color of the header row. Defaults to '#3643bb'.
+            Background color of the header row. Defaults to '#3643BA'.
         
         font_color (str): 
             Text color of the header. Defaults to 'white'.
@@ -101,10 +101,10 @@ class TableHeaderConfig(BaseModel):
         height (int): 
             Height of the header row in points. Defaults to 32.
     """
-    fill_color: str = '#3643bb'
+    fill_color: str = '#3643BA'
     font_color: str = 'white'
     font_size: int = 12
-    align: str = 'center'
+    align: Union[str, List[str]] = 'left'
     height: int = 32
 
 class TableCellConfig(BaseModel):
@@ -137,7 +137,7 @@ class TableCellConfig(BaseModel):
     """
     font_family: str = 'Arial'
     font_size: int = 12
-    align: str = 'left'
+    align: Union[str, List[str]] = 'left'
     height: int = 26
     default_fill: str = 'white'
     highlight_fill: str = '#f2f2f2'
@@ -161,6 +161,7 @@ class TableLayoutConfig(BaseModel):
     """
     margin: Dict[str, int] = Field(default_factory = lambda: {'l': 0, 'r': 0, 't': 0, 'b': 0})
     height: int = 300
+    width: int = 800
 
 class TableConfig(ChartConfig):
     """
@@ -304,6 +305,6 @@ def create_configurable_table(df: pd.DataFrame, config: TableConfig = TableConfi
         ]
     )
     
-    fig.update_layout(margin = config.layout.margin, height = config.layout.height)
+    fig.update_layout(margin = config.layout.margin, height = config.layout.height, width = config.layout.width)
 
     return fig
