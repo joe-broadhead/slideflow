@@ -16,7 +16,7 @@ from slideflow.data.connectors.common import DataConnector, BaseSourceConfig
 
 logger = logging.getLogger(__name__)
 
-def clone_dbt_package(git_url: str, clone_dir: str) -> Repo:
+def clone_dbt_package(git_url: str, clone_dir: str, branch: Optional[str] = None) -> Repo:
     """
     Clones a Git repository containing a dbt project to a specified local directory.
 
@@ -35,7 +35,10 @@ def clone_dbt_package(git_url: str, clone_dir: str) -> Repo:
     if os.path.exists(clone_dir):
         shutil.rmtree(clone_dir)
     try:
-        repo = Repo.clone_from(git_url, clone_dir)
+        if branch:
+            repo = Repo.clone_from(git_url, clone_dir, branch=branch)
+        else:
+            repo = Repo.clone_from(git_url, clone_dir)
         logger.info(f'Cloned dbt project from {git_url} to {clone_dir}')
         return repo
     except git.exc.GitCommandError as e:
@@ -60,6 +63,7 @@ class DBTManifestConnector(BaseModel):
     """
     package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
     project_dir: Annotated[str, Field(description = 'Path to the local dbt project directory.')]
+    branch: Annotated[Optional[str], Field(default=None, description='Optional Git branch to clone')]
     target: Annotated[str, Field(default = 'prod', description = 'Target environment for dbt.')]
     vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
     compile: Annotated[bool, Field(default = True, description = 'Whether to compile the dbt project.')]
@@ -85,11 +89,14 @@ class DBTManifestConnector(BaseModel):
         Returns:
             DBTManifestConnector: The instance with `manifest` field populated.
         """
+        if self.manifest:
+            return self
+
         cli = dbtRunner()
         original_cwd = os.getcwd()
 
         if self.compile:
-            clone_dbt_package(self.package_url, self.project_dir)
+            clone_dbt_package(self.package_url, self.project_dir, self.branch)
 
             os.chdir(self.project_dir)
 
@@ -213,6 +220,7 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     model_alias: Annotated[str, Field(description = 'Model alias to execute.')]
     package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
     project_dir: Annotated[str, Field(description = 'Path to dbt project.')]
+    branch: Annotated[Optional[str], Field(default=None, description='Git branch to check out')]
     target: Annotated[Optional[str], Field(default = 'prod', description = 'dbt target environment.')]
     vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
     compile: Annotated[Optional[bool], Field(default = True, description = 'Whether to compile the dbt project.')]

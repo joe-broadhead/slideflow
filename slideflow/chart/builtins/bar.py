@@ -14,13 +14,17 @@ class BarMarkerConfig(BaseModel):
     Configuration for styling the bars in a bar chart.
 
     Attributes:
-        color (str): The fill color of the bars. Default is '#3643bb'.
-        line_width (int): The width of the outline around each bar. Default is 1.
+        color (str): The fill color of the bars. Default is '#3643BA'.
+        line_width (float): The width of the outline around each bar. Default is 1.0.
         line_color (str): The color of the bar outline. Default is 'white'.
+        bar_width (float): The width of each bar. Default is 1.0.
+        textfont (str): (Dict[str, Any]): Font styling for the text, including size and color.
     """
-    color: str = '#3643bb'
-    line_width: int = 1
+    color: str = '#3643BA'
+    line_width: float = 1.0
     line_color: str = 'white'
+    bar_width: float = 1.0
+    textfont: Dict[str, Any] = Field(default_factory = lambda: {'size': 8, 'color': 'black'})
 
 class BarLayoutConfig(BaseModel):
     """
@@ -35,6 +39,17 @@ class BarLayoutConfig(BaseModel):
         title_font (Dict[str, Any]): Font styling for the title, including size and color.
         xaxis_title (Optional[str]): Optional title for the x-axis.
         yaxis_title (Optional[str]): Optional title for the y-axis.
+        x_showticklabels (bool): Displaying of tick labels for x-axis. Defaults to True.
+        y_showticklabels (bool): Displaying of tick labels for y-axis. Defaults to True.
+        x_tickformat (Optional[str]): Plotly tick format string for x-axis (e.g., '.0%', ',.2f').
+        y_tickformat (Optional[str]): Plotly tick format string for y-axis.
+        tickfont (Dict[str, Any]): Font styling for the title, including size and color.
+        x_showgrid (bool): Displaying of the vertical lines along the x axis: Defaults to False
+        y_showgrid (bool): Displaying of the horizontal lines along the y axis: Defaults to False
+        zeroline (bool): Displaying of the bold vertical line at the zero position on the axis. Defaults to False
+        grid_line_width (Float): Sets the thickness in pixels of the x and y gridlines. Defaults to 0.5.
+        grid_line_color (str): Sets the colour of the gridlines. Defaults to #999 (Grey).
+
     """
     margin: Dict[str, int] = Field(default_factory = lambda: {'l': 0, 'r': 0, 't': 5, 'b': 50})
     height: int = 600
@@ -44,6 +59,16 @@ class BarLayoutConfig(BaseModel):
     title_font: Dict[str, Any] = Field(default_factory = lambda: {'size': 16, 'color': 'black'})
     xaxis_title: Optional[str] = None
     yaxis_title: Optional[str] = None
+    x_showticklabels: bool = True
+    y_showticklabels: bool = True
+    x_tickformat: Optional[str] = None
+    y_tickformat: Optional[str] = None
+    tickfont: Dict[str, Any] = Field(default_factory = lambda: {'size': 8, 'color': 'black'})
+    x_showgrid: bool = False
+    y_showgrid: bool = False
+    zeroline: bool = False
+    grid_line_width: float = 0.5
+    grid_line_color: str = '#999'
 
 class BarChartConfig(ChartConfig):
     """
@@ -168,14 +193,55 @@ def create_configurable_bar(df: pd.DataFrame, config: BarChartConfig = BarChartC
         orientation = config.orientation,
         text = [config.text_formatter(val, **config.text_formatter_args) for val in text_series],
         textposition = config.textposition,
+        textfont = config.marker.textfont,
         marker = dict(
             color = config.marker.color,
             line = dict(width = config.marker.line_width, color = config.marker.line_color)
-        )
+        ),
+        width = config.marker.bar_width
     )
     
     fig = go.Figure(data = [bar])
 
+    if config.orientation == 'h':
+        xaxis_config = dict(
+            showgrid = config.layout.x_showgrid,
+            gridwidth = config.layout.grid_line_width,
+            gridcolor = config.layout.grid_line_color,
+            zeroline = config.layout.zeroline,
+            showticklabels = config.layout.x_showticklabels,
+            tickformat = config.layout.x_tickformat,
+            tickfont = config.layout.tickfont
+        )
+        yaxis_config = dict(
+            showgrid = config.layout.y_showgrid,
+            gridwidth = config.layout.grid_line_width,
+            gridcolor = config.layout.grid_line_color,
+            autorange = 'reversed',
+            showticklabels = config.layout.y_showticklabels,
+            tickformat = config.layout.y_tickformat,
+            tickfont = config.layout.tickfont
+        )
+    else:
+        xaxis_config = dict(
+            showgrid = config.layout.x_showgrid,
+            gridwidth = config.layout.grid_line_width,
+            gridcolor = config.layout.grid_line_color,
+            zeroline = config.layout.zeroline,
+            showticklabels = config.layout.x_showticklabels,
+            tickformat = config.layout.x_tickformat,
+            tickfont = config.layout.tickfont
+        )
+        yaxis_config = dict(
+            showgrid = config.layout.y_showgrid,
+            gridwidth = config.layout.grid_line_width,
+            gridcolor = config.layout.grid_line_color,
+            showticklabels = config.layout.y_showticklabels,
+            tickformat = config.layout.y_tickformat,
+            tickfont = config.layout.tickfont
+        )
+
+    # Now build layout_kwargs including axis config
     layout_kwargs = dict(
         margin = config.layout.margin,
         height = config.layout.height,
@@ -183,7 +249,10 @@ def create_configurable_bar(df: pd.DataFrame, config: BarChartConfig = BarChartC
         plot_bgcolor = config.layout.plot_bgcolor,
         xaxis_title = config.layout.xaxis_title,
         yaxis_title = config.layout.yaxis_title,
+        xaxis = xaxis_config,
+        yaxis = yaxis_config,
     )
+
     if config.layout.title:
         layout_kwargs['title'] = {
             'text': config.layout.title,
@@ -193,24 +262,22 @@ def create_configurable_bar(df: pd.DataFrame, config: BarChartConfig = BarChartC
     fig.update_layout(**layout_kwargs)
 
     if config.orientation == 'h':
-        fig.update_layout(
-            yaxis=dict(showgrid = False, autorange = 'reversed'),
-            xaxis=dict(showgrid = False, zeroline = False)
-        )
         x_min = df[config.x_col].min() if not df[config.x_col].empty else 0
         x_max = df[config.x_col].max() if not df[config.x_col].empty else 0
+
+        x_min = float(x_min)
+        x_max = float(x_max)
         # Use the minimum if it is negative; otherwise, start from zero.
         if x_min < 0:
             fig.update_xaxes(range = [x_min * config.x_range_multiplier, x_max * config.x_range_multiplier])
         else:
             fig.update_xaxes(range = [0, x_max * config.x_range_multiplier])
     else:
-        fig.update_layout(
-            xaxis = dict(showgrid = False, zeroline = False),
-            yaxis = dict(showgrid = False)
-        )
         y_min = df[config.y_col].min() if not df[config.y_col].empty else 0
         y_max = df[config.y_col].max() if not df[config.y_col].empty else 0
+
+        y_min = float(y_min)
+        y_max = float(y_max)
         if y_min < 0:
             fig.update_yaxes(range=[y_min * config.x_range_multiplier, y_max * config.x_range_multiplier])
         else:
