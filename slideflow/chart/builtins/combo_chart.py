@@ -49,7 +49,8 @@ class ComboChartLayout(BaseModel):
         x_showticklabels (bool): Whether to show tick labels on the x-axis. Defaults to True.
         y_showticklabels (bool): Whether to show tick labels on the y-axis. Defaults to True.
         x_tickformat (Optional[str]): Optional Plotly tick formatting string for the x-axis.
-        y_tickformat (Optional[str]): Optional Plotly tick formatting string for the y-axis.
+        yaxis_primary_tickformat (Optional[str]): Optional Plotly tick formatting string for the primary y-axis (Left).
+        yaxis_secondary_tickformat (Optional[str]): Optional Plotly tick formatting string for the secondary y-axis (Right).
         tickfont (dict): Font styling for tick labels (e.g., size, color).
         x_show_grid (bool): Whether to show vertical grid lines (x-axis). Defaults to False.
         y_show_grid (bool): Whether to show horizontal grid lines (y-axis). Defaults to False.
@@ -69,7 +70,8 @@ class ComboChartLayout(BaseModel):
     x_showticklabels: bool = True
     y_showticklabels: bool = True
     x_tickformat: Optional[str] = None
-    y_tickformat: Optional[str] = None
+    yaxis_primary_tickformat: Optional[str] = None
+    yaxis_secondary_tickformat: Optional[str] = None
     tickfont: Dict[str, Any] = Field(default_factory=lambda: {'size': 8, 'color': 'black'})
     x_show_grid: bool = False
     y_show_grid: bool = False
@@ -126,17 +128,15 @@ def create_configurable_combo_chart(df: pd.DataFrame, config: ComboChartConfig) 
             name = traces.name,
             marker_color = traces.marker_color
         )
+
         if traces.trace_type == 'bar':
             trace = go.Bar(**kwargs)
         elif traces.trace_type == 'scatter':
             trace = go.Scatter(**kwargs, mode=traces.mode or 'lines', line=traces.line)
         else:
-            raise ValueError(f'unsupported trace_type: {traces.trace_type}')
+            raise ValueError(f'Unsupported trace_type: {traces.trace_type}')
 
-        if config.dual_axis:
-            want_yaxis = 'y'  if traces.axis == 'secondary' else 'y2'
-        else:
-            want_yaxis = 'y'
+        want_yaxis = 'y' if not config.dual_axis or traces.axis == 'secondary' else 'y2'
         trace.update(yaxis=want_yaxis)
         fig.add_trace(trace)
 
@@ -150,18 +150,19 @@ def create_configurable_combo_chart(df: pd.DataFrame, config: ComboChartConfig) 
         tickfont = config.layout.tickfont,
         title = config.layout.xaxis_title
     )
+
     yaxis_config = dict(
         showgrid = config.layout.y_show_grid,
         gridwidth = config.layout.grid_line_width,
         gridcolor = config.layout.grid_line_color,
         zeroline = config.layout.y_zero_line,
         showticklabels = config.layout.y_showticklabels,
-        tickformat = config.layout.y_tickformat,
+        tickformat = config.layout.yaxis_primary_tickformat,
         tickfont = config.layout.tickfont,
         title = config.layout.yaxis_primary_title,
         side = 'left'
     )
-    
+
     layout_kwargs = dict(
         title = config.layout.title,
         xaxis = xaxis_config,
@@ -177,16 +178,16 @@ def create_configurable_combo_chart(df: pd.DataFrame, config: ComboChartConfig) 
     )
 
     if config.dual_axis:
-        # primary GMV ticks stay on the left (overlay axis)
         layout_kwargs['yaxis2'] = dict(
             title = config.layout.yaxis_primary_title,
             side = 'left',
             overlaying = 'y',
-            showgrid = False
+            showgrid = False,
+            tickformat = config.layout.yaxis_primary_tickformat
         )
-        # growth bars use the base axis on the right
         layout_kwargs['yaxis']['title'] = config.layout.yaxis_secondary_title
         layout_kwargs['yaxis']['side']  = 'right'
+        layout_kwargs['yaxis']['tickformat'] = config.layout.yaxis_secondary_tickformat
 
     fig.update_layout(**layout_kwargs)
     return fig

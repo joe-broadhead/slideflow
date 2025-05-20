@@ -1,4 +1,5 @@
 import math
+import decimal
 import numpy as np
 from typing import Any, List
 
@@ -21,6 +22,9 @@ def abbreviate(value: Any, suffixes: List[tuple] = None) -> str:
         str: A string with the abbreviated value, or the original value as a string if not numeric.
     """
     try:
+        if isinstance(value, decimal.Decimal):
+            value = float(value)
+            
         if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
             abs_val = abs(value)
             suffixes = suffixes or [(1e12, 'T'), (1e9, 'B'), (1e6, 'M'), (1e3, 'K')]
@@ -48,6 +52,9 @@ def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
         str: The formatted percentage string. If the input is invalid, returns the original value as a string.
     """
     try:
+        if isinstance(value, decimal.Decimal):
+            value = float(value)
+
         if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
             if math.isnan(value):
                 return 'NaN%'
@@ -57,7 +64,7 @@ def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
     except Exception:
         return str(value)
 
-def round(value: Any, ndigits: int = 2) -> float:
+def round_value(value: Any, ndigits: int = 2) -> float:
     """
     Rounds a numeric value to the specified number of decimal places.
 
@@ -72,8 +79,11 @@ def round(value: Any, ndigits: int = 2) -> float:
         float: The rounded number if valid, otherwise the original input.
     """
     try:
+        if isinstance(value, decimal.Decimal):
+            value = float(value)
+
         if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
-            return round(float(value), ndigits)
+            return f"{round(float(value), ndigits):.{ndigits}f}"
         return value
     except Exception:
         return value
@@ -155,6 +165,9 @@ def abbreviate_currency(
         str: Abbreviated and formatted value with currency.
     """
     try:
+        if isinstance(value, decimal.Decimal):
+            value = float(value)
+
         if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
             numeric_value = float(value)
             abs_val = abs(numeric_value)
@@ -190,7 +203,7 @@ def abbreviate_currency(
 BUILTIN_FORMAT_FUNCTIONS = {
     'abbreviate': abbreviate,
     'percentage': percentage,
-    'round': round,
+    'round_value': round_value,
     'format_currency': format_currency,
     'abbreviate_currency': abbreviate_currency,
 }

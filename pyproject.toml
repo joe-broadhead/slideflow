@@ -3,7 +3,7 @@ name = "slideflow"
 version = "0.0.0"
 description = "Automated Google Slides presentation builder with charts and data replacements."
 authors = [
-    { name = "Joe Broadhead" }
+    { name = "Joe Broadhead" },
     { name = "Tom Lovett" }
 ]
 dependencies = [
