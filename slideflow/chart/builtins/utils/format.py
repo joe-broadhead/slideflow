@@ -24,7 +24,7 @@ def abbreviate(value: Any, suffixes: List[tuple] = None) -> str:
     try:
         if isinstance(value, decimal.Decimal):
             value = float(value)
-            
+
         if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
             abs_val = abs(value)
             suffixes = suffixes or [(1e12, 'T'), (1e9, 'B'), (1e6, 'M'), (1e3, 'K')]
@@ -83,7 +83,7 @@ def round_value(value: Any, ndigits: int = 2) -> float:
             value = float(value)
 
         if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
-            return f"{round(float(value), ndigits):.{ndigits}f}"
+            return round(float(value), ndigits)
         return value
     except Exception:
         return value
