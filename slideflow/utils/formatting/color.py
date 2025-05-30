@@ -1,3 +1,5 @@
+import decimal
+
 def green_or_red(value):
     """
     Returns a color name based on whether the numeric value is positive or negative.
@@ -11,6 +13,9 @@ def green_or_red(value):
             - 'red' if the value is less than 0,
             - 'black' if the value is not a number.
     """
+    if isinstance(value, decimal.Decimal):
+        value = float(value)
+        
     if isinstance(value, (int, float)):
         return 'green' if value >= 0 else 'red'
     return 'black'

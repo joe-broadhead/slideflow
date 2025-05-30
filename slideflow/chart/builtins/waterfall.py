@@ -1,9 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
 from pydantic import BaseModel, Field
-from typing import Any, Callable, Dict, Optional, Literal
+from typing import Any, Callable, Dict, Optional, Literal, List
 
 from slideflow.chart.builtins.common import ChartConfig
+from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
+from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 class WaterfallMarkerStyle(BaseModel):
     """
@@ -127,11 +129,8 @@ class WaterfallConfig(ChartConfig):
         font_color (Optional[str]): 
             Font color for all text in the chart. Optional.
 
-        preprocess_fn (Optional[Callable[[pd.DataFrame], pd.DataFrame]]): 
-            Optional preprocessing function to apply to the input DataFrame before plotting.
-
-        preprocess_fn_args (Optional[Dict[str, Any]]): 
-            Dictionary of keyword arguments to pass to the preprocessing function.
+        preprocess_functions (List[Dict[str, Any]]):
+            A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
     """
     x_col: str = Field(..., description = 'Column to use for the x-axis (categories).')
     y_col: str = Field(..., description = 'Column to use for the y-axis (values).')
@@ -161,8 +160,7 @@ class WaterfallConfig(ChartConfig):
     font_family: Optional[str] = Field(default = None, description = 'Font family to use.')
     font_color: Optional[str] = Field(default = None, description = 'Font color to use.')
 
-    preprocess_fn: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = Field(default = None, description = 'Optional function to preprocess the DataFrame.')
-    preprocess_fn_args: Optional[Dict[str, Any]] = Field(default_factory = dict, description = 'Arguments for the preprocessing function.')
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list)
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
@@ -171,11 +169,12 @@ class WaterfallConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if self.preprocess_fn_args:
-            self.preprocess_fn_args = {
-                k: v.format(**params) if isinstance(v, str) else v
-                for k, v in self.preprocess_fn_args.items()
-            }
+        if hasattr(self, "preprocess_functions"):
+            for step in self.preprocess_functions:
+                if "args" in step:
+                    for k, v in step["args"].items():
+                        if isinstance(v, str):
+                            step["args"][k] = v.format(**params)
 
 def create_configurable_waterfall(df: pd.DataFrame, config: WaterfallConfig = WaterfallConfig) -> go.Figure:
     """
@@ -190,11 +189,11 @@ def create_configurable_waterfall(df: pd.DataFrame, config: WaterfallConfig = Wa
     """
     df = df.copy()
 
-    if config.preprocess_fn:
-        try:
-            df = config.preprocess_fn(df, **config.preprocess_fn_args)
-        except Exception as e:
-            raise RuntimeError(f"Failed to preprocess DataFrame: {e}")
+    if config.preprocess_functions:
+        for step in config.preprocess_functions:
+            fn_name = step["function"]
+            args = step.get("args", {})
+            df = fn_name(df, **args)
 
     trace_kwargs = {
         'orientation': config.orientation,

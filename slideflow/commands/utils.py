@@ -30,11 +30,32 @@ def inject_params_into_model(presentation: Presentation, params: dict[str, str])
             if chart.chart_config and hasattr(chart.chart_config, 'resolve_args'):
                 chart.chart_config.resolve_args(params)
 
+            if chart.data_source:
+                if hasattr(chart.data_source, 'vars') and isinstance(chart.data_source.vars, dict):
+                    chart.data_source.vars = replace_params(chart.data_source.vars, params)
+
         for replacement in slide.replacements:
             if hasattr(replacement, 'resolve_args'):
                 replacement.resolve_args(params)
+            
+            if replacement.data_source:
+                if hasattr(replacement.data_source, 'vars') and isinstance(replacement.data_source.vars, dict):
+                    replacement.data_source.vars = replace_params(replacement.data_source.vars, params)
 
     return presentation
+
+def replace_params(obj, params):
+    if isinstance(obj, str):
+        try:
+            return obj.format(**params)
+        except KeyError as e:
+            print(f"⚠️ Missing parameter for string: {obj} — {e}")
+    elif isinstance(obj, dict):
+        return {k: replace_params(v, params) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [replace_params(item, params) for item in obj]
+    else:
+        return obj
 
 def print_banner(console: Console) -> None:
     console.print(r"""

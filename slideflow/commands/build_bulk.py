@@ -108,7 +108,7 @@ def run(
         resolved = resolve_functions(raw, function_registry) | build_services()
         base_presentation = TypeAdapter(Presentation).validate_python(resolved)
     except ValidationError as e:
-        msg = f'Invalid config:[/bold red] {e}'
+        msg = f'[bold red]Invalid config:[/bold red] {e}'
         print_error_panel(console, msg)
         raise typer.Exit(code = 1)
     except Exception as e:

@@ -13,6 +13,8 @@ class BuiltinChartType(str, Enum):
     bar = 'bar'
     waterfall = 'waterfall'
     line = 'line'
+    grouped_bar = 'grouped_bar'
+    combo_chart = 'combo_chart'
 
 class ChartConfig(BaseModel):
     """

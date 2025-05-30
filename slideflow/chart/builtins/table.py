@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union, List
 from pydantic import BaseModel, Field, root_validator
 
 from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
-from slideflow.chart.builtins.utils.color import BUILTIN_COLOR_FUNCTIONS
-from slideflow.chart.builtins.utils.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
+from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 BUILTIN_FUNCTIONS = BUILTIN_COLOR_FUNCTIONS | BUILTIN_FORMAT_FUNCTIONS
 
@@ -87,7 +87,7 @@ class TableHeaderConfig(BaseModel):
 
     Attributes:
         fill_color (str): 
-            Background color of the header row. Defaults to '#3643bb'.
+            Background color of the header row. Defaults to '#3643BA'.
         
         font_color (str): 
             Text color of the header. Defaults to 'white'.
@@ -101,10 +101,10 @@ class TableHeaderConfig(BaseModel):
         height (int): 
             Height of the header row in points. Defaults to 32.
     """
-    fill_color: str = '#3643bb'
+    fill_color: str = '#3643BA'
     font_color: str = 'white'
     font_size: int = 12
-    align: str = 'center'
+    align: Union[str, List[str]] = 'left'
     height: int = 32
 
 class TableCellConfig(BaseModel):
@@ -137,7 +137,7 @@ class TableCellConfig(BaseModel):
     """
     font_family: str = 'Arial'
     font_size: int = 12
-    align: str = 'left'
+    align: Union[str, List[str]] = 'left'
     height: int = 26
     default_fill: str = 'white'
     highlight_fill: str = '#f2f2f2'
@@ -161,6 +161,7 @@ class TableLayoutConfig(BaseModel):
     """
     margin: Dict[str, int] = Field(default_factory = lambda: {'l': 0, 'r': 0, 't': 0, 'b': 0})
     height: int = 300
+    width: int = 800
 
 class TableConfig(ChartConfig):
     """
@@ -182,10 +183,8 @@ class TableConfig(ChartConfig):
             Layout configuration for the entire table (e.g., margins, height).
         formatting (TableFormattingOptions): 
             Formatting options for table data, including formatting functions and color rules.
-        preprocess_fn (Optional[Callable[[pd.DataFrame], pd.DataFrame]]): 
-            Optional function to preprocess the DataFrame before it is rendered as a table.
-        preprocess_fn_args (Optional[Dict[str, str]]): 
-            Optional dictionary of keyword arguments passed to the `preprocess_fn`.
+        preprocess_functions (List[Dict[str, Any]]):
+            A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
     """
     chart_type: BuiltinChartType = Field('table', description = "Type of chart. Should be 'table'")
     column_map: Dict[str, str] = Field(..., description = 'Mapping from internal column names to display names.')
@@ -194,8 +193,7 @@ class TableConfig(ChartConfig):
     cell: Optional[TableCellConfig] = Field(default_factory = TableCellConfig)
     layout: Optional[TableLayoutConfig] = Field(default_factory = TableLayoutConfig)
     formatting: TableFormattingOptions = Field(default_factory = TableFormattingOptions)
-    preprocess_fn: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = Field(None, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
-    preprocess_fn_args: Optional[Dict[str, str]] = Field(default_factory = dict)
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
@@ -204,11 +202,12 @@ class TableConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if self.preprocess_fn_args:
-            self.preprocess_fn_args = {
-                k: v.format(**params) if isinstance(v, str) else v
-                for k, v in self.preprocess_fn_args.items()
-            }
+        if hasattr(self, "preprocess_functions"):
+            for step in self.preprocess_functions:
+                if "args" in step:
+                    for k, v in step["args"].items():
+                        if isinstance(v, str):
+                            step["args"][k] = v.format(**params)
 
 def create_configurable_table(df: pd.DataFrame, config: TableConfig = TableConfig) -> go.Figure:
     """
@@ -235,11 +234,11 @@ def create_configurable_table(df: pd.DataFrame, config: TableConfig = TableConfi
     """
     df = df.copy()
 
-    if config.preprocess_fn:
-        try:
-            df = config.preprocess_fn(df, **config.preprocess_fn_args)
-        except Exception as e:
-            raise RuntimeError(f'Failed to call preprocess_fn with args {config.preprocess_fn_args}: {e}')
+    if config.preprocess_functions:
+        for step in config.preprocess_functions:
+            fn_name = step["function"]
+            args = step.get("args", {})
+            df = fn_name(df, **args)
 
     cols = list(config.column_map.keys())
     df = df[cols]
@@ -304,6 +303,6 @@ def create_configurable_table(df: pd.DataFrame, config: TableConfig = TableConfi
         ]
     )
     
-    fig.update_layout(margin = config.layout.margin, height = config.layout.height)
+    fig.update_layout(margin = config.layout.margin, height = config.layout.height, width = config.layout.width)
 
     return fig
