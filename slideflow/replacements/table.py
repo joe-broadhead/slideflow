@@ -5,7 +5,7 @@ from typing import Optional, Callable, Literal, Dict, Any, Union, Annotated
 from slideflow.replacements.base import BaseReplacement
 from slideflow.data.connectors.base import DataSourceConfig
 from slideflow.replacements.utils import dataframe_to_replacement_object
-from slideflow.chart.builtins.utils.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 BUILTIN_FUNCTIONS = BUILTIN_FORMAT_FUNCTIONS
 
@@ -59,37 +59,36 @@ class TableReplacement(BaseReplacement):
         type (Literal['table']): Discriminator for Pydantic model selection.
         prefix (str): Prefix used for matching table placeholders.
         data_source (Optional[Union[str, DataSourceConfig]]): The name or config of the data source providing replacement values.
-        value_fn (Optional[Callable[[pd.DataFrame], pd.DataFrame]]): Optional transformation function applied to the source data before replacement.
-        value_fn_args (Dict[str, Any]): Optional keyword arguments passed to `value_fn`.
+        preprocess_functions (List[Dict[str, Any]]): A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
         replacements (Optional[Dict[str, Any]]): Static replacements if not using a data source.
         formatting (TableFormattingOptions): Formatting options for table data, including formatting functions
     """
     type: Literal['table'] = Field('table', description = 'The table replacement type')
     prefix: Annotated[str, Field(description = 'Prefix for placeholders in the table')]
     data_source: Annotated[Optional[Union[str, DataSourceConfig]], Field(default = None, description = 'Data source for the table replacement')]
-    value_fn: Annotated[Optional[Callable[[pd.DataFrame], pd.DataFrame]], Field(default = None, description = 'Function to transform the data before replacement')]
-    value_fn_args: Annotated[Dict[str, Any], Field(default_factory = dict, description = 'Extra keyword arguments for the table transformation function')]
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list)
     replacements: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Static mapping of placeholder to new text')]
-    formatting: TableFormattingOptions = Field(default_factory = TableFormattingOptions) 
+    formatting: TableFormattingOptions = Field(default_factory = TableFormattingOptions)
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
-        Formats any string arguments in `value_fn_args` using the provided parameters.
+        Updates all preprocess function args by formatting any string values with the provided params.
 
         Args:
-            params (dict): Parameters used to format strings in `value_fn_args`.
+            params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if self.value_fn_args:
-            self.value_fn_args = {
-                key: value.format(**params) if isinstance(value, str) else value
-                for key, value in self.value_fn_args.items()
-            }
+        if hasattr(self, "preprocess_functions"):
+            for step in self.preprocess_functions:
+                if "args" in step:
+                    for k, v in step["args"].items():
+                        if isinstance(v, str):
+                            step["args"][k] = v.format(**params)
 
     def get_table_replacements(self, data: pd.DataFrame) -> Dict[str, Any]:
         """
         Generates table text replacements from a DataFrame or static config.
 
-        Applies a value_fn if provided, and optionally formats specific columns
+        Applies any preprocess_functions if provided, and optionally formats specific columns
         using user-defined functions before converting the result into a dictionary.
 
         Args:
@@ -101,7 +100,13 @@ class TableReplacement(BaseReplacement):
         if self.replacements is not None:
             return self.replacements
 
-        df = self.value_fn(data, **self.value_fn_args) if self.value_fn else data.copy()
+        df = df.copy()
+
+        if config.preprocess_functions:
+            for step in config.preprocess_functions:
+                fn_name = step["function"]
+                args = step.get("args", {})
+                df = fn_name(df, **args)
 
         for col_name, formatter in self.formatting.custom_formatters.items():
             if col_name in df.columns:

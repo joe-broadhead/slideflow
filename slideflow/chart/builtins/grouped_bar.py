@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
 from pydantic import BaseModel, Field, root_validator
 
 from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
-from slideflow.chart.builtins.utils.color import BUILTIN_COLOR_FUNCTIONS
-from slideflow.chart.builtins.utils.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
+from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 BUILTIN_FUNCTIONS = BUILTIN_COLOR_FUNCTIONS | BUILTIN_FORMAT_FUNCTIONS
 
@@ -89,8 +89,7 @@ class GroupedBarChartConfig(ChartConfig):
         marker (BarMarkerConfig): Configuration for bar color and border styling.
         layout (BarLayoutConfig): Layout configuration for the chart (e.g. size, margins, title).
         x_range_multiplier (float): Multiplier to extend the axis range beyond the maximum value.
-        preprocess_fn (Optional[Callable[[pd.DataFrame], pd.DataFrame]]): Optional preprocessing function to modify the DataFrame before plotting.
-        preprocess_fn_args (Optional[Dict[str, str]]): Parameters to pass into the `preprocess_fn`.
+        preprocess_functions (List[Dict[str, Any]]): A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
     """
     chart_type: BuiltinChartType = Field('grouped_bar', description = "Type of chart. Should be 'grouped_bar'")
     x_col_current: str = Field(..., description = 'DataFrame column to use for x-axis values.')
@@ -101,11 +100,7 @@ class GroupedBarChartConfig(ChartConfig):
     marker: GroupedBarMarkerConfig = Field(default_factory = GroupedBarMarkerConfig)
     layout: GroupedBarLayoutConfig = Field(default_factory = GroupedBarLayoutConfig)
     x_range_multiplier: float = Field(1.5, description = 'Multiplier for axis range based on maximum value.')
-    preprocess_fn: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = Field(
-        None,
-        description = 'Optional function to preprocess the DataFrame before rendering.'
-    )
-    preprocess_fn_args: Optional[Dict[str, str]] = Field(default_factory = dict)
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
 
     def resolve_args(self, params: dict[str, str]) -> None:
@@ -115,18 +110,19 @@ class GroupedBarChartConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if self.preprocess_fn_args:
-            self.preprocess_fn_args = {
-                k: v.format(**params) if isinstance(v, str) else v
-                for k, v in self.preprocess_fn_args.items()
-            }
+        if hasattr(self, "preprocess_functions"):
+            for step in self.preprocess_functions:
+                if "args" in step:
+                    for k, v in step["args"].items():
+                        if isinstance(v, str):
+                            step["args"][k] = v.format(**params)
 
 def create_configurable_grouped_bar(df: pd.DataFrame, config: GroupedBarChartConfig = GroupedBarChartConfig) -> go.Figure:
     """
     Generates a configurable Plotly bar chart based on the provided DataFrame and chart configuration.
 
     This function supports:
-    - Preprocessing the DataFrame via a user-defined function.
+    - Preprocessing the DataFrame via user-defined functions.
     - Dynamic sorting.
     - Dynamic labeling with optional formatters.
     - Layout customization including size, orientation, titles, colors, and axis configuration.
@@ -143,11 +139,11 @@ def create_configurable_grouped_bar(df: pd.DataFrame, config: GroupedBarChartCon
     """
     df = df.copy()
 
-    if config.preprocess_fn:
-        try:
-            df = config.preprocess_fn(df, **config.preprocess_fn_args)
-        except Exception as e:
-            raise RuntimeError(f'Failed to call preprocess_fn with args {config.preprocess_fn_args}: {e}')
+    if config.preprocess_functions:
+        for step in config.preprocess_functions:
+            fn_name = step["function"]
+            args = step.get("args", {})
+            df = fn_name(df, **args)
 
     if config.sort_by:
         df = df.sort_values(by = config.sort_by, ascending = config.sort_ascending)

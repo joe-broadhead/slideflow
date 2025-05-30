@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 from typing import Any, Callable, Dict, List, Literal, Optional
 
 from slideflow.chart.builtins.common import ChartConfig
+from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
+from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 class LineSeriesConfig(BaseModel):
     """
@@ -92,11 +94,8 @@ class LineChartConfig(ChartConfig):
         font_color (Optional[str]):  
             Font color for all text in the chart (e.g., `'black'`, `'white'`).
         
-        preprocess_fn (Optional[Callable[[pd.DataFrame], pd.DataFrame]]):  
-            Optional preprocessing function that accepts the input DataFrame and returns a modified version for plotting.
-        
-        preprocess_fn_args (Optional[Dict[str, Any]]):  
-            Optional dictionary of keyword arguments passed to the `preprocess_fn`.
+        preprocess_functions (List[Dict[str, Any]]):
+            A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
     """
     chart_type: Literal['line'] = Field(default = "line", description = "Chart type identifier. Must be 'line'.")
     series: List[LineSeriesConfig] = Field(..., description = 'List of individual line series to plot on the chart.')
@@ -111,8 +110,7 @@ class LineChartConfig(ChartConfig):
     plot_bgcolor: Optional[str] = Field(default = None, description = "Background color inside the chart's plotting area.")
     font_family: Optional[str] = Field(default = None, description = "Font family for all text in the chart (e.g., 'Helvetica').")
     font_color: Optional[str] = Field(default = None, description = "Font color for all chart text (e.g., 'white').")
-    preprocess_fn: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = Field(default = None, description = 'Optional function that transforms the input DataFrame before plotting.')
-    preprocess_fn_args: Optional[Dict[str, Any]] = Field(default_factory = dict, description = "Keyword arguments passed to `preprocess_fn`.")
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
@@ -121,11 +119,12 @@ class LineChartConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if self.preprocess_fn_args:
-            self.preprocess_fn_args = {
-                k: v.format(**params) if isinstance(v, str) else v
-                for k, v in self.preprocess_fn_args.items()
-            }
+        if hasattr(self, "preprocess_functions"):
+            for step in self.preprocess_functions:
+                if "args" in step:
+                    for k, v in step["args"].items():
+                        if isinstance(v, str):
+                            step["args"][k] = v.format(**params)
 
 
 def create_configurable_line(df: pd.DataFrame, config: LineChartConfig = LineChartConfig) -> go.Figure:
@@ -154,8 +153,11 @@ def create_configurable_line(df: pd.DataFrame, config: LineChartConfig = LineCha
     """
     df = df.copy()
 
-    if config.preprocess_fn:
-        df = config.preprocess_fn(df, **config.preprocess_fn_args)
+    if config.preprocess_functions:
+        for step in config.preprocess_functions:
+            fn_name = step["function"]
+            args = step.get("args", {})
+            df = fn_name(df, **args)
 
     fig = go.Figure()
 

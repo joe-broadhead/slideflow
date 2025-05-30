@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, Optional, Literal, List
 from pydantic import BaseModel, Field, root_validator
 
 from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
-from slideflow.chart.builtins.utils.color import BUILTIN_COLOR_FUNCTIONS
-from slideflow.chart.builtins.utils.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
+from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 BUILTIN_FUNCTIONS = BUILTIN_COLOR_FUNCTIONS | BUILTIN_FORMAT_FUNCTIONS
 
@@ -91,33 +91,38 @@ class ComboChartConfig(BaseModel):
         dual_axis (bool): Whether to enable a secondary y-axis (on the right). Defaults to False.
         traces (List[TraceConfig]): List of trace configurations to plot.
         layout (ComboChartLayout): Layout and styling options for the chart.
-        preprocess_fn (Callable): Optional preprocessing function to apply to the data.
-        preprocess_fn_args (dict): Arguments to pass into the `preprocess_fn`.
+        preprocess_functions (List[Dict[str, Any]]): A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
     """
     chart_type: BuiltinChartType = Field('combo_chart', description="Type of chart. Should be 'combo_chart'")
     dual_axis: bool = False
     traces: List[TraceConfig]
     layout: ComboChartLayout = ComboChartLayout()
-    preprocess_fn: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None
-    preprocess_fn_args: Optional[Dict[str, str]] = Field(default_factory=dict)
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
     def resolve_args(self, params: dict[str, str]) -> None:
-        if self.preprocess_fn_args:
-            self.preprocess_fn_args = {
-                k: v.format(**params) if isinstance(v, str) else v
-                for k, v in self.preprocess_fn_args.items()
-            }
+        """
+        Updates all preprocess function args by formatting any string values with the provided params.
+
+        Args:
+            params (dict[str, str]): Parameters to use for string interpolation.
+        """
+        if hasattr(self, "preprocess_functions"):
+            for step in self.preprocess_functions:
+                if "args" in step:
+                    for k, v in step["args"].items():
+                        if isinstance(v, str):
+                            step["args"][k] = v.format(**params)
 
 
 def create_configurable_combo_chart(df: pd.DataFrame, config: ComboChartConfig) -> go.Figure:
     
     df = df.copy()
 
-    if config.preprocess_fn:
-        try:
-            df = config.preprocess_fn(df, **config.preprocess_fn_args)
-        except Exception as e:
-            raise RuntimeError(f'Failed to call preprocess_fn with args {config.preprocess_fn_args}: {e}')
+    if config.preprocess_functions:
+        for step in config.preprocess_functions:
+            fn_name = step["function"]
+            args = step.get("args", {})
+            df = fn_name(df, **args)
 
     fig = go.Figure()
 
