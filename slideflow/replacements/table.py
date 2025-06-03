@@ -1,6 +1,6 @@
 import pandas as pd
 from pydantic import Field, BaseModel, root_validator
-from typing import Optional, Callable, Literal, Dict, Any, Union, Annotated
+from typing import Optional, Callable, Literal, Dict, Any, Union, Annotated, List
 
 from slideflow.replacements.base import BaseReplacement
 from slideflow.data.connectors.base import DataSourceConfig
@@ -100,10 +100,10 @@ class TableReplacement(BaseReplacement):
         if self.replacements is not None:
             return self.replacements
 
-        df = df.copy()
+        df = data.copy()
 
-        if config.preprocess_functions:
-            for step in config.preprocess_functions:
+        if self.preprocess_functions:
+            for step in self.preprocess_functions:
                 fn_name = step["function"]
                 args = step.get("args", {})
                 df = fn_name(df, **args)
