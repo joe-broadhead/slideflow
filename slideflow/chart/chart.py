@@ -10,13 +10,21 @@ from slideflow.chart.builtins.bar import BarChartConfig, create_configurable_bar
 from slideflow.chart.builtins.table import TableConfig, create_configurable_table
 from slideflow.chart.builtins.line import LineChartConfig, create_configurable_line
 from slideflow.chart.builtins.waterfall import WaterfallConfig, create_configurable_waterfall
+from slideflow.chart.builtins.grouped_bar import GroupedBarChartConfig, create_configurable_grouped_bar
+from slideflow.chart.builtins.combo_chart import ComboChartConfig, create_configurable_combo_chart
 
 BUILT_IN_CHARTS = {
     'table': create_configurable_table,
     'bar': create_configurable_bar,
     'waterfall': create_configurable_waterfall,
     'line': create_configurable_line,
+    'grouped_bar': create_configurable_grouped_bar,
+    'combo_chart': create_configurable_combo_chart
 }
+
+CHART_CONFIGS = [
+    TableConfig, BarChartConfig, WaterfallConfig, LineChartConfig, GroupedBarChartConfig, ComboChartConfig,
+]
 
 class Chart(BaseModel):
     """
@@ -50,7 +58,7 @@ class Chart(BaseModel):
         Union[BuiltinChartType, Callable[[Any], Any]],
         Field(description = 'Either a built-in chart type or a custom function.')
     ]
-    chart_config: Optional[Union[TableConfig, BarChartConfig, WaterfallConfig, LineChartConfig]] = Field(
+    chart_config: Optional[Union[*CHART_CONFIGS]] = Field(
         None, description = 'Optional configuration for the chart type'
     )
     data_source: DataSourceConfig = Field(..., description = 'Data source to be visualized')
