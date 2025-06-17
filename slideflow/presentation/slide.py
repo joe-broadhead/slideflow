@@ -91,7 +91,7 @@ class Slide(BaseModel):
 
         return {'requests': requests, 'ids': ids}
 
-    def ger_replacement_requests(self, data_manager: DataManager) -> None:
+    def get_replacement_requests(self, data_manager: DataManager) -> None:
         """
         Generates replacement requests for text and table placeholders.
 
