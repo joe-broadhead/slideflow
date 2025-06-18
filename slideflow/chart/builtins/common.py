@@ -15,6 +15,7 @@ class BuiltinChartType(str, Enum):
     line = 'line'
     grouped_bar = 'grouped_bar'
     combo_chart = 'combo_chart'
+    custom = 'custom'
 
 class ChartConfig(BaseModel):
     """

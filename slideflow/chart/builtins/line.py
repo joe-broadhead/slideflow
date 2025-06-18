@@ -28,14 +28,14 @@ class LineSeriesConfig(BaseModel):
             Color of the line. Can be any valid Plotly color string (e.g., "#ff0000", "blue").
         
         line_dash (Optional[Literal['solid', 'dot', 'dash']]):  
-            Dash style of the line. One of `'solid'`, `'dot'`, or `'dash'`. Defaults to `'solid'`.
+            Dash style of the line. One of 'solid', 'dot', or 'dash'. Defaults to 'solid'.
         
         line_width (Optional[int]):  
             Width of the line in pixels. Defaults to 2.
         
         mode (Literal['lines', 'lines+markers']):  
-            Plot mode. Use `'lines'` for a continuous line or `'lines+markers'` to show both lines and data point markers.
-            Defaults to `'lines'`.
+            Plot mode. Use 'lines' for a continuous line or 'lines+markers' to show both lines and data point markers.
+            Defaults to 'lines'.
     """
     name: str = Field(..., description = 'Name of the series (used for legend and label).')
     x_col: str = Field(..., description = 'Column to use for the x-axis.')
@@ -79,9 +79,15 @@ class LineChartConfig(ChartConfig):
             Whether to display the legend on the chart. Defaults to True.
         
         template (str):  
-            Name of the Plotly theme to use. Common options include `'plotly_white'`, `'plotly'`, `'ggplot2'`, etc.  
-            Defaults to `'plotly_white'`.
+            Name of the Plotly theme to use. Common options include 'plotly_white', 'plotly', 'ggplot2', etc.  
+            Defaults to 'plotly_white'.
+
+        sort_by (Optional[str]):
+            Column name to sort the DataFrame by. If None, no sorting is applied.
         
+        sort_ascending (bool):
+            If True, sort in ascending order. Defaults to False (descending).
+
         paper_bgcolor (Optional[str]):  
             Background color of the overall canvas (outside the plot area).
         
@@ -89,10 +95,10 @@ class LineChartConfig(ChartConfig):
             Background color inside the plot area (behind the lines).
         
         font_family (Optional[str]):  
-            Font family to use for all text in the chart (e.g., `'Helvetica'`).
+            Font family to use for all text in the chart (e.g., 'Helvetica').
         
         font_color (Optional[str]):  
-            Font color for all text in the chart (e.g., `'black'`, `'white'`).
+            Font color for all text in the chart (e.g., 'black', 'white').
         
         preprocess_functions (List[Dict[str, Any]]):
             A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
@@ -102,10 +108,17 @@ class LineChartConfig(ChartConfig):
     title: Optional[str] = Field(default = 'Line Chart', description = 'Chart title text.')
     xaxis_title: Optional[str] = Field(default = None, description = 'Title for the x-axis.')
     yaxis_title: Optional[str] = Field(default = None, description = 'Title for the y-axis.')
+    xaxis_showgrid: bool = Field(default = True, description = 'Show the grid for the x-axis.')
+    yaxis_showgrid: bool = Field(default = True, description = 'Show the grid for the y-axis.')
+    xaxis_showticklabels: bool = Field(default = True, description = 'Show the tick labels for the x-axis.')
+    yaxis_showticklabels: bool = Field(default = True, description = 'Show the tick labels for the y-axis.')
     height: Optional[int] = Field(default = None, description = 'Height of the chart in pixels.')
     width: Optional[int] = Field(default = None, description = 'Width of the chart in pixels.')
+    margin: Dict[str, int] = Field(default_factory = lambda: {'l': 0, 'r': 0, 't': 5, 'b': 50})
     showlegend: bool = Field(default = True, description = 'Whether to display the legend.')
     template: str = Field(default = 'plotly_white', description = "Plotly theme template (e.g. 'plotly', 'plotly_white', 'ggplot2').")
+    sort_by: Optional[str] = Field(None, description = 'Column to sort the DataFrame by. If not provided, no sorting is applied.')
+    sort_ascending: bool = Field(False, description = 'Sort order. Defaults to descending order if False.')
     paper_bgcolor: Optional[str] = Field(default = None, description = 'Background color of the chart canvas (outside plot area).')
     plot_bgcolor: Optional[str] = Field(default = None, description = "Background color inside the chart's plotting area.")
     font_family: Optional[str] = Field(default = None, description = "Font family for all text in the chart (e.g., 'Helvetica').")
@@ -131,8 +144,8 @@ def create_configurable_line(df: pd.DataFrame, config: LineChartConfig = LineCha
     """
     Creates a configurable multi-series line chart using Plotly.
 
-    This function builds a `plotly.graph_objects.Figure` based on a list of line
-    series and chart-level layout options defined in the `LineChartConfig`. Each series
+    This function builds a plotly.graph_objects.Figure based on a list of line
+    series and chart-level layout options defined in the LineChartConfig. Each series
     specifies its own x/y columns and line style. Chart appearance and layout can be customized
     via colors, font, dimensions, and templates.
 
@@ -146,7 +159,7 @@ def create_configurable_line(df: pd.DataFrame, config: LineChartConfig = LineCha
 
     Returns:
         go.Figure: 
-            A fully configured Plotly `Figure` object representing the line chart.
+            A fully configured Plotly Figure object representing the line chart.
 
     Raises:
         RuntimeError: If the optional preprocessing function raises an error.
@@ -158,6 +171,9 @@ def create_configurable_line(df: pd.DataFrame, config: LineChartConfig = LineCha
             fn_name = step["function"]
             args = step.get("args", {})
             df = fn_name(df, **args)
+
+    if config.sort_by:
+        df = df.sort_values(by = config.sort_by, ascending = config.sort_ascending)
 
     fig = go.Figure()
 
@@ -178,8 +194,13 @@ def create_configurable_line(df: pd.DataFrame, config: LineChartConfig = LineCha
         title = config.title,
         xaxis_title = config.xaxis_title,
         yaxis_title = config.yaxis_title,
+        xaxis_showgrid = config.xaxis_showgrid,
+        yaxis_showgrid = config.yaxis_showgrid,
+        xaxis_showticklabels = config.xaxis_showticklabels,
+        yaxis_showticklabels = config.yaxis_showticklabels,
         height = config.height,
         width = config.width,
+        margin = config.margin,
         showlegend = config.showlegend,
         template = config.template,
         paper_bgcolor = config.paper_bgcolor,

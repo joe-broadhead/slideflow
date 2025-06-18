@@ -12,6 +12,7 @@ from slideflow.chart.builtins.line import LineChartConfig, create_configurable_l
 from slideflow.chart.builtins.waterfall import WaterfallConfig, create_configurable_waterfall
 from slideflow.chart.builtins.grouped_bar import GroupedBarChartConfig, create_configurable_grouped_bar
 from slideflow.chart.builtins.combo_chart import ComboChartConfig, create_configurable_combo_chart
+from slideflow.chart.builtins.custom import CustomChartConfig
 
 BUILT_IN_CHARTS = {
     'table': create_configurable_table,
@@ -23,7 +24,13 @@ BUILT_IN_CHARTS = {
 }
 
 CHART_CONFIGS = [
-    TableConfig, BarChartConfig, WaterfallConfig, LineChartConfig, GroupedBarChartConfig, ComboChartConfig,
+    TableConfig,
+    BarChartConfig,
+    WaterfallConfig,
+    LineChartConfig,
+    GroupedBarChartConfig,
+    ComboChartConfig,
+    CustomChartConfig
 ]
 
 class Chart(BaseModel):
