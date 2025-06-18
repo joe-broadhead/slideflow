@@ -28,11 +28,15 @@ dependencies = [
 ]
 requires-python = ">=3.9"
 
+[project.optional-dependencies]
+ai = ["openai", "google-generativeai"]
+
 [project.scripts]
 slideflow = "slideflow.cli:main"
 
 [tool.setuptools]
 packages = ["slideflow"]
+
 
 [build-system]
 requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]

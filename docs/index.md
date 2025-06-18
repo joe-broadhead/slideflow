@@ -9,3 +9,5 @@
 
 ## Table of Contents:
 1. [Slideflow CLI Commands](slideflow_cli.md)
+2. [AI Text Replacement](ai_text_replacement.md)
+3. [Environment Setup](environment_setup.md)

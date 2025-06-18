@@ -6,6 +6,7 @@ from slideflow.chart.chart import Chart
 from slideflow.data.data_manager import DataManager
 from slideflow.replacements.text import TextReplacement
 from slideflow.replacements.table import TableReplacement
+from slideflow.replacements.ai_text import AITextReplacement
 from slideflow.presentation.utils import convert_dimensions, apply_alignment
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class Slide(BaseModel):
         default_factory = list,
         description = 'Charts to be added to the slide'
     )
-    replacements: List[Union[TextReplacement, TableReplacement]] = Field(
+    replacements: List[Union[TextReplacement, TableReplacement, AITextReplacement]] = Field(
         default_factory = list,
         description = 'List of text and table replacements on the slide'
     )
@@ -91,7 +92,7 @@ class Slide(BaseModel):
 
         return {'requests': requests, 'ids': ids}
 
-    def ger_replacement_requests(self, data_manager: DataManager) -> None:
+    def get_replacement_requests(self, data_manager: DataManager) -> None:
         """
         Generates replacement requests for text and table placeholders.
 
@@ -109,7 +110,7 @@ class Slide(BaseModel):
         requests = []
 
         for replacement in self.replacements:
-            if isinstance(replacement, TextReplacement):
+            if isinstance(replacement, (TextReplacement, AITextReplacement)):
                 replacement_text = self._get_text_replacement(replacement, data_manager)
                 requests.append(self._build_text_replacement_request(replacement.placeholder, replacement_text))
 
@@ -209,7 +210,7 @@ class Slide(BaseModel):
             }
         }
 
-    def _get_text_replacement(self, replacement: TextReplacement, data_manager: DataManager) -> str:
+    def _get_text_replacement(self, replacement: Union[TextReplacement, AITextReplacement], data_manager: DataManager) -> str:
         """
         Resolves the final text to replace a placeholder using static or computed logic.
 
@@ -223,6 +224,8 @@ class Slide(BaseModel):
         Returns:
             str: The computed or static text replacement value.
         """
+        if isinstance(replacement, AITextReplacement):
+            return replacement.get_replacement(data_manager, self.context or {})
         if replacement.data_source:
             data = data_manager.get_data(replacement.data_source)
             return replacement.get_replacement(data)
