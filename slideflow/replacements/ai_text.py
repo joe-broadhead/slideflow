@@ -22,7 +22,7 @@ class AITextReplacement(BaseReplacement):
         str, Field(description='Prompt sent to the provider')
     ]
     provider: Annotated[
-        Union[str, AIProvider, Callable[..., str]],
+        Union[str, Any, Callable[..., str]],
         Field(default='openai', description='Provider name or callable')
     ]
     provider_args: Annotated[Dict[str, Any], Field(
@@ -37,13 +37,19 @@ class AITextReplacement(BaseReplacement):
         )
     ]
 
+    model_config = {
+        'discriminator': 'type',
+        'arbitrary_types_allowed': True
+    }
+
     @field_validator('provider', mode='before')
     @classmethod
     def resolve_provider(cls, value):
         if isinstance(value, str):
             if value not in AI_PROVIDERS:
                 raise ValueError(f'Unknown AI provider: {value}')
-            return AI_PROVIDERS[value]
+            # Return the provider class name, we'll instantiate it later with args
+            return value
         return value
 
     def resolve_args(self, params: dict[str, str]) -> None:
@@ -62,12 +68,51 @@ class AITextReplacement(BaseReplacement):
             data = df.to_dict(orient="records")
 
         prompt = self.prompt.format(**context)
+        
+        # Include data in the prompt if available
+        if data:
+            prompt += f"\n\nData:\n{data}"
 
-        if isinstance(self.provider, AIProvider) or hasattr(
+        # Instantiate provider with custom args if provider is a string
+        if isinstance(self.provider, str):
+            from slideflow.ai.providers import OpenAIProvider, GeminiProvider
+            
+            provider_classes = {
+                "openai": OpenAIProvider,
+                "gemini": GeminiProvider,
+            }
+            
+            provider_class = provider_classes[self.provider]
+            
+            # Extract initialization args from provider_args
+            init_args = {}
+            call_args = {}
+            
+            if self.provider == "gemini":
+                gemini_init_params = {"model", "vertex", "project", "location"}
+                for k, v in self.provider_args.items():
+                    if k in gemini_init_params:
+                        init_args[k] = v
+                    else:
+                        call_args[k] = v
+            elif self.provider == "openai":
+                openai_init_params = {"model"}
+                for k, v in self.provider_args.items():
+                    if k in openai_init_params:
+                        init_args[k] = v
+                    else:
+                        call_args[k] = v
+            
+            provider_instance = provider_class(**init_args)
+            provider_fn = provider_instance.generate_text
+            provider_call_args = call_args
+        elif isinstance(self.provider, AIProvider) or hasattr(
             self.provider, "generate_text"
         ):
             provider_fn = self.provider.generate_text
+            provider_call_args = self.provider_args
         else:
             provider_fn = self.provider
+            provider_call_args = self.provider_args
 
-        return provider_fn(prompt, data=data, **self.provider_args)
+        return provider_fn(prompt, **provider_call_args)

@@ -1,8 +1,7 @@
 from __future__ import annotations
+from typing import Protocol, Any, Dict, runtime_checkable
 
-from typing import Protocol, Any, Dict
-
-
+@runtime_checkable
 class AIProvider(Protocol):
     """Protocol for AI text generation providers."""
 
@@ -14,7 +13,7 @@ class AIProvider(Protocol):
 class OpenAIProvider:
     """OpenAI ChatCompletion provider."""
 
-    def __init__(self, model: str = "gpt-3.5-turbo", **defaults: Any) -> None:
+    def __init__(self, model: str = "gpt-4o", **defaults: Any) -> None:
         self.model = model
         self.defaults = defaults
 
@@ -24,8 +23,8 @@ class OpenAIProvider:
         params: Dict[str, Any] = {**self.defaults, **kwargs}
         messages = [{"role": "user", "content": prompt}]
         response = openai.ChatCompletion.create(
-            model=self.model,
-            messages=messages,
+            model = self.model,
+            messages = messages,
             **params,
         )
         return response["choices"][0]["message"]["content"].strip()
@@ -64,27 +63,52 @@ class GeminiProvider:
         self.defaults = defaults
 
     def generate_text(self, prompt: str, **kwargs: Any) -> str:
+        import os
         import google.generativeai as genai
 
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+
         params: Dict[str, Any] = {**self.defaults, **kwargs}
+        
+        # Filter out provider initialization parameters and prepare generation config
+        invalid_params = {"model", "vertex", "project", "location"}
+        
+        # Build generation config from parameters
+        generation_config = {}
+        valid_generation_params = {"max_output_tokens", "temperature", "top_p", "top_k"}
+        
+        for k, v in params.items():
+            if k not in invalid_params:
+                if k == "max_tokens":
+                    generation_config["max_output_tokens"] = v
+                elif k in valid_generation_params:
+                    generation_config[k] = v
+
+        # Prepare generation config if any parameters are set
+        config = genai.GenerationConfig(**generation_config) if generation_config else None
 
         if self.vertex and hasattr(genai, "Client"):
             client = genai.Client(
-                vertexai=True,
-                project=self.project,
-                location=self.location,
+                vertexai = True,
+                project = self.project,
+                location = self.location,
             )
+
             response = client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                **params,
+                model = self.model,
+                contents = prompt,
+                generation_config = config,
             )
         else:
             model = genai.GenerativeModel(self.model)
-            response = model.generate_content(prompt, **params)
+            response = model.generate_content(
+                prompt, 
+                generation_config=config
+            )
 
         return getattr(response, "text", str(response))
-
 
 AI_PROVIDERS: Dict[str, AIProvider] = {
     "openai": OpenAIProvider(),
