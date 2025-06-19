@@ -20,14 +20,17 @@ class OpenAIProvider:
     def generate_text(self, prompt: str, **kwargs: Any) -> str:
         import openai
 
+        client = openai.OpenAI()
         params: Dict[str, Any] = {**self.defaults, **kwargs}
+        print(params, self.model)
         messages = [{"role": "user", "content": prompt}]
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model = self.model,
             messages = messages,
             **params,
         )
-        return response["choices"][0]["message"]["content"].strip()
+        print(response)
+        return response.choices[0].message.content.strip()
 
 
 class GeminiProvider:
@@ -68,7 +71,7 @@ class GeminiProvider:
 
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if api_key:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key = api_key)
 
         params: Dict[str, Any] = {**self.defaults, **kwargs}
         
