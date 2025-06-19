@@ -183,7 +183,7 @@ class Presentation(BaseModel):
             charts.extend(chart_requests.get('requests', []))
             file_ids.extend(chart_requests.get('ids', []))
 
-            replacement_requests = slide.ger_replacement_requests(data_manager)
+            replacement_requests = slide.get_replacement_requests(data_manager)
             replacements.extend(replacement_requests)
 
         slides_service.presentations().batchUpdate(
