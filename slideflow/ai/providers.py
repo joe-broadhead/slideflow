@@ -32,19 +32,57 @@ class OpenAIProvider:
 
 
 class GeminiProvider:
-    """Google Generative AI (Gemini) provider."""
+    """Google Generative AI (Gemini) provider.
 
-    def __init__(self, model: str = "gemini-pro", **defaults: Any) -> None:
+    Parameters
+    ----------
+    model:
+        Name of the model to use.
+    vertex:
+        If ``True`` use Vertex AI endpoints when available.
+    project:
+        Google Cloud project ID for Vertex AI.
+    location:
+        Google Cloud region for Vertex AI.
+    defaults:
+        Additional keyword arguments passed to ``generate_content``.
+    """
+
+    def __init__(
+        self,
+        model: str = "gemini-pro",
+        *,
+        vertex: bool = False,
+        project: str | None = None,
+        location: str | None = None,
+        **defaults: Any,
+    ) -> None:
         self.model = model
+        self.vertex = vertex
+        self.project = project
+        self.location = location
         self.defaults = defaults
 
     def generate_text(self, prompt: str, **kwargs: Any) -> str:
         import google.generativeai as genai
 
         params: Dict[str, Any] = {**self.defaults, **kwargs}
-        model = genai.GenerativeModel(self.model)
-        response = model.generate_content(prompt, **params)
-        # google-generativeai response has .text attribute
+
+        if self.vertex and hasattr(genai, "Client"):
+            client = genai.Client(
+                vertexai=True,
+                project=self.project,
+                location=self.location,
+            )
+            response = client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                **params,
+            )
+        else:
+            model = genai.GenerativeModel(self.model)
+            response = model.generate_content(prompt, **params)
+
         return getattr(response, "text", str(response))
 
 

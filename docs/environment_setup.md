@@ -32,10 +32,14 @@ The AI providers rely on their respective API keys:
 
 - `OPENAI_API_KEY` for the OpenAI provider
 - `GOOGLE_API_KEY` for the Gemini provider
+- `GOOGLE_PROJECT_ID` for Gemini Vertex integration
+- `GOOGLE_REGION` for Gemini Vertex integration
 
 ```bash
 export OPENAI_API_KEY="sk-..."
 export GOOGLE_API_KEY="..."
+export GOOGLE_PROJECT_ID="my-project-id"
+export GOOGLE_REGION="europe-west1"
 ```
 
 Make sure these environment variables are set before running SlideFlow commands.
