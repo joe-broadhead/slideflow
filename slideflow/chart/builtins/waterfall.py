@@ -1,11 +1,9 @@
 import pandas as pd
 import plotly.graph_objects as go
 from pydantic import BaseModel, Field
-from typing import Any, Callable, Dict, Optional, Literal, List
+from typing import Any, Dict, Optional, Literal, List
 
 from slideflow.chart.builtins.common import ChartConfig
-from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
-from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
 class WaterfallMarkerStyle(BaseModel):
     """
@@ -141,7 +139,7 @@ class WaterfallConfig(ChartConfig):
     width: Optional[int] = Field(default = None, description = 'Width of the chart in pixels.')
     
     measure_col: Optional[str] = Field(default = None, description = "Optional column defining waterfall measure ('relative', 'total', etc).")
-    orientation: Literal['v', 'h'] = Field(default = 'v', description="Chart orientation: 'v' (vertical) or 'h' (horizontal).")
+    orientation: Literal['v', 'h'] = Field(default = 'v', description = "Chart orientation: 'v' (vertical) or 'h' (horizontal).")
     title: Optional[str] = Field(default = 'Waterfall Chart', description = 'Title of the chart.')
     waterfall_gap: float = Field(default = 0.03, description = 'Gap between bars in the waterfall.')
     
@@ -160,7 +158,7 @@ class WaterfallConfig(ChartConfig):
     font_family: Optional[str] = Field(default = None, description = 'Font family to use.')
     font_color: Optional[str] = Field(default = None, description = 'Font color to use.')
 
-    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list)
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory = list)
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
@@ -169,12 +167,12 @@ class WaterfallConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if hasattr(self, "preprocess_functions"):
+        if hasattr(self, 'preprocess_functions'):
             for step in self.preprocess_functions:
-                if "args" in step:
-                    for k, v in step["args"].items():
+                if 'args' in step:
+                    for k, v in step['args'].items():
                         if isinstance(v, str):
-                            step["args"][k] = v.format(**params)
+                            step['args'][k] = v.format(**params)
 
 def create_configurable_waterfall(df: pd.DataFrame, config: WaterfallConfig = WaterfallConfig) -> go.Figure:
     """
@@ -191,8 +189,8 @@ def create_configurable_waterfall(df: pd.DataFrame, config: WaterfallConfig = Wa
 
     if config.preprocess_functions:
         for step in config.preprocess_functions:
-            fn_name = step["function"]
-            args = step.get("args", {})
+            fn_name = step['function']
+            args = step.get('args', {})
             df = fn_name(df, **args)
 
     trace_kwargs = {

@@ -1,39 +1,36 @@
 from __future__ import annotations
-
+from pydantic import Field, field_validator
 from typing import Callable, Any, Dict, Union, Literal, Annotated
 
-from pydantic import Field, field_validator
-
-from slideflow.replacements.base import BaseReplacement
 from slideflow.ai import AIProvider, AI_PROVIDERS
+from slideflow.replacements.base import BaseReplacement
 from slideflow.data.connectors.base import DataSourceConfig
-
 
 class AITextReplacement(BaseReplacement):
     """Replacement that generates text via an AI provider."""
 
     type: Literal['ai_text'] = Field(
-        'ai_text', description='AI text replacement type'
+        'ai_text', description = 'AI text replacement type'
     )
     placeholder: Annotated[
-        str, Field(description='Placeholder text to replace')
+        str, Field(description = 'Placeholder text to replace')
     ]
     prompt: Annotated[
-        str, Field(description='Prompt sent to the provider')
+        str, Field(description = 'Prompt sent to the provider')
     ]
     provider: Annotated[
         Union[str, Any, Callable[..., str]],
-        Field(default='openai', description='Provider name or callable')
+        Field(default = 'openai', description = 'Provider name or callable')
     ]
     provider_args: Annotated[Dict[str, Any], Field(
-        default_factory=dict,
-        description='Extra arguments for the provider'
+        default_factory = dict,
+        description = 'Extra arguments for the provider'
     )]
     data_source: Annotated[
         DataSourceConfig | None,
         Field(
-            default=None,
-            description='Optional data source passed to the provider'
+            default = None,
+            description = 'Optional data source passed to the provider'
         )
     ]
 
@@ -42,7 +39,7 @@ class AITextReplacement(BaseReplacement):
         'arbitrary_types_allowed': True
     }
 
-    @field_validator('provider', mode='before')
+    @field_validator('provider', mode = 'before')
     @classmethod
     def resolve_provider(cls, value):
         if isinstance(value, str):
@@ -65,21 +62,21 @@ class AITextReplacement(BaseReplacement):
         data = None
         if self.data_source:
             df = data_manager.get_data(self.data_source)
-            data = df.to_dict(orient="records")
+            data = df.to_dict(orient = 'records')
 
         prompt = self.prompt.format(**context)
         
         # Include data in the prompt if available
         if data:
-            prompt += f"\n\nData:\n{data}"
+            prompt += f'\n\nData:\n{data}'
 
         # Instantiate provider with custom args if provider is a string
         if isinstance(self.provider, str):
             from slideflow.ai.providers import OpenAIProvider, GeminiProvider
             
             provider_classes = {
-                "openai": OpenAIProvider,
-                "gemini": GeminiProvider,
+                'openai': OpenAIProvider,
+                'gemini': GeminiProvider,
             }
             
             provider_class = provider_classes[self.provider]
@@ -88,15 +85,15 @@ class AITextReplacement(BaseReplacement):
             init_args = {}
             call_args = {}
             
-            if self.provider == "gemini":
-                gemini_init_params = {"model", "vertex", "project", "location"}
+            if self.provider == 'gemini':
+                gemini_init_params = {'model', 'vertex', 'project', 'location'}
                 for k, v in self.provider_args.items():
                     if k in gemini_init_params:
                         init_args[k] = v
                     else:
                         call_args[k] = v
-            elif self.provider == "openai":
-                openai_init_params = {"model"}
+            elif self.provider == 'openai':
+                openai_init_params = {'model'}
                 for k, v in self.provider_args.items():
                     if k in openai_init_params:
                         init_args[k] = v
@@ -107,7 +104,7 @@ class AITextReplacement(BaseReplacement):
             provider_fn = provider_instance.generate_text
             provider_call_args = call_args
         elif isinstance(self.provider, AIProvider) or hasattr(
-            self.provider, "generate_text"
+            self.provider, 'generate_text'
         ):
             provider_fn = self.provider.generate_text
             provider_call_args = self.provider_args

@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional, List
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional, List
 
-from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
 from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 
 BUILTIN_FUNCTIONS = BUILTIN_COLOR_FUNCTIONS | BUILTIN_FORMAT_FUNCTIONS
 
@@ -69,8 +69,8 @@ class GroupedBarLayoutConfig(BaseModel):
     y_showticklabels: bool = True
     x_tickformat: Optional[str] = None
     y_tickformat: Optional[str] = None
-    label_current: Optional[str] = Field(None, description='Label for the current bar trace')
-    label_previous: Optional[str] = Field(None, description='Label for the previous bar trace')
+    label_current: Optional[str] = Field(None, description = 'Label for the current bar trace')
+    label_previous: Optional[str] = Field(None, description = 'Label for the previous bar trace')
     show_legend: bool = True
     legend_font_size: int = 6
 
@@ -100,7 +100,7 @@ class GroupedBarChartConfig(ChartConfig):
     marker: GroupedBarMarkerConfig = Field(default_factory = GroupedBarMarkerConfig)
     layout: GroupedBarLayoutConfig = Field(default_factory = GroupedBarLayoutConfig)
     x_range_multiplier: float = Field(1.5, description = 'Multiplier for axis range based on maximum value.')
-    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory = list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
 
     def resolve_args(self, params: dict[str, str]) -> None:
@@ -110,12 +110,12 @@ class GroupedBarChartConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if hasattr(self, "preprocess_functions"):
+        if hasattr(self, 'preprocess_functions'):
             for step in self.preprocess_functions:
-                if "args" in step:
-                    for k, v in step["args"].items():
+                if 'args' in step:
+                    for k, v in step['args'].items():
                         if isinstance(v, str):
-                            step["args"][k] = v.format(**params)
+                            step['args'][k] = v.format(**params)
 
 def create_configurable_grouped_bar(df: pd.DataFrame, config: GroupedBarChartConfig = GroupedBarChartConfig) -> go.Figure:
     """
@@ -141,8 +141,8 @@ def create_configurable_grouped_bar(df: pd.DataFrame, config: GroupedBarChartCon
 
     if config.preprocess_functions:
         for step in config.preprocess_functions:
-            fn_name = step["function"]
-            args = step.get("args", {})
+            fn_name = step['function']
+            args = step.get('args', {})
             df = fn_name(df, **args)
 
     if config.sort_by:

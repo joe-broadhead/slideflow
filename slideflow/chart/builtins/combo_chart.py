@@ -1,9 +1,9 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional, Literal, List
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional, Literal, List
 
-from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
+from slideflow.chart.builtins.common import BuiltinChartType
 from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
 from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
 
@@ -23,14 +23,14 @@ class TraceConfig(BaseModel):
         marker_color (Optional[str]): Fill color for the bar or scatter markers.
         line (dict): Line styling dictionary for scatter traces.
     """
-    name: str = Field(..., description="Legend label", example="GMV Current")
+    name: str = Field(..., description = 'Legend label', example = 'GMV Current')
     trace_type: Literal['bar', 'scatter'] = 'scatter'
-    x_col: str = Field(..., description="X Column", example="week_number")
-    y_col: str = Field(..., description="Y Column", example="gmv_curr_year")
+    x_col: str = Field(..., description = 'X Column', example = 'week_number')
+    y_col: str = Field(..., description = 'Y Column', example = 'gmv_curr_year')
     axis: Literal['primary', 'secondary'] = 'primary'
     mode: Optional[str] = None
     marker_color: Optional[str] = None
-    line: Dict[str, Any] = Field(default_factory=dict)
+    line: Dict[str, Any] = Field(default_factory = dict)
 
 
 class ComboChartLayout(BaseModel):
@@ -93,11 +93,13 @@ class ComboChartConfig(BaseModel):
         layout (ComboChartLayout): Layout and styling options for the chart.
         preprocess_functions (List[Dict[str, Any]]): A list of preprocessing steps to apply to the data before rendering. Each step includes a function reference and optional arguments, allowing for filtering, grouping, or transforming the data prior to display.
     """
-    chart_type: BuiltinChartType = Field('combo_chart', description="Type of chart. Should be 'combo_chart'")
+    chart_type: BuiltinChartType = Field('combo_chart', description = "Type of chart. Should be 'combo_chart'")
     dual_axis: bool = False
     traces: List[TraceConfig]
     layout: ComboChartLayout = ComboChartLayout()
-    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
+    sort_by: Optional[str] = Field(None, description = 'Column to sort the DataFrame by. If not provided, no sorting is applied.')
+    sort_ascending: bool = Field(False, description = 'Sort order. Defaults to descending order if False.')
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory = list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
@@ -106,12 +108,12 @@ class ComboChartConfig(BaseModel):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if hasattr(self, "preprocess_functions"):
+        if hasattr(self, 'preprocess_functions'):
             for step in self.preprocess_functions:
-                if "args" in step:
-                    for k, v in step["args"].items():
+                if 'args' in step:
+                    for k, v in step['args'].items():
                         if isinstance(v, str):
-                            step["args"][k] = v.format(**params)
+                            step['args'][k] = v.format(**params)
 
 
 def create_configurable_combo_chart(df: pd.DataFrame, config: ComboChartConfig) -> go.Figure:
@@ -120,9 +122,12 @@ def create_configurable_combo_chart(df: pd.DataFrame, config: ComboChartConfig) 
 
     if config.preprocess_functions:
         for step in config.preprocess_functions:
-            fn_name = step["function"]
-            args = step.get("args", {})
+            fn_name = step['function']
+            args = step.get('args', {})
             df = fn_name(df, **args)
+
+    if config.sort_by:
+        df = df.sort_values(by = config.sort_by, ascending = config.sort_ascending)
 
     fig = go.Figure()
 

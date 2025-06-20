@@ -3,8 +3,8 @@ import git
 import json
 import shutil
 import logging
-from git import Repo
 import pandas as pd
+from git import Repo
 from pathlib import Path
 from pydantic import BaseModel
 from dbt.cli.main import dbtRunner
@@ -63,7 +63,7 @@ class DBTManifestConnector(BaseModel):
     """
     package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
     project_dir: Annotated[str, Field(description = 'Path to the local dbt project directory.')]
-    branch: Annotated[Optional[str], Field(default=None, description='Optional Git branch to clone')]
+    branch: Annotated[Optional[str], Field(default=None, description = 'Optional Git branch to clone')]
     target: Annotated[str, Field(default = 'prod', description = 'Target environment for dbt.')]
     vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
     compile: Annotated[bool, Field(default = True, description = 'Whether to compile the dbt project.')]
@@ -220,7 +220,7 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     model_alias: Annotated[str, Field(description = 'Model alias to execute.')]
     package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
     project_dir: Annotated[str, Field(description = 'Path to dbt project.')]
-    branch: Annotated[Optional[str], Field(default=None, description='Git branch to check out')]
+    branch: Annotated[Optional[str], Field(default=None, description = 'Git branch to check out')]
     target: Annotated[Optional[str], Field(default = 'prod', description = 'dbt target environment.')]
     vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
     compile: Annotated[Optional[bool], Field(default = True, description = 'Whether to compile the dbt project.')]

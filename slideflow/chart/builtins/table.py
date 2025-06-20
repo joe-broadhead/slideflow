@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional, Union, List
 from pydantic import BaseModel, Field, root_validator
+from typing import Any, Callable, Dict, Optional, Union, List
 
-from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
 from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 
 BUILTIN_FUNCTIONS = BUILTIN_COLOR_FUNCTIONS | BUILTIN_FORMAT_FUNCTIONS
 
@@ -193,7 +193,7 @@ class TableConfig(ChartConfig):
     cell: Optional[TableCellConfig] = Field(default_factory = TableCellConfig)
     layout: Optional[TableLayoutConfig] = Field(default_factory = TableLayoutConfig)
     formatting: TableFormattingOptions = Field(default_factory = TableFormattingOptions)
-    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory = list, description = 'Optional function to preprocess the DataFrame before rendering. Takes and returns a DataFrame.')
 
     def resolve_args(self, params: dict[str, str]) -> None:
         """
@@ -202,12 +202,12 @@ class TableConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if hasattr(self, "preprocess_functions"):
+        if hasattr(self, 'preprocess_functions'):
             for step in self.preprocess_functions:
-                if "args" in step:
-                    for k, v in step["args"].items():
+                if 'args' in step:
+                    for k, v in step['args'].items():
                         if isinstance(v, str):
-                            step["args"][k] = v.format(**params)
+                            step['args'][k] = v.format(**params)
 
 def create_configurable_table(df: pd.DataFrame, config: TableConfig = TableConfig) -> go.Figure:
     """
@@ -236,8 +236,8 @@ def create_configurable_table(df: pd.DataFrame, config: TableConfig = TableConfi
 
     if config.preprocess_functions:
         for step in config.preprocess_functions:
-            fn_name = step["function"]
-            args = step.get("args", {})
+            fn_name = step['function']
+            args = step.get('args', {})
             df = fn_name(df, **args)
 
     cols = list(config.column_map.keys())
