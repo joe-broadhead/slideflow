@@ -49,7 +49,7 @@ def replace_params(obj, params):
         try:
             return obj.format(**params)
         except KeyError as e:
-            print(f"⚠️ Missing parameter for string: {obj} — {e}")
+            print(f'⚠️ Missing parameter for string: {obj} — {e}')
     elif isinstance(obj, dict):
         return {k: replace_params(v, params) for k, v in obj.items()}
     elif isinstance(obj, list):

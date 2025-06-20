@@ -67,7 +67,7 @@ def build_one_presentation(context: dict, base: Presentation, data_manager: Data
             move_file_to_folder_id(presentation.drive_service, presentation.presentation_id, run_folder_id)
             msg = f'Presentation {presentation.name} moved to folder: https://drive.google.com/drive/folders/{run_folder_id}'
             print_success_message(console, msg)
-        return {'success': True, 'name': presentation.name, 'url': f"https://docs.google.com/presentation/d/{presentation.presentation_id}"}
+        return {'success': True, 'name': presentation.name, 'url': f'https://docs.google.com/presentation/d/{presentation.presentation_id}'}
     except Exception as e:
         return {'success': False, 'context': context, 'error': str(e)}
 

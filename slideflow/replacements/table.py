@@ -4,8 +4,8 @@ from typing import Optional, Callable, Literal, Dict, Any, Union, Annotated, Lis
 
 from slideflow.replacements.base import BaseReplacement
 from slideflow.data.connectors.base import DataSourceConfig
-from slideflow.replacements.utils import dataframe_to_replacement_object
 from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.replacements.utils import dataframe_to_replacement_object
 
 BUILTIN_FUNCTIONS = BUILTIN_FORMAT_FUNCTIONS
 
@@ -66,7 +66,7 @@ class TableReplacement(BaseReplacement):
     type: Literal['table'] = Field('table', description = 'The table replacement type')
     prefix: Annotated[str, Field(description = 'Prefix for placeholders in the table')]
     data_source: Annotated[Optional[Union[str, DataSourceConfig]], Field(default = None, description = 'Data source for the table replacement')]
-    preprocess_functions: List[Dict[str, Any]] = Field(default_factory=list)
+    preprocess_functions: List[Dict[str, Any]] = Field(default_factory = list)
     replacements: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Static mapping of placeholder to new text')]
     formatting: TableFormattingOptions = Field(default_factory = TableFormattingOptions)
 
@@ -77,12 +77,12 @@ class TableReplacement(BaseReplacement):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if hasattr(self, "preprocess_functions"):
+        if hasattr(self, 'preprocess_functions'):
             for step in self.preprocess_functions:
-                if "args" in step:
-                    for k, v in step["args"].items():
+                if 'args' in step:
+                    for k, v in step['args'].items():
                         if isinstance(v, str):
-                            step["args"][k] = v.format(**params)
+                            step['args'][k] = v.format(**params)
 
     def get_table_replacements(self, data: pd.DataFrame) -> Dict[str, Any]:
         """
@@ -104,8 +104,8 @@ class TableReplacement(BaseReplacement):
 
         if self.preprocess_functions:
             for step in self.preprocess_functions:
-                fn_name = step["function"]
-                args = step.get("args", {})
+                fn_name = step['function']
+                args = step.get('args', {})
                 df = fn_name(df, **args)
 
         for col_name, formatter in self.formatting.custom_formatters.items():

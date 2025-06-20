@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Any, Callable, Dict, Optional, List
 from pydantic import BaseModel, Field, root_validator
+from typing import Any, Callable, Dict, Optional, List
 
-from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 from slideflow.utils.formatting.color import BUILTIN_COLOR_FUNCTIONS
 from slideflow.utils.formatting.format import BUILTIN_FORMAT_FUNCTIONS
+from slideflow.chart.builtins.common import BuiltinChartType, ChartConfig
 
 BUILTIN_FUNCTIONS = BUILTIN_COLOR_FUNCTIONS | BUILTIN_FORMAT_FUNCTIONS
 
@@ -140,12 +140,12 @@ class BarChartConfig(ChartConfig):
         Args:
             params (dict[str, str]): Parameters to use for string interpolation.
         """
-        if hasattr(self, "preprocess_functions"):
+        if hasattr(self, 'preprocess_functions'):
             for step in self.preprocess_functions:
-                if "args" in step:
-                    for k, v in step["args"].items():
+                if 'args' in step:
+                    for k, v in step['args'].items():
                         if isinstance(v, str):
-                            step["args"][k] = v.format(**params)
+                            step['args'][k] = v.format(**params)
 
 def create_configurable_bar(df: pd.DataFrame, config: BarChartConfig = BarChartConfig) -> go.Figure:
     """
@@ -171,8 +171,8 @@ def create_configurable_bar(df: pd.DataFrame, config: BarChartConfig = BarChartC
 
     if config.preprocess_functions:
         for step in config.preprocess_functions:
-            fn_name = step["function"]
-            args = step.get("args", {})
+            fn_name = step['function']
+            args = step.get('args', {})
             df = fn_name(df, **args)
 
     if config.sort_by:
