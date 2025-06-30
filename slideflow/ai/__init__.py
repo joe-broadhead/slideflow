@@ -1,8 +1,18 @@
-from .providers import AIProvider, OpenAIProvider, GeminiProvider, AI_PROVIDERS
+from slideflow.ai.providers import (
+    AIProvider, OpenAIProvider, GeminiProvider
+)
+from slideflow.ai.registry import (
+    ai_provider_registry, get_provider_class, register_provider, 
+    list_available_providers, create_provider
+)
 
 __all__ = [
-    'AIProvider',
-    'OpenAIProvider',
+    'AIProvider', 
+    'OpenAIProvider', 
     'GeminiProvider',
-    'AI_PROVIDERS',
+    'ai_provider_registry',
+    'get_provider_class',
+    'register_provider',
+    'list_available_providers',
+    'create_provider',
 ]

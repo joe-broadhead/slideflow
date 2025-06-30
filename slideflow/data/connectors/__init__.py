@@ -1,29 +1,20 @@
-from .csv import CSVConnector, CSVSourceConfig
-from .common import DataConnector, BaseSourceConfig
-from .databricks import DatabricksSQLConnector, DatabricksSourceConfig
-from .base import get_data_connector, DataSourceConfig, CONNECTOR_FACTORY
-from .dbt import DBTDatabricksConnector, DBTDatabricksSourceConfig, DBTManifestConnector
+from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
+from slideflow.data.connectors.csv import CSVConnector, CSVSourceConfig
+from slideflow.data.connectors.json import JSONConnector, JSONSourceConfig
+from slideflow.data.connectors.databricks import DatabricksConnector, DatabricksSourceConfig
+from slideflow.data.connectors.dbt import DBTDatabricksConnector, DBTDatabricksSourceConfig
+from slideflow.data.connectors.connect import DataSourceConfig
 
 __all__ = [
-    # Factory function and registry
-    'get_data_connector',
-    'DataSourceConfig', 
-    'CONNECTOR_FACTORY',
-    
-    # Base classes
     'DataConnector',
     'BaseSourceConfig',
-    
-    # CSV connector
     'CSVConnector',
     'CSVSourceConfig',
-    
-    # Databricks connector
-    'DatabricksSQLConnector', 
+    'JSONConnector',
+    'JSONSourceConfig',
+    'DatabricksConnector',
     'DatabricksSourceConfig',
-    
-    # DBT connectors
     'DBTDatabricksConnector',
     'DBTDatabricksSourceConfig',
-    'DBTManifestConnector',
+    'DataSourceConfig'
 ]

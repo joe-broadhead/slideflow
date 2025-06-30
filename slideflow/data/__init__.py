@@ -1,19 +1,27 @@
-from .data_manager import DataManager
-from .connectors import (
-    get_data_connector, 
-    DataSourceConfig,
-    DataConnector,
-    CSVConnector,
-    DatabricksSQLConnector, 
-    DBTDatabricksConnector
+
+from slideflow.data.cache import DataSourceCache, get_data_cache
+from slideflow.data.connectors import (
+    DataConnector, BaseSourceConfig,
+    CSVConnector, CSVSourceConfig,
+    JSONConnector, JSONSourceConfig,
+    DatabricksConnector, DatabricksSourceConfig,
+    DBTDatabricksConnector, DBTDatabricksSourceConfig
 )
+from slideflow.data.connectors.connect import DataSourceConfig
 
 __all__ = [
-    'DataManager',
-    'get_data_connector',
-    'DataSourceConfig', 
+    'DataSourceCache',
+    'get_data_cache',
+    'DataSourceConfig',
+    # Plus all connector exports from connectors/__init__.py
     'DataConnector',
+    'BaseSourceConfig',
     'CSVConnector',
-    'DatabricksSQLConnector',
+    'CSVSourceConfig',
+    'JSONConnector',
+    'JSONSourceConfig',
+    'DatabricksConnector',
+    'DatabricksSourceConfig',
     'DBTDatabricksConnector',
+    'DBTDatabricksSourceConfig',
 ]

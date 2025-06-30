@@ -1,8 +1,9 @@
 import pandas as pd
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ConfigDict
+from typing import Annotated, Optional, Callable, Literal, Dict, Any
+
 from slideflow.replacements.base import BaseReplacement
-from slideflow.data.connectors.base import DataSourceConfig
-from typing import Optional, Callable, Literal, Dict, Any, Annotated
+from slideflow.data.connectors.connect import DataSourceConfig
 
 class TextReplacement(BaseReplacement):
     """
@@ -10,50 +11,46 @@ class TextReplacement(BaseReplacement):
 
     Replaces a single text placeholder with either a static value or a
     dynamically computed one based on a data source and transformation function.
-
-    Attributes:
-        type (Literal['text']): Discriminator for Pydantic model selection.
-        placeholder (str): The placeholder string to be replaced (e.g. "{{STORE_CODE}}").
-        replacement (Optional[str]): A static value to replace the placeholder.
-        data_source (Optional[DataSourceConfig]): Data source used for computing the replacement if `value_fn` is provided.
-        value_fn (Optional[Callable[..., str]]): Function used to compute the replacement from the data source.
-        value_fn_args (Dict[str, Any]): Keyword arguments passed to `value_fn`. Can include placeholders to be formatted with `params`.
     """
-    type: Literal['text'] = Field('text', description = 'The text replacement type')
-    placeholder: Annotated[str, Field(description = 'Placeholder text to be replaced')]
-    replacement: Annotated[Optional[str], Field(default = None, description = 'Static text replacement value')]
-    data_source: Annotated[Optional[DataSourceConfig], Field(default = None, description = 'Data source for computing the replacement')]
-    value_fn: Annotated[Optional[Callable[..., str]], Field(default = None, description = 'Function to compute the replacement text from data')]
-    value_fn_args: Annotated[Dict[str, Any], Field(default_factory = dict, description = 'Extra keyword arguments for the value function')]
+    type: Annotated[Literal["text"], Field("text", description = "Discriminator for text replacement")]
+    placeholder: Annotated[str, Field(..., description = "Placeholder to replace (e.g. '{{STORE_CODE}}')")]
+    replacement: Annotated[Optional[str], Field(default = None, description = "Static text to use if no `value_fn` is provided")]
+    data_source: Annotated[Optional[DataSourceConfig], Field(default = None, description = "Optional data source for computing the replacement")]
+    value_fn: Annotated[Optional[Callable[..., str]], Field(default = None, description = "Function to compute the replacement text from data")]
+    value_fn_args: Annotated[Dict[str, Any], Field(default_factory = dict, description = "Keyword arguments passed to `value_fn`; string values will be formatted")]
 
-    @field_validator('replacement', mode = 'before')
-    @staticmethod
-    def ensure_str(value):
-        """Ensures the replacement value is a string."""
-        return str(value) if value is not None else None
+    model_config = ConfigDict(
+        extra = "forbid",
+        arbitrary_types_allowed = True
+    )
 
-    def resolve_args(self, params: dict[str, str]) -> None:
+    @field_validator("replacement", mode = "before")
+    @classmethod
+    def _ensure_str(cls, v: Any) -> Optional[str]:
+        """Coerce non-None replacement values to string."""
+        return None if v is None else str(v)
+
+    def fetch_data(self) -> Optional[pd.DataFrame]:
         """
-        Format string arguments in `value_fn_args` using the provided parameters.
+        Fetch data from the configured data source if available.
         """
-        if self.value_fn_args:
-            self.value_fn_args = {
-                key: value.format(**params) if isinstance(value, str) else value
-                for key, value in self.value_fn_args.items()
-            }
+        if self.data_source:
+            return self.data_source.fetch_data()
+        return None
 
-    def get_replacement(self, data: Optional[pd.DataFrame] = None) -> str:
+    def get_replacement(self) -> str:
         """
-        Computes the final replacement string for the placeholder.
+        Compute the final replacement text.
 
-        Args:
-            data (Optional[pd.DataFrame]): Optional data used as input to `value_fn`.
-
-        Returns:
-            str: The final replacement string.
+        If `value_fn` is set, calls it with data from `data_source` if available,
+        otherwise calls it with just `value_fn_args`.
+        Returns the static `replacement` if no `value_fn` is provided.
         """
         if self.value_fn:
+            data = self.fetch_data()
             if data is not None:
-                return str(self.value_fn(data, **(self.value_fn_args or {})))
+                # Apply data transformations before processing
+                transformed_data = self.apply_data_transforms(data)
+                return str(self.value_fn(transformed_data, **(self.value_fn_args or {})))
             return str(self.value_fn(**(self.value_fn_args or {})))
         return self.replacement or ''

@@ -1,45 +1,33 @@
-import logging
 import pandas as pd
-from pydantic import Field
-from typing import Annotated, Literal
+from pathlib import Path
+from pydantic import Field, ConfigDict
+from typing import Annotated, Literal, ClassVar, Type
 
-from slideflow.data.connectors.common import DataConnector, BaseSourceConfig
-
-logger = logging.getLogger(__name__)
+from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
+from slideflow.utilities.logging import log_data_operation
 
 class CSVConnector(DataConnector):
     """
     Data connector for reading CSV files.
-
-    Attributes:
-        file_path (str): Path to the CSV file.
     """
-    def __init__(self, file_path: str):
-        """
-        Initializes the CSVConnector with the given file path.
-
-        Args:
-            file_path (str): Path to the CSV file.
-        """
+    def __init__(self, file_path: str) -> None:
         self.file_path = file_path
 
     def fetch_data(self) -> pd.DataFrame:
-        """
-        Loads the CSV file into a pandas DataFrame.
+        df = pd.read_csv(self.file_path)
+        log_data_operation("fetch", "csv", len(df), file_path=self.file_path)
+        return df
 
-        Returns:
-            pd.DataFrame: The loaded data.
-        """
-        logger.info(f'Fetching data from CSV: {self.file_path}')
-        return pd.read_csv(self.file_path)
 
 class CSVSourceConfig(BaseSourceConfig):
     """
     Configuration schema for CSV data sources.
-
-    Attributes:
-        type (str): The source type, always 'csv'.
-        file_path (str): Path to the CSV file.
     """
-    type: Literal['csv'] = Field('csv', description = 'CSV data source.')
-    file_path: Annotated[str, Field(description = 'Path to the CSV file.')]
+    type: Literal["csv"] = Field("csv", description = "Discriminator: this config reads from a CSV file")
+    file_path: Annotated[Path, Field(..., description = "Path to the CSV file")]
+    connector_class: ClassVar[Type[DataConnector]] = CSVConnector
+
+    model_config = ConfigDict(
+        extra = "forbid",
+        discriminator = "type",
+    )

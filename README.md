@@ -36,37 +36,10 @@ pip install git+https://github.com/joe-broadhead/slideflow.git@v0.0.0
 
 ## 🧑‍💻 Quick Start
 
-Define your presentation with a simple YAML:
-
-```yaml
-name: "Weekly Report - {{REGION}}"
-template_id: your-google-template-id
-slides:
-  - slide_id: g123456
-    charts:
-      - name: Sales by Store
-        chart_function: bar
-        x_col: sales
-        y_col: store_name
-        data_source:
-          type: csv
-          file_path: "data/sales.csv"
-    replacements:
-      - type: text
-        placeholder: "{{REGION}}"
-        replacement: "Asia"
-```
-
 Generate your slides:
 
 ```bash
 slideflow build config.yml
-```
-
-Bulk create presentations:
-
-```bash
-slideflow build-bulk run config.yml --param-file params.csv
 ```
 
 ---

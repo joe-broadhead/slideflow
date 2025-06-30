@@ -1,8 +1,0 @@
-site_name: Slideflow
-
-theme:
-  name: material
-
-nav:
-  - Home: index.md
-  - Slideflow CLI: slideflow_cli.md
