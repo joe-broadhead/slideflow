@@ -1,0 +1,8 @@
+site_name: SlideFlow
+nav:
+    - Home: index.md
+    - Getting Started: getting-started.md
+    - Quickstart: quickstart.md
+    - Replacements: replacements.md
+    - Charts: charts.md
+    - Templating: templating.md
