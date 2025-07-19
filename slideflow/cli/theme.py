@@ -1,3 +1,35 @@
+"""Rich terminal theme and formatting for Slideflow CLI.
+
+This module provides a comprehensive theming system for the Slideflow CLI using
+the Rich library. It offers consistent, visually appealing output with color
+coding, progress indicators, and structured displays for validation results,
+build progress, and error reporting.
+
+The theme system includes:
+    - ASCII art banner with brand colors
+    - Structured panels for different operation types
+    - Progress bars with visual indicators
+    - Color-coded status messages and errors
+    - Formatted tables for configuration summaries
+    - Consistent styling across all CLI output
+
+All functions use the Rich library for terminal output with support for:
+    - True color terminals
+    - Fallback color schemes
+    - Screen reader compatibility
+    - Proper text formatting and alignment
+
+Example:
+    The theme functions are used throughout the CLI:
+    
+    >>> from slideflow.cli.theme import print_slideflow_banner
+    >>> print_slideflow_banner()
+    # Displays ASCII art banner
+    
+    >>> print_build_progress(3, 5, "Processing data...")
+    # Shows progress bar at 60%
+"""
+
 from rich.text import Text
 from rich.table import Table
 from rich.panel import Panel
@@ -7,6 +39,30 @@ from typing import Optional, Any
 console = Console(force_terminal = True, color_system = "truecolor")
 
 def print_slideflow_banner() -> None:
+    """Display the Slideflow ASCII art banner with brand colors.
+    
+    Prints a stylized ASCII art logo with the Slideflow branding and tagline.
+    Uses Rich markup for color styling with blue primary color and magenta
+    accent color. The banner is displayed at the start of CLI operations
+    to provide visual branding and user feedback.
+    
+    Example:
+        >>> print_slideflow_banner()
+        # Displays:
+        #   ____  _ _     _       __ _                
+        #  / ___|| (_) __| | ___ / _| | _____      __ 
+        #  \___ \| | |/ _` |/ _ \ |_| |/ _ \ \ /\ / / 
+        #   ___) | | | (_| |  __/  _| | (_) \ V  V /  
+        #  |____/|_|_|\__,_|\___|_| |_|\___/ \_/\_/   
+        #           Generate
+        #       Beautiful slides.
+        #         Direct from your data.
+    
+    Note:
+        - Uses raw string to preserve ASCII art formatting
+        - Colors automatically fallback on terminals with limited support
+        - Banner is consistent across all CLI operations
+    """
     console.print(r"""[bold blue]
   ____  _ _     _       __ _                
  / ___|| (_) __| | ___ / _| | _____      __ 
@@ -20,6 +76,20 @@ def print_slideflow_banner() -> None:
 """)
 
 def print_validation_header(config_file: str) -> None:
+    """Display validation operation header with file information.
+    
+    Shows the Slideflow banner followed by a styled panel indicating
+    the start of a validation operation. The panel displays the target
+    configuration file in a visually appealing format.
+    
+    Args:
+        config_file: Path to the configuration file being validated.
+            Can be absolute or relative path as a string.
+            
+    Example:
+        >>> print_validation_header("config.yaml")
+        # Displays banner and validation panel with file path
+    """
     print_slideflow_banner()
 
     content = Text()
@@ -38,10 +108,30 @@ def print_validation_header(config_file: str) -> None:
     console.print(panel)
 
 def print_success() -> None:
+    """Display validation success message.
+    
+    Shows a styled success message indicating that validation
+    has completed successfully. Uses green checkmark and blue
+    styling for positive visual feedback.
+    """
     console.print("[bold blue]\nValidation Complete ✅[/bold blue]")
     console.print("[bold blue]━━━━━━━━━━━━━━━━━━━━━━━[/bold blue]")
 
-def print_config_summary(presentation_config: Any) -> None:  
+def print_config_summary(presentation_config: Any) -> None:
+    """Display detailed summary of validated configuration.
+    
+    Analyzes the presentation configuration and displays a comprehensive
+    summary table showing slides, data sources, replacements, and charts.
+    Provides visual confirmation of what will be built.
+    
+    Args:
+        presentation_config: Validated PresentationConfig object containing
+            the complete presentation structure and metadata.
+            
+    Example:
+        >>> print_config_summary(config)
+        # Displays formatted table with configuration details
+    """
     presentation = presentation_config.presentation
     slides_count = len(presentation.slides)
 
@@ -131,16 +221,45 @@ def print_build_header(config_file: str) -> None:
     console.print(panel)
 
 def print_build_progress(step: int, total_steps: int, message: str) -> None:
+    """Display build progress with visual progress bar.
+    
+    Shows the current step in a multi-step build process with a visual
+    progress bar and percentage completion. Uses block characters to
+    create an ASCII progress bar that works in all terminals.
+    
+    Args:
+        step: Current step number (1-based).
+        total_steps: Total number of steps in the process.
+        message: Descriptive message for the current step.
+        
+    Example:
+        >>> print_build_progress(3, 5, "Processing data...")
+        # Displays: ⚡ Processing data...
+        #          ▪ [███░░] 60%
+    """
     progress_bar = "█" * step + "░" * (total_steps - step)
     percentage = int((step / total_steps) * 100)
     
     console.print(f"[magenta]⚡[/magenta] [bold blue]{message}[/bold blue]")
     console.print(f"[magenta]▪[/magenta] [magenta][{progress_bar}][/magenta] [bold blue]{percentage}%[/bold blue]")
 
-
 def print_build_success(presentation_url: Optional[str] = None) -> None:
-    console.print("\n[bold blue]🎉 Build Complete[/bold blue]")
-    console.print("[magenta]━━━━━━━━━━━━━━━━━━━━━━━[/magenta]")
+    """Display build completion success message.
+    
+    Shows a celebratory message indicating successful completion of the
+    build process. Optionally displays the presentation URL if provided.
+    
+    Args:
+        presentation_url: Optional URL to the generated presentation.
+            If provided, displays the URL prominently for easy access.
+            
+    Example:
+        >>> print_build_success("https://docs.google.com/presentation/d/abc123")
+        # Displays success message with URL
+        
+        >>> print_build_success()
+        # Displays success message without URL
+    """
     
     if presentation_url:
         console.print(f"\n[bold blue]📡 Presentation URL:[/bold blue]")
@@ -149,8 +268,26 @@ def print_build_success(presentation_url: Optional[str] = None) -> None:
     console.print("\n[magenta]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/magenta]")
     console.print("[bold blue]🚀 Build Complete[/bold blue] [magenta]✨ Ready for presentation ✨\n[/magenta]")
 
-
 def print_build_error(error_msg: Any, verbose: bool = False) -> None:
+    """Display build failure error message.
+    
+    Shows a styled error message when build operations fail. Can display
+    either the full error message or just the first line depending on
+    the verbose setting.
+    
+    Args:
+        error_msg: Error message or exception to display. Can be string
+            or any object that converts to string.
+        verbose: If True, displays the complete error message including
+            stack traces. If False, shows only the first line for brevity.
+            
+    Example:
+        >>> print_build_error("Configuration file not found")
+        # Displays concise error message
+        
+        >>> print_build_error(exception, verbose=True)
+        # Displays full error details
+    """
     console.print("[bold red]💥 Build Failed[/bold red]")
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")
     console.print("[bold yellow]🚨 Error Detected:[/bold yellow]")
@@ -164,9 +301,19 @@ def print_build_error(error_msg: Any, verbose: bool = False) -> None:
     
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")
 
-
 def print_help_footer() -> None:
+    """Display help footer with support information.
+    
+    Shows styled footer with links to documentation and support resources.
+    Displayed when users run the CLI without specific commands to provide
+    guidance on getting help.
+    
+    Example:
+        >>> print_help_footer()
+        # Displays:
+        # ⚡ Need help? Check the docs or run with --verbose for more details ⚡
+        # 🌐 slideflow.dev | 📧 support@slideflow.dev
+    """
     console.print("""
-[dim cyan]⚡ Need help? Check the docs or run with --verbose for more details ⚡[/dim cyan]
-[bold magenta]🌐 slideflow.dev | 📧 support@slideflow.dev[/bold magenta]
+[dim cyan]⚡ Need help? Check the docs ⚡[/dim cyan]
 """)

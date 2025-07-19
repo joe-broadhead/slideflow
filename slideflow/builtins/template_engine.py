@@ -1,30 +1,119 @@
-"""
-YAML-based Template Engine for SlideFlow Builtin Charts
+"""YAML-based template engine with Jinja2 support for Slideflow.
 
-This module provides a scalable way to define chart templates using YAML files
-with Jinja2-style templating for dynamic configuration generation.
+This module provides a flexible template system for generating chart configurations
+and other presentation components using YAML files with Jinja2 templating.
+It supports parameter validation, custom filters, and multi-directory template
+discovery.
+
+The template engine is designed to:
+    - Process YAML templates with embedded Jinja2 syntax
+    - Validate template parameters with type checking
+    - Provide reusable custom filters for common operations
+    - Support multiple template search directories
+    - Cache loaded templates for performance
+
+Template Structure:
+    Templates are YAML files with two sections:
+    1. Metadata: Template information and parameter definitions
+    2. Template: Jinja2-enabled YAML content
+
+Example Template File::
+
+    name: "Basic Table"
+    description: "Simple table with dynamic columns"
+    version: "1.0"
+    parameters:
+      - name: columns
+        type: list
+        required: true
+        description: "List of column names"
+      - name: title
+        type: str
+        required: false
+        default: "Data Table"
+        description: "Table title"
+    
+    template: |
+      type: plotly_go
+      config:
+        traces:
+          - type: Table
+            header:
+              values: {{ columns | list }}
+            cells:
+              values: [{% for col in columns %}${{ col }}{% if not loop.last %}, {% endif %}{% endfor %}]
+        layout:
+          title: "{{ title }}"
+
+Classes:
+    TemplateParameter: Definition of a template parameter with validation
+    ChartTemplate: Complete template definition loaded from YAML
+    TemplateEngine: Main engine for loading, validating, and rendering templates
+
+Functions:
+    get_template_engine: Get the global template engine instance
+    set_template_paths: Configure custom template search paths
+    reset_template_engine: Reset to default configuration
 """
 
 import yaml
 from pathlib import Path
+from pydantic import BaseModel
 from typing import Dict, Any, List, Optional, Union
 from jinja2 import Environment, BaseLoader, select_autoescape
-from pydantic import BaseModel
 
 from slideflow.utilities.exceptions import ChartGenerationError
 
-
 class TemplateParameter(BaseModel):
-    """Definition of a template parameter."""
+    """Definition of a template parameter with validation rules.
+    
+    Represents a single parameter that can be passed to a template,
+    including its type, default value, and validation requirements.
+    
+    Attributes:
+        name: Unique identifier for the parameter.
+        type: Expected parameter type (e.g., 'str', 'int', 'list', 'dict').
+        required: Whether this parameter must be provided by the user.
+        default: Default value used when parameter is not provided and not required.
+        description: Human-readable description of the parameter's purpose.
+        
+    Example:
+        >>> param = TemplateParameter(
+        ...     name="columns",
+        ...     type="list", 
+        ...     required=True,
+        ...     description="List of column names to display"
+        ... )
+    """
     name: str
     type: str
     required: bool = True
     default: Any = None
     description: str = ""
 
-
 class ChartTemplate(BaseModel):
-    """A chart template loaded from YAML."""
+    """Complete template definition loaded from YAML file.
+    
+    Represents a fully parsed template including metadata, parameters,
+    and the Jinja2 template content ready for rendering.
+    
+    Attributes:
+        name: Human-readable name of the template.
+        description: Detailed description of the template's purpose and usage.
+        version: Template version for compatibility tracking.
+        parameters: List of parameter definitions for validation.
+        template: Raw Jinja2 template text to be rendered.
+        filters: Optional custom filters specific to this template.
+        
+    Example:
+        >>> template = ChartTemplate(
+        ...     name="Sales Dashboard",
+        ...     description="Monthly sales performance table",
+        ...     version="2.1",
+        ...     parameters=[...],
+        ...     template="type: plotly_go\nconfig: ..."
+        ... )
+    """
     name: str
     description: str
     version: str = "1.0"
@@ -32,18 +121,39 @@ class ChartTemplate(BaseModel):
     template: str  # Raw template text for Jinja2 processing
     filters: Optional[Dict[str, str]] = None
 
-
 class TemplateEngine:
-    """Engine for processing YAML chart templates."""
+    """Engine for processing YAML templates with Jinja2 support.
+    
+    The TemplateEngine provides a complete template processing system that:
+    - Loads templates from multiple search directories
+    - Validates template parameters against schemas
+    - Renders templates using Jinja2 with custom filters
+    - Caches loaded templates for performance
+    - Provides introspection capabilities
+    
+    The engine supports a hierarchical template discovery system where
+    templates in earlier directories take priority over later ones.
+    
+    Attributes:
+        template_paths: List of directories searched for templates (in priority order).
+        
+    Example:
+        >>> engine = TemplateEngine(["/project/templates", "/shared/templates"])
+        >>> config = engine.render_template("sales_table", {
+        ...     "columns": ["product", "revenue", "growth"],
+        ...     "title": "Q3 Sales Report"
+        ... })
+    """
     
     def __init__(self, template_paths: Optional[List[Union[str, Path]]] = None):
-        """Initialize the template engine with multiple template search paths.
+        """Initialize the template engine with search paths and filters.
         
         Args:
-            template_paths: List of directories to search for templates (in priority order)
-                          If None, uses default discovery paths:
-                          1. ./templates/ (user project)
-                          2. ~/.slideflow/templates/ (global user)
+            template_paths: List of directories to search for templates (in priority order).
+                If None, uses default discovery paths:
+                1. ./templates/ (current working directory)
+                2. ~/.slideflow/templates/ (user home directory)
+                Only existing directories are included in the search.
         """
         if template_paths is None:
             # Default template discovery paths (in priority order)
@@ -68,7 +178,21 @@ class TemplateEngine:
         self._setup_filters()
     
     def _setup_filters(self):
-        """Set up generic, reusable Jinja2 filters for template processing."""
+        """Configure custom Jinja2 filters for template processing.
+        
+        Registers a comprehensive set of filters that can be used in templates
+        for common data transformation, formatting, and presentation tasks.
+        All filters are designed to be generic and reusable across different
+        template types.
+        
+        Filter Categories:
+            - String transformations: title_case, snake_to_kebab, add_prefix
+            - List operations: enumerate_list, zip_lists, repeat_value
+            - Color utilities: alternating_colors, hex_to_rgb, color_reference
+            - Conditionals: if_else, default_if_none, contains
+            - Chart helpers: chart_alignment, column_width, column_format
+            - Math operations: multiply, divide, round_number
+        """
         
         # String transformation filters
         def title_case(text: str) -> str:
@@ -218,16 +342,33 @@ class TemplateEngine:
         })
     
     def load_template(self, template_name: str) -> ChartTemplate:
-        """Load a chart template from YAML file.
+        """Load and parse a template from YAML file.
+        
+        Searches for the template across all configured template paths,
+        parses the YAML structure, validates the format, and caches
+        the result for future use.
         
         Args:
-            template_name: Name of the template (without .yml extension)
-            
+            template_name: Name of the template file without the .yml extension.
+                Template files must be named '{template_name}.yml'.
+                
         Returns:
-            Loaded chart template
+            Parsed ChartTemplate object containing metadata and template content.
             
         Raises:
-            ChartGenerationError: If template file not found or invalid
+            ChartGenerationError: If template file is not found in any search path,
+                cannot be parsed as valid YAML, or is missing required sections.
+                
+        Example:
+            >>> engine = TemplateEngine()
+            >>> template = engine.load_template("sales_dashboard")
+            >>> print(f"{template.name}: {template.description}")
+            >>> print(f"Parameters: {[p.name for p in template.parameters]}")
+            
+        Note:
+            - Templates are cached after first load for performance
+            - Search paths are checked in priority order
+            - Template files must have 'template:' section for Jinja2 content
         """
         if template_name in self._template_cache:
             return self._template_cache[template_name]
@@ -293,12 +434,12 @@ class TemplateEngine:
                 parameters.append(TemplateParameter(**param_data))
             
             template = ChartTemplate(
-                name=metadata['name'],
-                description=metadata['description'],
-                version=metadata.get('version', '1.0'),
-                parameters=parameters,
-                template=template_raw,  # Store as raw text, not parsed YAML
-                filters=metadata.get('filters')
+                name = metadata['name'],
+                description = metadata['description'],
+                version = metadata.get('version', '1.0'),
+                parameters = parameters,
+                template = template_raw,  # Store as raw text, not parsed YAML
+                filters = metadata.get('filters')
             )
             
             self._template_cache[template_name] = template
@@ -308,35 +449,56 @@ class TemplateEngine:
             raise ChartGenerationError(f"Failed to load template '{template_name}': {e}")
     
     def render_template(self, template_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Render a template with user configuration.
+        """Render a template with provided configuration parameters.
+        
+        Loads the specified template, validates the provided configuration
+        against the template's parameter schema, applies defaults for missing
+        optional parameters, and renders the template using Jinja2.
         
         Args:
-            template_name: Name of the template to render
-            config: User configuration parameters
-            
+            template_name: Name of the template to render (without .yml extension).
+            config: Dictionary of parameter values to pass to the template.
+                Keys must match parameter names defined in the template.
+                
         Returns:
-            Rendered chart configuration
+            Dictionary containing the rendered template output. The structure
+            depends on the template content but typically contains chart
+            configuration or presentation component definitions.
             
         Raises:
-            ChartGenerationError: If rendering fails
+            ChartGenerationError: If template is not found, required parameters
+                are missing, parameter validation fails, or Jinja2 rendering
+                encounters errors.
+                
+        Example:
+            >>> engine = TemplateEngine()
+            >>> chart_config = engine.render_template(
+            ...     "sales_table",
+            ...     {
+            ...         "columns": ["product", "revenue", "growth"],
+            ...         "title": "Q3 Performance",
+            ...         "show_totals": True
+            ...     }
+            ... )
+            >>> print(chart_config["type"])  # 'plotly_go'
+            
+        Note:
+            - All required parameters must be provided in config
+            - Optional parameters use their default values if not provided
+            - Rendered output is parsed from YAML to Python dictionary
         """
         template = self.load_template(template_name)
         
         # Validate and apply defaults to config
         validated_config = self._validate_config(template, config)
-        
-        # Render using Jinja2 templating - fully generic, no hardcoding!
+
         try:
-            # Template is already stored as raw text
             template_text = template.template
-            
-            # Create Jinja2 template
+
             jinja_template = self._jinja_env.from_string(template_text)
             
-            # Render with user config
             rendered_yaml = jinja_template.render(**validated_config)
-            
-            # Parse rendered YAML to dict
+
             rendered_config = yaml.safe_load(rendered_yaml)
             
             return rendered_config
@@ -345,7 +507,26 @@ class TemplateEngine:
             raise ChartGenerationError(f"Failed to render template '{template_name}': {e}")
     
     def _validate_config(self, template: ChartTemplate, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate user config against template parameters and apply defaults."""
+        """Validate user configuration against template parameter schema.
+        
+        Checks that all required parameters are provided, applies default
+        values for optional parameters, and ensures the configuration
+        is complete for template rendering.
+        
+        Args:
+            template: The loaded template containing parameter definitions.
+            config: User-provided configuration dictionary.
+            
+        Returns:
+            Validated and complete configuration dictionary with defaults applied.
+            
+        Raises:
+            ChartGenerationError: If required parameters are missing.
+            
+        Note:
+            - Type validation is currently limited to presence checking
+            - Future versions may include more sophisticated type validation
+        """
         validated = {}
         
         # Check all parameters
@@ -359,19 +540,65 @@ class TemplateEngine:
         
         return validated
     
-    
     def list_templates(self) -> List[str]:
-        """List all available template names."""
-        if not self.templates_dir.exists():
-            return []
+        """List all available template names across all search paths.
         
-        return [
-            f.stem for f in self.templates_dir.glob("*.yml")
-            if f.is_file()
-        ]
+        Scans all configured template directories and returns the names
+        of all available template files. If multiple directories contain
+        templates with the same name, only the highest priority one
+        (first in search path) is listed.
+        
+        Returns:
+            Sorted list of template names (without .yml extension) that
+            can be used with load_template() or render_template().
+            
+        Example:
+            >>> engine = TemplateEngine()
+            >>> templates = engine.list_templates()
+            >>> print(f"Available templates: {templates}")
+            >>> for name in templates:
+            ...     info = engine.get_template_info(name)
+            ...     print(f"  {name}: {info['description']}")
+        """
+        template_names = set()
+        
+        for templates_dir in self.template_paths:
+            if templates_dir.exists():
+                for template_file in templates_dir.glob("*.yml"):
+                    if template_file.is_file():
+                        template_names.add(template_file.stem)
+        
+        return sorted(list(template_names))
     
     def get_template_info(self, template_name: str) -> Dict[str, Any]:
-        """Get information about a template including parameters."""
+        """Get detailed information about a template.
+        
+        Loads the template and returns its metadata including parameter
+        definitions, which can be used for documentation, validation,
+        or building user interfaces.
+        
+        Args:
+            template_name: Name of the template to inspect.
+            
+        Returns:
+            Dictionary containing template metadata:
+                - name: Human-readable template name
+                - description: Template description
+                - version: Template version string
+                - parameters: List of parameter definitions with details
+                
+        Raises:
+            ChartGenerationError: If template cannot be found or loaded.
+            
+        Example:
+            >>> engine = TemplateEngine()
+            >>> info = engine.get_template_info("sales_table")
+            >>> print(f"Template: {info['name']} v{info['version']}")
+            >>> print(f"Description: {info['description']}")
+            >>> for param in info['parameters']:
+            ...     required = "*" if param['required'] else ""
+            ...     print(f"  {param['name']}{required}: {param['description']}")
+        """
         template = self.load_template(template_name)
         
         return {
@@ -390,28 +617,88 @@ class TemplateEngine:
             ]
         }
 
-
 # Global template engine instance
 _template_engine = None
 
-
 def get_template_engine() -> TemplateEngine:
-    """Get the global template engine instance."""
+    """Get the global template engine instance.
+    
+    Returns a singleton TemplateEngine instance that is shared across
+    the application. The instance is created with default settings
+    on first access.
+    
+    Returns:
+        The global TemplateEngine instance.
+        
+    Example:
+        >>> engine = get_template_engine()
+        >>> templates = engine.list_templates()
+        >>> config = engine.render_template("my_template", {...})
+        
+    Note:
+        - Uses lazy initialization - created on first call
+        - Subsequent calls return the same instance
+        - Use set_template_paths() to configure custom paths
+    """
     global _template_engine
     if _template_engine is None:
         _template_engine = TemplateEngine()
     return _template_engine
 
 def set_template_paths(template_paths: List[Union[str, Path]]) -> None:
-    """Set custom template search paths and reset the global template engine.
+    """Configure custom template search paths for the global engine.
+    
+    Replaces the global template engine with a new instance that uses
+    the specified search paths. This affects all subsequent template
+    operations throughout the application.
     
     Args:
-        template_paths: List of directories to search for templates (in priority order)
+        template_paths: List of directories to search for templates, in
+            priority order. Earlier paths take precedence over later ones.
+            Non-existent directories are automatically filtered out.
+            
+    Example:
+        >>> # Set custom template paths
+        >>> set_template_paths([
+        ...     "/project/custom_templates",
+        ...     "/shared/org_templates",
+        ...     Path.home() / ".slideflow" / "templates"
+        ... ])
+        >>> 
+        >>> # Now all template operations use these paths
+        >>> engine = get_template_engine()
+        >>> templates = engine.list_templates()
+        
+    Note:
+        - Resets the global template engine, clearing any cached templates
+        - Affects all subsequent calls to get_template_engine()
+        - Use reset_template_engine() to return to default paths
     """
     global _template_engine
     _template_engine = TemplateEngine(template_paths=template_paths)
 
 def reset_template_engine() -> None:
-    """Reset the template engine to use default paths."""
+    """Reset the global template engine to default configuration.
+    
+    Clears the global template engine instance, causing it to be
+    recreated with default search paths on next access. This is
+    useful for testing or when you want to return to default
+    behavior after custom configuration.
+    
+    Example:
+        >>> # After custom configuration
+        >>> set_template_paths(["/custom/path"])
+        >>> 
+        >>> # Reset to defaults
+        >>> reset_template_engine()
+        >>> 
+        >>> # Next call will use default paths
+        >>> engine = get_template_engine()
+        
+    Note:
+        - Clears all cached templates
+        - Next call to get_template_engine() will create new instance
+        - Default paths are ./templates/ and ~/.slideflow/templates/
+    """
     global _template_engine
     _template_engine = None

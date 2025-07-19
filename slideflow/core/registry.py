@@ -1,16 +1,68 @@
-"""
-Standardized registry patterns for the slideflow package.
+"""Standardized registry system for extensible component management.
 
-This module provides base classes and utilities for consistent registry
-implementations across all modules.
+This module provides a comprehensive registry system that enables plugin-style
+architecture throughout Slideflow. The registry system allows for type-safe
+registration and discovery of functions, classes, and providers, enabling
+users to extend Slideflow with custom functionality.
+
+The registry system is built around three main concepts:
+    - BaseRegistry: Generic foundation for all registry types
+    - Specialized registries: Function, Class, and Provider registries
+    - Factory functions: Convenient creation of common registry types
+
+Key Features:
+    - Type safety with generic type parameters
+    - Consistent error handling and logging
+    - Overwrite protection with explicit control
+    - Inspection and introspection capabilities
+    - Module-level function registration
+    - Provider-specific error handling
+
+Architecture:
+    The registry system uses a hierarchical design where BaseRegistry provides
+    the core functionality, and specialized registries add domain-specific
+    features and validation.
+
+Example:
+    Basic registry usage::
+    
+        from slideflow.core.registry import create_function_registry
+        
+        # Create a custom transformation registry
+        transforms = create_function_registry("data_transforms")
+        
+        # Register functions
+        transforms.register_function("uppercase", str.upper)
+        transforms.register_function("reverse", lambda x: x[::-1])
+        
+        # Use registered functions
+        func = transforms.get("uppercase")
+        result = func("hello")  # "HELLO"
+        
+        # Call directly
+        result = transforms.call("reverse", "hello")  # "olleh"
+        
+    Provider registration::
+    
+        from slideflow.core.registry import create_provider_registry
+        
+        # Create provider registry with base class validation
+        providers = create_provider_registry("ai_providers", AIProvider)
+        
+        # Register provider classes
+        providers.register_class("openai", OpenAIProvider)
+        providers.register_class("gemini", GeminiProvider)
+        
+        # Create instances
+        openai = providers.create_provider("openai", api_key="...")
 """
 
 import inspect
 from abc import ABC
 from typing import Dict, Generic, TypeVar, Type, List, Optional, Any, Callable
 
-from slideflow.utilities.exceptions import ProviderError
 from slideflow.utilities.logging import get_logger
+from slideflow.utilities.exceptions import ProviderError
 
 logger = get_logger(__name__)
 
@@ -18,21 +70,46 @@ T = TypeVar('T')
 K = TypeVar('K')  # Key type
 V = TypeVar('V')  # Value type
 
-
 class BaseRegistry(Generic[K, V], ABC):
-    """
-    Abstract base class for all registry implementations.
+    """Abstract base class for all registry implementations.
     
-    Provides consistent interface and error handling for registries
-    throughout the slideflow package.
+    Provides a consistent, type-safe interface for registering and retrieving
+    items of any type. This class serves as the foundation for all specialized
+    registries in Slideflow, ensuring consistent behavior and error handling.
+    
+    The registry is generic over key type K and value type V, allowing for
+    different key-value combinations while maintaining type safety.
+    
+    Features:
+        - Type-safe operations with generic parameters
+        - Overwrite protection with explicit control
+        - Comprehensive error handling with helpful messages
+        - Logging integration for debugging and monitoring
+        - Dictionary-like interface with additional safety
+        - Introspection capabilities
+    
+    Type Parameters:
+        K: Type of keys used to identify registry items
+        V: Type of values stored in the registry
+        
+    Example:
+        >>> # Create a simple string-to-function registry
+        >>> class MyRegistry(BaseRegistry[str, Callable]):
+        ...     pass
+        >>> 
+        >>> registry = MyRegistry("my_functions")
+        >>> registry.register("add", lambda x, y: x + y)
+        >>> func = registry.get("add")
+        >>> result = func(2, 3)  # 5
     """
     
     def __init__(self, name: str = "registry"):
-        """
-        Initialize registry.
+        """Initialize a new registry instance.
         
         Args:
-            name: Human-readable name for this registry (used in error messages)
+            name: Human-readable name for this registry. Used in error messages
+                and logging to help identify which registry is being used.
+                Defaults to "registry".
         """
         self._items: Dict[K, V] = {}
         self._name = name
@@ -170,13 +247,35 @@ class BaseRegistry(Generic[K, V], ABC):
         """String representation of registry."""
         return f"{self.__class__.__name__}(name='{self._name}', size={len(self._items)})"
 
-
 class FunctionRegistry(BaseRegistry[str, Callable]):
-    """
-    Registry for functions and callables.
+    """Registry specialized for managing callable functions and methods.
     
-    Specialized registry for managing function registrations with
-    validation and helper methods for function-specific operations.
+    Extends BaseRegistry with function-specific validation, direct calling
+    capabilities, and module-level registration utilities. This registry
+    ensures that only callable objects are stored and provides convenient
+    methods for function execution.
+    
+    Key Features:
+        - Callable validation on registration
+        - Direct function invocation with error handling
+        - Bulk registration from modules
+        - Function signature preservation
+        - Enhanced error reporting for function calls
+        
+    Example:
+        >>> registry = FunctionRegistry("transforms")
+        >>> 
+        >>> # Register individual functions
+        >>> registry.register_function("upper", str.upper)
+        >>> registry.register_function("reverse", lambda s: s[::-1])
+        >>> 
+        >>> # Call functions directly
+        >>> result = registry.call("upper", "hello")  # "HELLO"
+        >>> 
+        >>> # Register all functions from a module
+        >>> import math
+        >>> registry.register_module_functions(math, prefix="math_")
+        >>> result = registry.call("math_sqrt", 16)  # 4.0
     """
     
     def __init__(self, name: str = "function_registry"):
@@ -236,13 +335,44 @@ class FunctionRegistry(BaseRegistry[str, Callable]):
                 
         logger.debug(f"Registered functions from module {module.__name__}")
 
-
 class ClassRegistry(BaseRegistry[str, Type[T]]):
-    """
-    Registry for classes with factory capabilities.
+    """Registry specialized for managing class types with factory capabilities.
     
-    Specialized registry for managing class registrations with
-    factory methods and instance creation helpers.
+    Extends BaseRegistry to provide type-safe class registration and instance
+    creation. This registry can optionally enforce inheritance from a base
+    class, providing compile-time and runtime type safety.
+    
+    Key Features:
+        - Class type validation on registration
+        - Optional base class inheritance checking
+        - Factory method for instance creation
+        - Type-safe class retrieval
+        - Enhanced error handling for instantiation
+        
+    Type Parameters:
+        T: Base type that registered classes must inherit from (optional)
+        
+    Example:
+        >>> # Registry for any class type
+        >>> registry = ClassRegistry[Any]("processors")
+        >>> registry.register_class("list", list)
+        >>> registry.register_class("dict", dict)
+        >>> 
+        >>> # Create instances
+        >>> my_list = registry.create_instance("list", [1, 2, 3])
+        >>> my_dict = registry.create_instance("dict", {"a": 1})
+        >>> 
+        >>> # Registry with base class validation
+        >>> class DataProcessor:
+        ...     pass
+        >>> 
+        >>> class CSVProcessor(DataProcessor):
+        ...     def __init__(self, delimiter=","):
+        ...         self.delimiter = delimiter
+        >>> 
+        >>> processors = ClassRegistry("processors", DataProcessor)
+        >>> processors.register_class("csv", CSVProcessor)
+        >>> csv_proc = processors.create_instance("csv", delimiter=";")
     """
     
     def __init__(self, name: str = "class_registry", base_class: Optional[Type[T]] = None):
@@ -311,13 +441,41 @@ class ClassRegistry(BaseRegistry[str, Type[T]]):
         """
         return self.get(name)
 
-
 class ProviderRegistry(ClassRegistry):
-    """
-    Specialized registry for provider classes.
+    """Registry specialized for provider pattern implementations.
     
-    Extends ClassRegistry with provider-specific error handling
-    and convenience methods.
+    Extends ClassRegistry with provider-specific error handling and naming
+    conventions. This registry is designed for managing pluggable provider
+    implementations (like AI providers, presentation providers, etc.) with
+    enhanced error reporting using ProviderError exceptions.
+    
+    Key Features:
+        - Provider-specific error handling with ProviderError
+        - Descriptive error messages listing available providers
+        - Consistent naming conventions for provider operations
+        - Enhanced exception context for troubleshooting
+        
+    Example:
+        >>> from slideflow.ai.providers import AIProvider
+        >>> 
+        >>> # Create provider registry with base class validation
+        >>> providers = ProviderRegistry("ai_providers", AIProvider)
+        >>> 
+        >>> # Register provider classes
+        >>> providers.register_class("openai", OpenAIProvider)
+        >>> providers.register_class("gemini", GeminiProvider)
+        >>> 
+        >>> # Get provider class
+        >>> provider_cls = providers.get_provider_class("openai")
+        >>> 
+        >>> # Create provider instance
+        >>> provider = providers.create_provider("openai", api_key="sk-...")
+        >>> 
+        >>> # Error handling shows available providers
+        >>> try:
+        ...     providers.get_provider_class("unknown")
+        ... except ProviderError as e:
+        ...     print(e)  # "Unknown provider: unknown. Available: openai, gemini"
     """
     
     def __init__(self, name: str = "provider_registry", base_class: Optional[Type] = None):
@@ -364,18 +522,70 @@ class ProviderRegistry(ClassRegistry):
         except Exception as e:
             raise ProviderError(f"Failed to create provider '{provider_name}': {e}") from e
 
+# Factory functions for creating common registry types
 
-# Utility functions for creating common registry types
 def create_function_registry(name: str = "functions") -> FunctionRegistry:
-    """Create a new function registry."""
+    """Create a new function registry with the specified name.
+    
+    Convenience factory function for creating FunctionRegistry instances
+    with a descriptive name for logging and error reporting.
+    
+    Args:
+        name: Human-readable name for the registry. Used in error messages
+            and logging. Defaults to "functions".
+            
+    Returns:
+        New FunctionRegistry instance ready for function registration.
+        
+    Example:
+        >>> transforms = create_function_registry("data_transforms")
+        >>> transforms.register_function("normalize", lambda x: x.lower())
+    """
     return FunctionRegistry(name)
 
-
 def create_class_registry(name: str = "classes", base_class: Optional[Type[T]] = None) -> ClassRegistry[T]:
-    """Create a new class registry."""
+    """Create a new class registry with optional base class validation.
+    
+    Convenience factory function for creating ClassRegistry instances
+    with optional type safety through base class inheritance checking.
+    
+    Args:
+        name: Human-readable name for the registry. Used in error messages
+            and logging. Defaults to "classes".
+        base_class: Optional base class that all registered classes must
+            inherit from. Provides compile-time and runtime type safety.
+            
+    Returns:
+        New ClassRegistry instance ready for class registration.
+        
+    Example:
+        >>> # Registry for any class
+        >>> processors = create_class_registry("processors")
+        >>> 
+        >>> # Registry with base class validation
+        >>> from slideflow.data.connectors import DataConnector
+        >>> connectors = create_class_registry("connectors", DataConnector)
+    """
     return ClassRegistry(name, base_class)
 
-
 def create_provider_registry(name: str = "providers", base_class: Optional[Type] = None) -> ProviderRegistry:
-    """Create a new provider registry."""
+    """Create a new provider registry with enhanced error handling.
+    
+    Convenience factory function for creating ProviderRegistry instances
+    designed for the provider pattern with specialized error reporting.
+    
+    Args:
+        name: Human-readable name for the registry. Used in error messages
+            and logging. Defaults to "providers".
+        base_class: Optional base class that all registered provider classes
+            must inherit from. Provides compile-time and runtime type safety.
+            
+    Returns:
+        New ProviderRegistry instance ready for provider registration.
+        
+    Example:
+        >>> from slideflow.ai.providers import AIProvider
+        >>> ai_providers = create_provider_registry("ai_providers", AIProvider)
+        >>> ai_providers.register_class("openai", OpenAIProvider)
+    """
     return ProviderRegistry(name, base_class)
