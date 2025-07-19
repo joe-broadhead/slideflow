@@ -1,0 +1,55 @@
+provider:
+  type: "google_slides"
+  config:
+    credentials_path: "/path/to/your/credentials.json"
+    template_id: "your_google_slides_template_id"
+    share_with: ["your_email@email.com"]
+    share_role: "writer"
+
+template_paths:
+  - "docs/quickstart"
+
+presentation:
+  name: "Quickstart Presentation"
+  slides:
+    - id: "g1_0_0"
+      title: "Monthly Performance"
+      replacements:
+        - type: "text"
+          config:
+            placeholder: "{{MONTH}}"
+            replacement: "June"
+      charts:
+        - type: "plotly_go"
+          config:
+            title: "Monthly Revenue"
+            data_source:
+              type: "csv"
+              name: "quickstart_data"
+              file_path: "docs/quickstart/data.csv"
+            traces:
+              - type: "bar"
+                x: "$month"
+                y: "$revenue"
+            layout_config:
+              xaxis:
+                title: "Month"
+              yaxis:
+                title: "Revenue (USD)"
+
+    - id: "g1_0_1"
+      title: "MAU Performance (from Template)"
+      charts:
+        - type: "template"
+          config:
+            title: "Monthly Active Users"
+            template_name: "bar_chart"
+            data_source:
+              type: "csv"
+              name: "quickstart_data"
+              file_path: "docs/quickstart/data.csv"
+            template_config:
+              title: "Monthly Active Users"
+              x_column: "month"
+              y_column: "mau"
+              y_title: "Active Users"

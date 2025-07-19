@@ -1,226 +1,462 @@
+"""DBT (Data Build Tool) connector for Slideflow with Databricks integration.
+
+This module provides connectors and configurations for executing DBT models
+and using their compiled SQL queries as data sources. It integrates DBT's
+transformation logic with Databricks execution, enabling presentations to
+use sophisticated data transformations.
+
+The DBT connector system includes:
+    - Git repository cloning and branch management
+    - DBT project compilation and dependency management
+    - Manifest parsing to extract compiled SQL queries
+    - Integration with Databricks for query execution
+    - Comprehensive caching of compiled projects
+    - Performance monitoring and logging
+
+Key Features:
+    - Automatic DBT project cloning from Git repositories
+    - Model compilation with custom variables and targets
+    - Thread-safe caching of compiled projects
+    - Integration with Databricks SQL warehouses
+    - Performance tracking for compilation and execution
+    - Error handling and comprehensive logging
+
+Authentication:
+    Uses the same Databricks authentication as DatabricksConnector:
+    - DATABRICKS_HOST: Databricks workspace hostname
+    - DATABRICKS_HTTP_PATH: SQL warehouse HTTP path
+    - DATABRICKS_ACCESS_TOKEN: Authentication token
+
+Example:
+    Using DBT models in presentations:
+    
+    >>> from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig
+    >>> 
+    >>> # Create configuration for a DBT model
+    >>> config = DBTDatabricksSourceConfig(
+    ...     name="monthly_metrics",
+    ...     type="databricks_dbt",
+    ...     model_alias="monthly_revenue_summary",
+    ...     package_url="https://github.com/company/dbt-project.git",
+    ...     project_dir="/tmp/dbt_project",
+    ...     branch="main",
+    ...     target="prod"
+    ... )
+    >>> 
+    >>> # Fetch data using compiled DBT SQL
+    >>> data = config.fetch_data()
+    >>> print(f"Retrieved {len(data)} rows from DBT model")
+"""
+
 import os
-import git
+import time
 import json
 import shutil
-import logging
+import threading
 import pandas as pd
 from git import Repo
 from pathlib import Path
-from pydantic import BaseModel
 from dbt.cli.main import dbtRunner
-from pydantic import Field, model_validator, PrivateAttr
-from typing import Annotated, Literal, Optional, Any, Dict
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, Any, Literal, ClassVar, Type
 
-from slideflow.data.connectors.databricks import DatabricksSQLConnector
-from slideflow.data.connectors.common import DataConnector, BaseSourceConfig
+from slideflow.constants import Defaults
+from slideflow.utilities.exceptions import DataSourceError
+from slideflow.data.connectors.databricks import DatabricksConnector
+from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
+from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
-def clone_dbt_package(git_url: str, clone_dir: str, branch: Optional[str] = None) -> Repo:
-    """
-    Clones a Git repository containing a dbt project to a specified local directory.
+# Global cache for compiled DBT projects
+_compiled_projects_cache: dict[tuple, Path] = {}
+_cache_lock = threading.Lock()
 
-    If the target directory already exists, it will be removed before cloning.
-
+def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
+    """Clone a Git repository for DBT project access.
+    
+    Clones the specified Git repository to a local directory, optionally
+    checking out a specific branch. Removes any existing directory at the
+    target location before cloning.
+    
     Args:
-        git_url (str): The URL of the Git repository to clone.
-        clone_dir (str): The local directory where the repository should be cloned.
-
-    Returns:
-        Repo: A GitPython `Repo` object representing the cloned repository.
-
+        git_url: Git repository URL to clone.
+        clone_dir: Local directory path where the repository will be cloned.
+        branch: Optional branch name to checkout. If None, uses default branch.
+        
     Raises:
-        RuntimeError: If the clone operation fails due to a Git or filesystem error.
+        DataSourceError: If the Git operation fails.
+        
+    Example:
+        >>> _clone_repo(
+        ...     "https://github.com/company/dbt-project.git",
+        ...     Path("/tmp/dbt_project"),
+        ...     "main"
+        ... )
     """
-    if os.path.exists(clone_dir):
+    start_time = time.time()
+    if clone_dir.exists():
         shutil.rmtree(clone_dir)
+    kwargs = {"branch": branch} if branch else {}
     try:
-        if branch:
-            repo = Repo.clone_from(git_url, clone_dir, branch=branch)
-        else:
-            repo = Repo.clone_from(git_url, clone_dir)
-        logger.info(f'Cloned dbt project from {git_url} to {clone_dir}')
-        return repo
-    except git.exc.GitCommandError as e:
-        raise RuntimeError(f'Git error cloning repository: {e}')
-    except OSError as e:
-        raise RuntimeError(f'Filesystem error during clone: {e}')
+        Repo.clone_from(git_url, clone_dir, **kwargs)
+        duration = time.time() - start_time
+        log_data_operation("clone", "dbt_project", context = {
+            "git_url": git_url, "branch": branch or "default", 
+            "target_dir": str(clone_dir), "duration_seconds": duration
+        })
+    except Exception as e:
+        duration = time.time() - start_time
+        log_data_operation("clone", "dbt_project", context = {
+            "git_url": git_url, "error": str(e), "duration_seconds": duration
+        })
+        raise DataSourceError(f"Error cloning {git_url}: {e}")
 
-class DBTManifestConnector(BaseModel):
+def _get_compiled_project(
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    target: str,
+    vars: Optional[dict[str, Any]]
+) -> Path:
+    """Get or create a compiled DBT project with caching.
+    
+    Retrieves a compiled DBT project from cache if available, or compiles
+    a new project by cloning the repository and running DBT compilation.
+    Projects are cached by their unique parameter combination to avoid
+    redundant compilation operations.
+    
+    The function is thread-safe and handles concurrent access to the
+    compilation cache. It logs performance metrics for both dependency
+    installation and compilation phases.
+    
+    Args:
+        package_url: Git URL of the DBT project repository.
+        project_dir: Local directory path for the cloned project.
+        branch: Optional Git branch to checkout.
+        target: DBT target environment (e.g., 'dev', 'prod').
+        vars: Optional DBT variables dictionary.
+        
+    Returns:
+        Path to the compiled DBT project directory.
+        
+    Raises:
+        DataSourceError: If Git cloning or DBT compilation fails.
+        
+    Example:
+        >>> project_path = _get_compiled_project(
+        ...     "https://github.com/company/dbt-project.git",
+        ...     "/tmp/dbt_project",
+        ...     "main",
+        ...     "prod",
+        ...     {"start_date": "2024-01-01"}
+        ... )
     """
-    Configuration for loading and compiling a dbt project from a GitHub repository.
+    cache_key = (package_url, project_dir, branch, target, json.dumps(vars or {}, sort_keys = True))
+    
+    with _cache_lock:
+        if cache_key in _compiled_projects_cache:
+            cached_dir = _compiled_projects_cache[cache_key]
+            if cached_dir.exists():
+                return cached_dir
+        
+        # Compile the project
+        clone_dir = Path(project_dir)
+        _clone_repo(package_url, clone_dir, branch)
+        
+        cwd = Path.cwd()
+        os.chdir(clone_dir)
+        
+        try:
+            runner = dbtRunner()
+            
+            # Log dependencies install
+            deps_start = time.time()
+            runner.invoke(["deps"])
+            deps_duration = time.time() - deps_start
+            log_performance("dbt_deps", deps_duration, project = package_url, target = target)
+            
+            # Log compilation
+            compile_start = time.time()
+            args = ["compile", "--profiles-dir", str(clone_dir), "--target", target]
+            if vars:
+                args += ["--vars", json.dumps(vars)]
+            runner.invoke(args)
+            compile_duration = time.time() - compile_start
+            log_performance(
+                "dbt_compile",
+                compile_duration,
+                project = package_url,
+                target = target, 
+                vars_count = len(vars) if vars else 0
+            )
+        finally:
+            os.chdir(cwd)
+        
+        _compiled_projects_cache[cache_key] = clone_dir
+        return clone_dir
 
-    This model encapsulates the information required to clone a dbt project, compile it, and
-    optionally load its manifest.json contents.
-
+class DBTManifestConnector(BaseModel, DataConnector):
+    """Connector for parsing DBT manifest files and extracting compiled SQL.
+    
+    This connector handles the compilation of DBT projects and parsing of
+    manifest.json files to extract compiled SQL queries for specific models.
+    It does not execute queries directly but provides the compiled SQL for
+    use by other connectors.
+    
+    The connector manages the full DBT workflow:
+    1. Clone the Git repository
+    2. Install DBT dependencies
+    3. Compile the project
+    4. Parse the manifest to find model SQL
+    
     Attributes:
-        package_url (str): GitHub URL of the dbt project repository.
-        project_dir (str): Path to the local directory where the dbt project will be cloned or stored.
-        target (str): The dbt target environment to use (e.g., "prod", "dev"). Defaults to "prod".
-        vars (Optional[Dict[str, Any]]): Optional dictionary of variables to pass to dbt when compiling.
-        compile (bool): Whether to compile the dbt project after cloning. Defaults to True.
-        manifest (Dict[str, Any]): Dictionary containing the contents of dbt's manifest.json file. Defaults to an empty dict.
+        package_url: Git URL of the DBT project repository.
+        project_dir: Local directory path for cloning the project.
+        branch: Optional Git branch to checkout.
+        target: DBT target environment for compilation.
+        vars: Optional variables to pass to DBT compilation.
+        compile: Whether to compile the project (usually True).
+        
+    Example:
+        >>> connector = DBTManifestConnector(
+        ...     package_url="https://github.com/company/dbt-project.git",
+        ...     project_dir="/tmp/dbt_project",
+        ...     target="prod"
+        ... )
+        >>> sql = connector.get_compiled_query("revenue_model")
     """
-    package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
-    project_dir: Annotated[str, Field(description = 'Path to the local dbt project directory.')]
-    branch: Annotated[Optional[str], Field(default=None, description = 'Optional Git branch to clone')]
-    target: Annotated[str, Field(default = 'prod', description = 'Target environment for dbt.')]
-    vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
-    compile: Annotated[bool, Field(default = True, description = 'Whether to compile the dbt project.')]
-    manifest: Annotated[Dict[str, Any], Field(default_factory = dict, description = 'Loaded dbt manifest.json content.')]
+    package_url: str = Field(..., description = "Git URL of dbt project")
+    project_dir: str = Field(..., description = "Local path to dbt project")
+    branch: Optional[str] = Field(None, description = "Git branch to checkout")
+    target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
+    vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
+    compile: bool = Field(Defaults.DBT_COMPILE, description = "Whether to compile project")
 
-    _compiled_models: Optional[Dict[str, str]] = PrivateAttr(default = None)
-
-    @model_validator(mode = 'after')
-    def load_manifest(self) -> 'DBTManifestConnector':
-        """
-        Compiles the dbt project and loads the `manifest.json` after model initialization.
-
-        This validator performs the following:
-        - Changes working directory to the specified dbt project directory.
-        - Clones the dbt project from GitHub if compilation is enabled.
-        - Runs `dbt deps` and `dbt compile` using the configured target and optional vars.
-        - Loads the resulting `manifest.json` into the model.
-
-        Raises:
-            FileNotFoundError: If the `manifest.json` file is not found after compilation.
-            RuntimeError: If the Git clone or dbt compilation fails.
-
-        Returns:
-            DBTManifestConnector: The instance with `manifest` field populated.
-        """
-        if self.manifest:
-            return self
-
-        cli = dbtRunner()
-        original_cwd = os.getcwd()
-
-        if self.compile:
-            clone_dbt_package(self.package_url, self.project_dir, self.branch)
-
-            os.chdir(self.project_dir)
-
-            cli.invoke(['deps'])
-            args = ['compile', '--profiles-dir', self.project_dir, '--target', self.target]
-            if self.vars:
-                args += ['--vars', json.dumps(self.vars)]
-            cli.invoke(args)
-
-        os.chdir(original_cwd)
-
-        manifest_path = Path(self.project_dir) / 'target' / 'manifest.json'
-        if not manifest_path.exists():
-            raise FileNotFoundError('manifest.json not found in target directory.')
-        with open(manifest_path, 'r') as f:
-            self.manifest = json.load(f)
-        return self
-
-    def get_compiled_models(self) -> Dict[str, str]:
-        """
-        Loads compiled SQL models from the dbt manifest.
-
-        This method reads the compiled SQL files for all `model` and `analysis` nodes
-        listed in the `manifest.json`, returning a dictionary that maps model aliases
-        to their compiled SQL content.
-
-        If a compiled file is referenced in the manifest but not found on disk, a warning is logged.
-
-        Returns:
-            Dict[str, str]: A dictionary where keys are model aliases and values are compiled SQL strings.
-        """
-        if self._compiled_models is not None:
-            return self._compiled_models
-        
-        models = {}
-        compiled_dir = Path(self.project_dir) / 'target' / 'compiled'
-        if not compiled_dir.exists():
-            logger.warning('⚠️  Compiled directory not found!')
-            return models
-
-        for node in self.manifest.get('nodes', {}).values():
-            if node.get('resource_type') not in ['model', 'analysis']:
-                continue
-            model_alias = node.get('alias')
-            compiled_path = node.get('compiled_path')
-            if compiled_path:
-                full_path = Path(self.project_dir) / compiled_path
-                if full_path.exists():
-                    models[model_alias] = full_path.read_text()
-                else:
-                    logger.error(f'Compiled file not found for: {model_alias} at {compiled_path}')
-        
-        self._compiled_models = models
-        return models
+    model_config = ConfigDict(arbitrary_types_allowed = True, extra = "forbid")
 
     def get_compiled_query(self, model_name: str) -> Optional[str]:
-        """
-        Retrieves the compiled SQL for a given dbt model alias.
-
-        This method looks up the compiled SQL for the specified model name
-        (i.e., the alias defined in the dbt project) by scanning the compiled models.
-
+        """Extract compiled SQL query for a specific DBT model.
+        
+        Compiles the DBT project if needed and parses the manifest.json file
+        to find the compiled SQL for the specified model alias. Returns the
+        SQL content as a string for execution by other connectors.
+        
         Args:
-            model_name (str): The alias of the dbt model to retrieve.
-
+            model_name: The alias of the DBT model to retrieve SQL for.
+                This should match the alias defined in the model's configuration.
+                
         Returns:
-            Optional[str]: The compiled SQL string if found, otherwise None.
+            The compiled SQL query as a string, or None if the model is not found.
+            
+        Raises:
+            DataSourceError: If the manifest.json file is not found or invalid.
+            
+        Example:
+            >>> connector = DBTManifestConnector(
+            ...     package_url="https://github.com/company/dbt-project.git",
+            ...     project_dir="/tmp/dbt_project",
+            ...     target="prod"
+            ... )
+            >>> sql = connector.get_compiled_query("monthly_revenue")
+            >>> print(f"Found SQL query with {len(sql)} characters")
         """
-        return self.get_compiled_models().get(model_name)
+        clone_dir = _get_compiled_project(
+            self.package_url, 
+            self.project_dir, 
+            self.branch, 
+            self.target, 
+            self.vars
+        )
+        
+        # Load manifest.json
+        manifest_path = clone_dir / "target" / "manifest.json"
+        if not manifest_path.exists():
+            raise DataSourceError(f"manifest.json not found at {manifest_path}")
+        
+        with open(manifest_path) as f:
+            manifest = json.load(f)
 
-class DBTDatabricksConnector(DataConnector):
-    """
-    Connector that fetches data by executing a compiled dbt model query on Databricks.
-
-    This connector uses a pre-loaded DBTManifestConnector to retrieve the compiled
-    SQL for a given model alias, and then runs it against a Databricks SQL endpoint.
-
-    Args:
-        manifest_connector (DBTManifestConnector): The manifest loader containing compiled dbt models.
-        model_alias (str): The alias of the dbt model to query.
-
-    Raises:
-        ValueError: If the compiled SQL for the model alias is not found.
-    """
-    def __init__(self, manifest_connector: DBTManifestConnector, model_alias: str):
-        self.manifest_connector = manifest_connector
-        self.model_alias = model_alias
+        # Find the compiled SQL for the model
+        for node in manifest.get("nodes", {}).values():
+            if node.get("resource_type") not in ("model", "analysis"):
+                continue
+            alias = node.get("alias")
+            if alias == model_name:
+                path = node.get("compiled_path")
+                full = clone_dir / path if path else None
+                if full and full.exists():
+                    return full.read_text()
+                else:
+                    logger.warning(f"Missing compiled file for {alias}: {path}")
+        
+        return None
 
     def fetch_data(self) -> pd.DataFrame:
-        """
-        Executes the compiled dbt model query on Databricks and returns the result.
-
-        Returns:
-            pd.DataFrame: The result of the query as a DataFrame.
-
+        """Not implemented for manifest connector.
+        
+        DBTManifestConnector is designed for extracting compiled SQL queries,
+        not for executing them and fetching data. Use get_compiled_query()
+        to retrieve SQL, then pass it to a query execution connector.
+        
         Raises:
-            ValueError: If the model alias is not found in the manifest.
+            NotImplementedError: Always, as this method is not applicable.
+            
+        Example:
+            >>> # Correct usage
+            >>> sql = connector.get_compiled_query("model_name")
+            >>> db_connector = DatabricksConnector(sql)
+            >>> data = db_connector.fetch_data()
         """
-        logger.info(f'Fetching data from DBT Databricks: {self.model_alias}')
-        query = self.manifest_connector.get_compiled_query(self.model_alias)
-        if not query:
-            raise ValueError(f"Model alias '{self.model_alias}' not found in the DBT manifest.")
-        return DatabricksSQLConnector(query).fetch_data()
+        raise NotImplementedError("DBTManifestConnector is for manifest parsing, not data fetching. Use get_compiled_query() instead.")
 
+class DBTDatabricksConnector(DataConnector):
+    """Connector that combines DBT model compilation with Databricks execution.
+    
+    This connector bridges DBT transformations with Databricks SQL execution.
+    It compiles DBT models to SQL and executes them against Databricks SQL
+    warehouses, providing a complete data transformation and retrieval pipeline.
+    
+    The connector handles the full workflow:
+    1. Compile the DBT project and extract model SQL
+    2. Execute the compiled SQL against Databricks
+    3. Return results as a pandas DataFrame
+    
+    Example:
+        >>> connector = DBTDatabricksConnector(
+        ...     model_alias="monthly_revenue",
+        ...     package_url="https://github.com/company/dbt-project.git",
+        ...     project_dir="/tmp/dbt_project",
+        ...     target="prod"
+        ... )
+        >>> data = connector.fetch_data()
+        >>> print(f"Retrieved {len(data)} rows from DBT model")
+    """
+    def __init__(
+        self,
+        model_alias: str,
+        package_url: str,
+        project_dir: str,
+        branch: Optional[str] = None,
+        target: str = Defaults.DBT_TARGET,
+        vars: Optional[dict[str, Any]] = None,
+        compile: bool = Defaults.DBT_COMPILE,
+    ) -> None:
+        """Initialize the DBT-Databricks connector.
+        
+        Args:
+            model_alias: The alias of the DBT model to execute.
+            package_url: Git URL of the DBT project repository.
+            project_dir: Local directory path for cloning the project.
+            branch: Optional Git branch to checkout.
+            target: DBT target environment for compilation.
+            vars: Optional variables to pass to DBT compilation.
+            compile: Whether to compile the project.
+        """
+        self.model_alias = model_alias
+        self._manifest_connector = DBTManifestConnector(
+            package_url = package_url,
+            project_dir = project_dir,
+            branch = branch,
+            target = target,
+            vars = vars,
+            compile = compile
+        )
+
+    def fetch_data(self) -> pd.DataFrame:
+        """Compile DBT model and execute against Databricks.
+        
+        Extracts the compiled SQL from the DBT model and executes it
+        against the configured Databricks SQL warehouse. Returns the
+        query results as a pandas DataFrame.
+        
+        Returns:
+            DataFrame containing the results of the compiled DBT model query.
+            
+        Raises:
+            DataSourceError: If the specified model is not found or compilation fails.
+            ConnectionError: If unable to connect to Databricks.
+            sql.Error: If the compiled SQL query execution fails.
+            
+        Example:
+            >>> connector = DBTDatabricksConnector(
+            ...     model_alias="revenue_summary",
+            ...     package_url="https://github.com/company/dbt-project.git",
+            ...     project_dir="/tmp/dbt_project"
+            ... )
+            >>> df = connector.fetch_data()
+            >>> print(f"Model returned {len(df)} rows, {len(df.columns)} columns")
+        """
+        sql_text = self._manifest_connector.get_compiled_query(self.model_alias)
+        if not sql_text:
+            raise DataSourceError(f"No compiled model '{self.model_alias}'")
+        return DatabricksConnector(sql_text).fetch_data()
 
 class DBTDatabricksSourceConfig(BaseSourceConfig):
-    """
-    Configuration for a data source that fetches from a dbt model executed on Databricks.
-
-    This config specifies how to locate and compile the dbt project, and which model to query.
-
+    """Configuration model for DBT models executed on Databricks.
+    
+    This configuration class defines the parameters needed to compile DBT
+    models and execute them against Databricks SQL warehouses. It combines
+    DBT's transformation capabilities with Databricks' execution power.
+    
+    The configuration handles the complete DBT-to-Databricks pipeline,
+    including Git repository management, project compilation, and query
+    execution. It integrates with the discriminated union system for
+    polymorphic data source configurations.
+    
     Attributes:
-        type (Literal['databricks_dbt']): The type identifier for this data source.
-        model_alias (str): The alias of the dbt model to execute.
-        project_dir (str): Path to the local dbt project directory.
-        target (Optional[str]): dbt target environment. Defaults to 'prod'.
-        vars (Optional[Dict[str, Any]]): Optional variables to pass to dbt compilation.
-        compile (Optional[bool]): Whether to compile the dbt project. Defaults to True.
+        type: Always "databricks_dbt" for DBT-Databricks data sources.
+        model_alias: The alias of the DBT model to execute.
+        package_url: Git URL of the DBT project repository.
+        project_dir: Local directory path for cloning the project.
+        branch: Optional Git branch to checkout.
+        target: DBT target environment for compilation.
+        vars: Optional variables to pass to DBT compilation.
+        compile: Whether to compile the project before execution.
+        connector_class: References DBTDatabricksConnector for instantiation.
+    
+    Example:
+        Creating a DBT-Databricks data source configuration:
+        
+        >>> config = DBTDatabricksSourceConfig(
+        ...     name="revenue_analytics",
+        ...     type="databricks_dbt",
+        ...     model_alias="monthly_revenue_by_region",
+        ...     package_url="https://github.com/company/analytics-dbt.git",
+        ...     project_dir="/tmp/analytics_dbt",
+        ...     branch="production",
+        ...     target="prod",
+        ...     vars={"start_date": "2024-01-01", "end_date": "2024-12-31"}
+        ... )
+        >>> 
+        >>> # Use configuration to fetch transformed data
+        >>> data = config.fetch_data()
+        >>> print(f"Retrieved {len(data)} rows from DBT model")
+        
+        From dictionary/JSON:
+        
+        >>> config_dict = {
+        ...     "name": "user_metrics",
+        ...     "type": "databricks_dbt",
+        ...     "model_alias": "daily_active_users",
+        ...     "package_url": "https://github.com/company/metrics-dbt.git",
+        ...     "project_dir": "/tmp/metrics_dbt",
+        ...     "target": "prod"
+        ... }
+        >>> config = DBTDatabricksSourceConfig(**config_dict)
     """
-    type: Literal['databricks_dbt'] = Field('databricks_dbt', description = 'DBT + Databricks data source.')
-    model_alias: Annotated[str, Field(description = 'Model alias to execute.')]
-    package_url: Annotated[str, Field(description = 'GitHub URL of the dbt project.')]
-    project_dir: Annotated[str, Field(description = 'Path to dbt project.')]
-    branch: Annotated[Optional[str], Field(default=None, description = 'Git branch to check out')]
-    target: Annotated[Optional[str], Field(default = 'prod', description = 'dbt target environment.')]
-    vars: Annotated[Optional[Dict[str, Any]], Field(default = None, description = 'Optional dbt variables.')]
-    compile: Annotated[Optional[bool], Field(default = True, description = 'Whether to compile the dbt project.')]
+    type: Literal["databricks_dbt"] = Field("databricks_dbt", description = "dbt + Databricks data source")
+    model_alias: str = Field(..., description = "dbt model alias")
+    package_url: str = Field(..., description = "Git URL of dbt project")
+    project_dir: str = Field(..., description = "Local project path")
+    branch: Optional[str] = Field(None, description = "Git branch")
+    target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
+    vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
+    compile: bool = Field(Defaults.DBT_COMPILE, description = "Whether to compile")
+
+    connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
+
+    model_config = ConfigDict(
+        extra = "forbid",
+        discriminator = "type"
+    )

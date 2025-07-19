@@ -1,0 +1,39 @@
+name: "Reusable Bar Chart"
+description: "A standard bar chart with customizable title, x-axis, and y-axis."
+version: "1.0"
+
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "The title of the chart."
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "The name of the column to use for the x-axis."
+  - name: "y_column"
+    type: "string"
+    required: true
+    description: "The name of the column to use for the y-axis."
+  - name: "x_title"
+    type: "string"
+    required: false
+    default: ""
+    description: "The title for the x-axis."
+  - name: "y_title"
+    type: "string"
+    required: false
+    default: ""
+    description: "The title for the y-axis."
+
+template:
+  traces:
+    - type: "bar"
+      x: "${{ x_column }}"
+      y: "${{ y_column }}"
+  layout_config:
+    title: "{{ title }}"
+    xaxis:
+      title: "{{ x_title if x_title else x_column|title_case }}"
+    yaxis:
+      title: "{{ y_title if y_title else y_column|title_case }}"

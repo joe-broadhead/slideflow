@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "slideflow"
 version = "0.0.0"
@@ -12,10 +16,10 @@ dependencies = [
     "pydantic[email]>=2.0",
     "pyyaml",
     "pandas",
+    "numpy",
     "rich",
     "plotly",
     "kaleido",
-    "Pillow",
     "google-api-python-client",
     "google-auth",
     "google-auth-oauthlib",
@@ -23,21 +27,38 @@ dependencies = [
     "httplib2",
     "gitpython",
     "dbt-core",
-    "dbt-databricks==1.9.4",
-    "databricks-sql-connector"
+    "dbt-databricks",
+    "databricks-sql-connector",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 
 [project.optional-dependencies]
-ai = ["openai", "google-generativeai"]
+ai = ["openai", "google-genai"]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+]
 
 [project.scripts]
-slideflow = "slideflow.cli:main"
+slideflow = "slideflow.cli.main:app"
 
 [tool.setuptools]
 packages = ["slideflow"]
 
+[tool.black]
+line-length = 88
+target-version = ['py312']
 
-[build-system]
-requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta"
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

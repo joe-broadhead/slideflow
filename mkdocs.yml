@@ -1,8 +1,8 @@
-site_name: Slideflow
-
-theme:
-  name: material
-
+site_name: SlideFlow
 nav:
-  - Home: index.md
-  - Slideflow CLI: slideflow_cli.md
+    - Home: index.md
+    - Getting Started: getting-started.md
+    - Quickstart: quickstart.md
+    - Replacements: replacements.md
+    - Charts: charts.md
+    - Templating: templating.md
