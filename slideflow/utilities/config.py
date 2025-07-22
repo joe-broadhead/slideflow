@@ -390,7 +390,7 @@ class ConfigLoader(BaseModel):
     registry_paths: List[Path] = Field(
         ..., description = "One or more Python files defining `function_registry`"
     )
-    params: Mapping[str, str] = Field(
+    params: Mapping[str, Any] = Field(
         default_factory = dict,
         description = "Values for {param} substitution"
     )
