@@ -349,7 +349,8 @@ class GoogleSlidesProvider(PresentationProvider):
                     self.drive_service.permissions().create(
                         fileId = presentation_id,
                         body = permission,
-                        sendNotificationEmail=True
+                        sendNotificationEmail=True,
+                        supportsAllDrives=True
                     ).execute()
                     logger.info(f"Shared presentation with {email} as {role}")
             except HttpError as error:
@@ -382,7 +383,8 @@ class GoogleSlidesProvider(PresentationProvider):
                     fileId = presentation_id,
                     body = file_metadata,
                     addParents = self.config.presentation_folder_id,
-                    fields = 'id, parents'
+                    fields = 'id, parents',
+                    supportsAllDrives=True
                 ).execute()
             
             duration = time.time() - start_time
@@ -405,7 +407,8 @@ class GoogleSlidesProvider(PresentationProvider):
                 
             copied = self.drive_service.files().copy(
                 fileId=template_id,
-                body=body
+                body=body,
+                supportsAllDrives=True
             ).execute()
             presentation_id = copied.get("id")
             logger.info(f"Copied template to '{title}' with ID: {presentation_id}")
@@ -431,7 +434,8 @@ class GoogleSlidesProvider(PresentationProvider):
             uploaded_file = self.drive_service.files().create(
                 body=file_metadata,
                 media_body=media,
-                fields='id'
+                fields='id',
+                supportsAllDrives=True
             ).execute()
             
             file_id = uploaded_file.get('id')
@@ -442,7 +446,8 @@ class GoogleSlidesProvider(PresentationProvider):
                 body = {
                     'role': 'reader',
                     'type': 'anyone'
-                }
+                },
+                supportsAllDrives=True
             ).execute()
 
             public_url = f"https://drive.google.com/uc?id={file_id}"
