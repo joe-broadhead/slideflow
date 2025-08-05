@@ -83,7 +83,12 @@ def abbreviate_number_columns(df: pd.DataFrame, columns_to_abbreviate: List[str]
 def abbreviate_currency_columns(
     df: pd.DataFrame, 
     columns_to_abbreviate: List[str], 
-    currency_symbol: str = "$"
+    currency_symbol: str = "$",
+    symbol_position: str = "prefix",
+    negative_parens: bool = False,
+    decimals: int = 2,
+    thousands_sep: str = ",",
+    decimal_sep: str = "."
 ) -> pd.DataFrame:
     """Abbreviate and format currency values in specified DataFrame columns.
     
@@ -130,8 +135,7 @@ def abbreviate_currency_columns(
     
     for col in columns_to_abbreviate:
         if col in df.columns:
-            df[col] = df[col].apply(lambda x: abbreviate_currency(x, currency_symbol=currency_symbol))
-    
+            df[col] = df[col].apply(lambda x: abbreviate_currency(x, currency_symbol=currency_symbol, symbol_position=symbol_position, negative_parens=negative_parens, decimals=decimals, thousands_sep=thousands_sep, decimal_sep=decimal_sep))
     return df
 
 def format_percentages(
