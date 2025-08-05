@@ -100,7 +100,23 @@ def abbreviate_currency_columns(
         columns_to_abbreviate: List of column names to format as abbreviated
             currency. Columns not present in the DataFrame are silently ignored.
         currency_symbol: Currency symbol to use. Defaults to "$".
-            Common options: "$", "€", "£", "¥".
+            Common options: "$", "£", "¥", "€".
+        symbol_position: Where to place the symbol:
+            - "prefix": Before the number (e.g., "$1.2M")
+            - "suffix": After the number (e.g., "1.2M €")
+            Defaults to "prefix".
+        negative_parens: How to display negative values:
+            - True: Use parentheses, e.g., "($1.2M)"
+            - False: Use minus sign, e.g., "-$1.2M"
+            Defaults to False.
+        suffixes: Custom abbreviation thresholds as (threshold, suffix) tuples.
+            If None, uses: [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")].
+            Order matters - should be from largest to smallest.
+        decimals: Decimal places for values < 1K. Defaults to 2.
+            Abbreviated values always use 1 decimal place.
+        thousands_sep: Character for thousands separation in small values.
+            Defaults to ",". Not used for abbreviated values.
+        decimal_sep: Character for decimal separation. Defaults to ".".
         
     Returns:
         New DataFrame with specified columns containing abbreviated currency
