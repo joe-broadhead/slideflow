@@ -83,7 +83,12 @@ def abbreviate_number_columns(df: pd.DataFrame, columns_to_abbreviate: List[str]
 def abbreviate_currency_columns(
     df: pd.DataFrame, 
     columns_to_abbreviate: List[str], 
-    currency_symbol: str = "$"
+    currency_symbol: str = "$",
+    symbol_position: str = "prefix",
+    negative_parens: bool = False,
+    decimals: int = 2,
+    thousands_sep: str = ",",
+    decimal_sep: str = "."
 ) -> pd.DataFrame:
     """Abbreviate and format currency values in specified DataFrame columns.
     
@@ -95,7 +100,23 @@ def abbreviate_currency_columns(
         columns_to_abbreviate: List of column names to format as abbreviated
             currency. Columns not present in the DataFrame are silently ignored.
         currency_symbol: Currency symbol to use. Defaults to "$".
-            Common options: "$", "€", "£", "¥".
+            Common options: "$", "£", "¥", "€".
+        symbol_position: Where to place the symbol:
+            - "prefix": Before the number (e.g., "$1.2M")
+            - "suffix": After the number (e.g., "1.2M €")
+            Defaults to "prefix".
+        negative_parens: How to display negative values:
+            - True: Use parentheses, e.g., "($1.2M)"
+            - False: Use minus sign, e.g., "-$1.2M"
+            Defaults to False.
+        suffixes: Custom abbreviation thresholds as (threshold, suffix) tuples.
+            If None, uses: [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")].
+            Order matters - should be from largest to smallest.
+        decimals: Decimal places for values < 1K. Defaults to 2.
+            Abbreviated values always use 1 decimal place.
+        thousands_sep: Character for thousands separation in small values.
+            Defaults to ",". Not used for abbreviated values.
+        decimal_sep: Character for decimal separation. Defaults to ".".
         
     Returns:
         New DataFrame with specified columns containing abbreviated currency
@@ -130,8 +151,7 @@ def abbreviate_currency_columns(
     
     for col in columns_to_abbreviate:
         if col in df.columns:
-            df[col] = df[col].apply(lambda x: abbreviate_currency(x, currency_symbol=currency_symbol))
-    
+            df[col] = df[col].apply(lambda x: abbreviate_currency(x, currency_symbol=currency_symbol, symbol_position=symbol_position, negative_parens=negative_parens, decimals=decimals, thousands_sep=thousands_sep, decimal_sep=decimal_sep))
     return df
 
 def format_percentages(
