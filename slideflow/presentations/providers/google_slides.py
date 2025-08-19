@@ -432,10 +432,10 @@ class GoogleSlidesProvider(PresentationProvider):
             )
             
             uploaded_file = self.drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id',
-                supportsAllDrives=True
+                body = file_metadata,
+                media_body = media,
+                fields = 'id',
+                supportsAllDrives = True
             ).execute()
             
             file_id = uploaded_file.get('id')
@@ -447,7 +447,7 @@ class GoogleSlidesProvider(PresentationProvider):
                     'role': 'reader',
                     'type': 'anyone'
                 },
-                supportsAllDrives=True
+                supportsAllDrives = True
             ).execute()
 
             public_url = f"https://drive.google.com/uc?id={file_id}"

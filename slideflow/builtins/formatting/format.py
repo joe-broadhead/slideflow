@@ -146,6 +146,8 @@ def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
         - Boolean values are treated as non-numeric
         - Special handling for NaN values
     """
+    if value is None:
+        return str(value)
     try:
         if isinstance(value, decimal.Decimal):
             value = float(value)
@@ -281,8 +283,12 @@ def format_currency(
         - Handles negative zero correctly
         - Preserves non-numeric inputs without raising exceptions
     """
+    if value is None:
+        return str(value)
     try:
         numeric_value = float(value)
+        if math.isnan(numeric_value) or math.isinf(numeric_value):
+            return str(value)
     except (TypeError, ValueError) as e:
         logger.warning(f"Currency formatting failed for non-numeric value {value}: {e}")
         return str(value)
