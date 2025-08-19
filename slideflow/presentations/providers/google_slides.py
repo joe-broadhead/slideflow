@@ -450,6 +450,8 @@ class GoogleSlidesProvider(PresentationProvider):
                 supportsAllDrives = True
             ).execute()
 
+            time.sleep(2)
+
             public_url = f"https://drive.google.com/uc?id={file_id}"
             duration = time.time() - start_time
             log_api_operation("google_drive", "upload_image", True, duration,

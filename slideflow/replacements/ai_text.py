@@ -317,7 +317,10 @@ class AITextReplacement(BaseReplacement):
 
         df = self.fetch_data()
         if df is not None:
-            df = self.apply_data_transforms(df)
+            try:
+                df = self.apply_data_transforms(df)
+            except Exception as e:
+                return 'Summary unable to be generated as the data was not available'
             data = df.to_dict(orient = "records")
             prompt += f"\n\nData:\n{data}"
 
