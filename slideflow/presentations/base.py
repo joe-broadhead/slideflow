@@ -55,9 +55,9 @@ Example:
 """
 import time
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional, Dict, Any, Annotated, Tuple
+from typing import List, Optional, Dict, Any, Annotated, Tuple, Callable
 
 from slideflow.utilities.logging import get_logger
 from slideflow.replacements.base import BaseReplacement
@@ -371,8 +371,15 @@ class Presentation(BaseModel):
     model_config = ConfigDict(extra = "forbid", arbitrary_types_allowed = True)
     
     name: Annotated[str, Field(..., description = "Presentation name")]
+    name_fn: Annotated[Optional[Callable], Field(None, description = "Optional function for name")]
     slides: Annotated[List[Slide], Field(..., description = "List of slides in the presentation")]
     provider: Annotated[PresentationProvider, Field(..., exclude = True, description = "Presentation provider instance")]
+
+    @model_validator(mode='after')
+    def apply_name_fn(self):
+        if self.name_fn:
+            self.name = self.name_fn(self.name)
+        return self
     
     def render(self) -> PresentationResult:
         """Render the complete presentation with all content and styling.
