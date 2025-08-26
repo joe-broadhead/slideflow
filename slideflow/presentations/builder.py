@@ -248,6 +248,7 @@ class PresentationBuilder:
         
         presentation = Presentation(
             name = config.presentation.name,
+            name_fn = config.presentation.name_fn,
             slides = slides,
             provider = provider
         )

@@ -61,7 +61,7 @@ Validation:
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any, Annotated
+from typing import List, Optional, Dict, Any, Annotated, Callable
 
 class ReplacementSpec(BaseModel):
     """Configuration specification for text replacements in presentations.
@@ -366,6 +366,7 @@ class PresentationSpec(BaseModel):
     model_config = ConfigDict(extra = "forbid")
     
     name: Annotated[str, Field(..., description = "Presentation name")]
+    name_fn: Annotated[Optional[Callable], Field(None, description = "Optional name function")]
     slides: Annotated[List[SlideSpec], Field(..., description = "List of slides in the presentation")]
 
 class ProviderConfig(BaseModel):
