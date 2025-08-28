@@ -451,6 +451,9 @@ class PresentationConfig(BaseModel):
         template_paths: Optional list of custom directories to search for
             chart templates, in priority order. If not specified, only
             built-in templates will be available.
+        registry: Optional list of paths to Python files containing
+            `function_registry` dictionaries. These registries are used to
+            extend Slideflow with custom functions.
             
     Example:
         Complete presentation configuration:
@@ -484,7 +487,8 @@ class PresentationConfig(BaseModel):
         ...     template_paths=[
         ...         "/custom/chart_templates",
         ...         "/shared/templates"
-        ...     ]
+        ...     ],
+        ...     registry=["custom_functions.py", "shared_registry.py"]
         ... )
         
         Minimal configuration:
@@ -519,7 +523,8 @@ class PresentationConfig(BaseModel):
     """
     
     model_config = ConfigDict(extra = "forbid")
-    
+
     presentation: Annotated[PresentationSpec, Field(..., description = "Presentation specification")]
     provider: Annotated[ProviderConfig, Field(..., description = "Presentation provider configuration")]
     template_paths: Annotated[Optional[List[str]], Field(None, description = "Custom template search paths (in priority order)")]
+    registry: Annotated[Optional[List[str]], Field(None, description = "Paths to custom function registry files")]
