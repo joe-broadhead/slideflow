@@ -130,7 +130,7 @@ def build_single_presentation(
 def build_command(
     config_file: Path = typer.Argument(..., help = "Path to YAML configuration file"),
     registry_files: Optional[List[Path]] = typer.Option(
-        ["registry.py"], "--registry", "-r", 
+        None, "--registry", "-r", 
         help="Path to Python registry files (can be used multiple times)"
     ),
     params_path: Optional[Path] = typer.Option(
