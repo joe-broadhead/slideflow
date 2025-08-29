@@ -215,16 +215,12 @@ def build_command(
         raw_config = yaml.safe_load(config_file.read_text())
         config_registry = raw_config.get("registry")
 
-        if not registry_files and config_registry:
-            if isinstance(config_registry, str):
-                registry_files = [Path(config_registry)]
-            elif isinstance(config_registry, list):
-                registry_files = [Path(p) for p in config_registry]
-            else:
-                raise TypeError(f"Unsupported type for 'registry': {type(config_registry)}")
+        if isinstance(config_registry, (str, Path, list)):
+            config_registry = [Path(p) for p in ([config_registry] if isinstance(config_registry, (str, Path)) else config_registry)]
+        else:
+            raise TypeError(f"Unsupported type for 'registry': {type(config_registry)}")
 
-        if not registry_files:
-            registry_files = [Path("registry.py")]
+        registry_files = registry_files or config_registry or [Path("registry.py")]
         
         if dry_run:
             print_build_progress(6, 6, "Dry run complete - configuration is valid!")
