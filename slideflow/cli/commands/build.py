@@ -32,6 +32,7 @@ Example:
 import time
 import typer
 import threading
+import yaml
 import pandas as pd
 from pathlib import Path
 from typing import Optional, List, Tuple, Any
@@ -129,7 +130,7 @@ def build_single_presentation(
 def build_command(
     config_file: Path = typer.Argument(..., help = "Path to YAML configuration file"),
     registry_files: Optional[List[Path]] = typer.Option(
-        ["registry.py"], "--registry", "-r", 
+        None, "--registry", "-r", 
         help="Path to Python registry files (can be used multiple times)"
     ),
     params_path: Optional[Path] = typer.Option(
@@ -210,6 +211,16 @@ def build_command(
     try:
         print_build_progress(1, 6, "Loading configuration...")
         time.sleep(0.5)
+
+        raw_config = yaml.safe_load(config_file.read_text())
+        config_registry = raw_config.get("registry")
+
+        if isinstance(config_registry, (str, Path, list)):
+            config_registry = [Path(p) for p in ([config_registry] if isinstance(config_registry, (str, Path)) else config_registry)]
+        else:
+            raise TypeError(f"Unsupported type for 'registry': {type(config_registry)}")
+
+        registry_files = registry_files or config_registry or [Path("registry.py")]
         
         if dry_run:
             print_build_progress(6, 6, "Dry run complete - configuration is valid!")
