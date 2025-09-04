@@ -217,8 +217,6 @@ def build_command(
 
         if isinstance(config_registry, (str, Path, list)):
             config_registry = [Path(p) for p in ([config_registry] if isinstance(config_registry, (str, Path)) else config_registry)]
-        else:
-            raise TypeError(f"Unsupported type for 'registry': {type(config_registry)}")
 
         registry_files = registry_files or config_registry or [Path("registry.py")]
         
