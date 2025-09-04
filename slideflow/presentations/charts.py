@@ -122,6 +122,7 @@ class BaseChart(BaseModel, ABC):
     y: Annotated[Union[float, str], Field(50, description = "Y position (supports expressions)")]
     dimensions_format: Annotated[str, Field("pt", description = "Dimension format: 'pt', 'emu', 'relative', or 'expression'")]
     alignment_format: Annotated[Optional[str], Field(None, description = "Alignment format like 'center-top', 'left-bottom'")]
+    scale: Annotated[Optional[float], Field(2.0, description = "Image scaling factor for higher resolution")]
     
     @field_validator("dimensions_format")
     @classmethod
@@ -480,7 +481,7 @@ class PlotlyGraphObjects(BaseChart):
         image_width = int(chart_width * POINTS_TO_PIXELS)
         image_height = int(chart_height * POINTS_TO_PIXELS)
         
-        return pio.to_image(fig, format = 'png', engine = 'auto', width = image_width, height = image_height)
+        return pio.to_image(fig, format = 'png', engine = 'auto', width = image_width, height = image_height, scale=self.scale)
     
     def _process_trace_config(self, config: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
         """Process trace configuration by replacing column references with data.
