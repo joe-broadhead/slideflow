@@ -117,7 +117,8 @@ def _get_compiled_project(
     project_dir: str,
     branch: Optional[str],
     target: str,
-    vars: Optional[dict[str, Any]]
+    vars: Optional[dict[str, Any]],
+    profiles_dir: Optional[str] = None,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
     
@@ -152,7 +153,14 @@ def _get_compiled_project(
         ...     {"start_date": "2024-01-01"}
         ... )
     """
-    cache_key = (package_url, project_dir, branch, target, json.dumps(vars or {}, sort_keys = True))
+    cache_key = (
+        package_url,
+        project_dir,
+        branch,
+        target,
+        json.dumps(vars or {}, sort_keys = True),
+        str(Path(profiles_dir).resolve()) if profiles_dir else None,
+    )
     
     with _cache_lock:
         if cache_key in _compiled_projects_cache:
@@ -163,7 +171,28 @@ def _get_compiled_project(
         # Compile the project
         clone_dir = Path(project_dir)
         _clone_repo(package_url, clone_dir, branch)
-        
+        # If provided, copy profiles directory or file into cloned project root
+        if profiles_dir:
+            try:
+                src = Path(profiles_dir)
+                if src.is_dir():
+                    # Prefer a direct profiles.yml in the given directory
+                    candidate = src / "profiles.yml"
+                    if candidate.exists():
+                        shutil.copy2(candidate, clone_dir / "profiles.yml")
+                    else:
+                        # Fallback: copy all yml/yaml files from directory
+                        for p in src.glob("*.y*ml"):
+                            shutil.copy2(p, clone_dir / p.name)
+                elif src.is_file():
+                    # If a file is passed, copy to profiles.yml in clone_dir
+                    dest = clone_dir / ("profiles.yml" if src.name != "profiles.yml" else src.name)
+                    shutil.copy2(src, dest)
+                else:
+                    logger.warning(f"profiles_dir path not found: {profiles_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to prepare dbt profiles from {profiles_dir}: {e}")
+
         cwd = Path.cwd()
         os.chdir(clone_dir)
         
@@ -231,6 +260,10 @@ class DBTManifestConnector(BaseModel, DataConnector):
     branch: Optional[str] = Field(None, description = "Git branch to checkout")
     target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
     vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
+    profiles_dir: Optional[str] = Field(
+        None,
+        description = "Optional path to a dbt profiles directory or profiles.yml to use. If provided, it will be copied into the cloned project directory before running dbt.",
+    )
     compile: bool = Field(Defaults.DBT_COMPILE, description = "Whether to compile project")
 
     model_config = ConfigDict(arbitrary_types_allowed = True, extra = "forbid")
@@ -266,7 +299,8 @@ class DBTManifestConnector(BaseModel, DataConnector):
             self.project_dir, 
             self.branch, 
             self.target, 
-            self.vars
+            self.vars,
+            self.profiles_dir,
         )
         
         # Load manifest.json
@@ -341,6 +375,7 @@ class DBTDatabricksConnector(DataConnector):
         target: str = Defaults.DBT_TARGET,
         vars: Optional[dict[str, Any]] = None,
         compile: bool = Defaults.DBT_COMPILE,
+        profiles_dir: Optional[str] = None,
     ) -> None:
         """Initialize the DBT-Databricks connector.
         
@@ -352,6 +387,7 @@ class DBTDatabricksConnector(DataConnector):
             target: DBT target environment for compilation.
             vars: Optional variables to pass to DBT compilation.
             compile: Whether to compile the project.
+            profiles_dir: Optional path to dbt profiles directory/file to copy into the project.
         """
         self.model_alias = model_alias
         self._manifest_connector = DBTManifestConnector(
@@ -360,7 +396,8 @@ class DBTDatabricksConnector(DataConnector):
             branch = branch,
             target = target,
             vars = vars,
-            compile = compile
+            profiles_dir = profiles_dir,
+            compile = compile,
         )
 
     def fetch_data(self) -> pd.DataFrame:
@@ -453,6 +490,10 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
     vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
     compile: bool = Field(Defaults.DBT_COMPILE, description = "Whether to compile")
+    profiles_dir: Optional[str] = Field(
+        None,
+        description = "Optional path to a dbt profiles directory or profiles.yml. Copied into the cloned project root before running dbt.",
+    )
 
     connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
 
