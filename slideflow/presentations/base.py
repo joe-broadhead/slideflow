@@ -684,10 +684,14 @@ class Presentation(BaseModel):
             # Collect from replacements
             for replacement in slide.replacements:
                 if hasattr(replacement, 'data_source') and replacement.data_source:
-                    source_key = (replacement.data_source.type, replacement.data_source.name)
-                    if source_key not in seen_sources:
-                        seen_sources.add(source_key)
-                        unique_sources.append((replacement.data_source.name, replacement.data_source))
+                    sources = replacement.data_source
+                    if not isinstance(sources, list):
+                        sources = [sources]
+                    for source in sources:
+                        source_key = (source.type, source.name)
+                        if source_key not in seen_sources:
+                            seen_sources.add(source_key)
+                            unique_sources.append((source.name, source))
 
             for chart in slide.charts:
                 if hasattr(chart, 'data_source') and chart.data_source:
