@@ -172,6 +172,12 @@ class AITextReplacement(BaseReplacement):
     provider_args: Annotated[Dict[str, Any], Field(default_factory = dict, description = "Keyword args for provider init & call")]
     data_source: Annotated[Optional[Union[DataSourceConfig, List[DataSourceConfig]]], Field(default = None, description = "Optional data source(s) to include")]
 
+    @root_validator(pre=True)
+    def _validate_data_source(cls, values):
+        if 'data_source' in values and not isinstance(values['data_source'], list):
+            values['data_source'] = [values['data_source']]
+        return values
+
     model_config = ConfigDict(
         extra = "forbid",
         discriminator = "type",
