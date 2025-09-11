@@ -119,6 +119,7 @@ def _get_compiled_project(
     target: str,
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str] = None,
+    profile_name: Optional[str] = None,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
     
@@ -137,6 +138,8 @@ def _get_compiled_project(
         branch: Optional Git branch to checkout.
         target: DBT target environment (e.g., 'dev', 'prod').
         vars: Optional DBT variables dictionary.
+        profiles_dir: Optional path to a dbt profiles directory or profiles.yml.
+        profile_name: Optional dbt profile name to override the one in dbt_project.yml.
         
     Returns:
         Path to the compiled DBT project directory.
@@ -160,6 +163,7 @@ def _get_compiled_project(
         target,
         json.dumps(vars or {}, sort_keys = True),
         str(Path(profiles_dir).resolve()) if profiles_dir else None,
+        profile_name,
     )
     
     with _cache_lock:
@@ -201,13 +205,22 @@ def _get_compiled_project(
             
             # Log dependencies install
             deps_start = time.time()
-            runner.invoke(["deps"])
+            deps_args = ["deps"]
+            if profile_name:
+                deps_args.extend(["--profile", profile_name])
+            if profiles_dir:
+                deps_args.extend(["--profiles-dir", str(clone_dir)])
+            runner.invoke(deps_args)
             deps_duration = time.time() - deps_start
             log_performance("dbt_deps", deps_duration, project = package_url, target = target)
             
             # Log compilation
             compile_start = time.time()
-            args = ["compile", "--profiles-dir", str(clone_dir), "--target", target]
+            args = ["compile", "--target", target]
+            if profiles_dir:
+                args.extend(["--profiles-dir", str(clone_dir)])
+            if profile_name:
+                args.extend(["--profile", profile_name])
             if vars:
                 args += ["--vars", json.dumps(vars)]
             runner.invoke(args)
@@ -242,6 +255,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
     Attributes:
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
+        profile_name: Optional dbt profile name to override project default.
         branch: Optional Git branch to checkout.
         target: DBT target environment for compilation.
         vars: Optional variables to pass to DBT compilation.
@@ -257,6 +271,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
     """
     package_url: str = Field(..., description = "Git URL of dbt project")
     project_dir: str = Field(..., description = "Local path to dbt project")
+    profile_name: Optional[str] = Field(None, description="dbt profile name to override the one in dbt_project.yml")
     branch: Optional[str] = Field(None, description = "Git branch to checkout")
     target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
     vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
@@ -301,6 +316,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
             self.target, 
             self.vars,
             self.profiles_dir,
+            self.profile_name,
         )
         
         # Load manifest.json
@@ -344,7 +360,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
         """
         raise NotImplementedError("DBTManifestConnector is for manifest parsing, not data fetching. Use get_compiled_query() instead.")
 
-class DBTDatabricksConnector(DataConnector):
+class DBTDatabricksConnector(BaseModel, DataConnector):
     """Connector that combines DBT model compilation with Databricks execution.
     
     This connector bridges DBT transformations with Databricks SQL execution.
@@ -355,6 +371,17 @@ class DBTDatabricksConnector(DataConnector):
     1. Compile the DBT project and extract model SQL
     2. Execute the compiled SQL against Databricks
     3. Return results as a pandas DataFrame
+
+    Attributes:
+        model_alias: The alias of the DBT model to execute.
+        package_url: Git URL of the DBT project repository.
+        project_dir: Local directory path for cloning the project.
+        profile_name: Optional dbt profile name to override project default.
+        branch: Optional Git branch to checkout.
+        target: DBT target environment for compilation.
+        vars: Optional variables to pass to DBT compilation.
+        compile: Whether to compile the project.
+        profiles_dir: Optional path to dbt profiles directory/file.
     
     Example:
         >>> connector = DBTDatabricksConnector(
@@ -366,38 +393,30 @@ class DBTDatabricksConnector(DataConnector):
         >>> data = connector.fetch_data()
         >>> print(f"Retrieved {len(data)} rows from DBT model")
     """
-    def __init__(
-        self,
-        model_alias: str,
-        package_url: str,
-        project_dir: str,
-        branch: Optional[str] = None,
-        target: str = Defaults.DBT_TARGET,
-        vars: Optional[dict[str, Any]] = None,
-        compile: bool = Defaults.DBT_COMPILE,
-        profiles_dir: Optional[str] = None,
-    ) -> None:
-        """Initialize the DBT-Databricks connector.
-        
-        Args:
-            model_alias: The alias of the DBT model to execute.
-            package_url: Git URL of the DBT project repository.
-            project_dir: Local directory path for cloning the project.
-            branch: Optional Git branch to checkout.
-            target: DBT target environment for compilation.
-            vars: Optional variables to pass to DBT compilation.
-            compile: Whether to compile the project.
-            profiles_dir: Optional path to dbt profiles directory/file to copy into the project.
-        """
-        self.model_alias = model_alias
+    model_alias: str
+    package_url: str
+    project_dir: str
+    profile_name: Optional[str] = None
+    branch: Optional[str] = None
+    target: str = Defaults.DBT_TARGET
+    vars: Optional[dict[str, Any]] = None
+    compile: bool = Defaults.DBT_COMPILE
+    profiles_dir: Optional[str] = None
+    _manifest_connector: DBTManifestConnector = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
         self._manifest_connector = DBTManifestConnector(
-            package_url = package_url,
-            project_dir = project_dir,
-            branch = branch,
-            target = target,
-            vars = vars,
-            profiles_dir = profiles_dir,
-            compile = compile,
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            compile=self.compile,
+            profile_name=self.profile_name,
         )
 
     def fetch_data(self) -> pd.DataFrame:
@@ -446,6 +465,7 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
         model_alias: The alias of the DBT model to execute.
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
+        profile_name: Optional dbt profile name to override project default.
         branch: Optional Git branch to checkout.
         target: DBT target environment for compilation.
         vars: Optional variables to pass to DBT compilation.
@@ -480,12 +500,22 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
         ...     "project_dir": "/tmp/metrics_dbt",
         ...     "target": "prod"
         ... }
+        >>> config = DBTDatabricksSourceConfig(
+        ...     name="user_metrics",
+        ...     type="databricks_dbt",
+        ...     model_alias="daily_active_users",
+        ...     package_url="https://github.com/company/metrics-dbt.git",
+        ...     project_dir="/tmp/metrics_dbt",
+        ...     target="prod",
+        ...     profile_name="my_alternate_profile"
+        ... )
         >>> config = DBTDatabricksSourceConfig(**config_dict)
     """
     type: Literal["databricks_dbt"] = Field("databricks_dbt", description = "dbt + Databricks data source")
     model_alias: str = Field(..., description = "dbt model alias")
     package_url: str = Field(..., description = "Git URL of dbt project")
     project_dir: str = Field(..., description = "Local project path")
+    profile_name: Optional[str] = Field(None, description="dbt profile name to override the one in dbt_project.yml")
     branch: Optional[str] = Field(None, description = "Git branch")
     target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
     vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
