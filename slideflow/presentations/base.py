@@ -425,7 +425,6 @@ class Presentation(BaseModel):
             ... except RenderingError as e:
             ...     print(f"✗ Rendering failed: {e}")
         """
-        logger = get_logger(__name__)
         start_time = time.time()
 
         presentation_id = self.provider.create_presentation(self.name)
