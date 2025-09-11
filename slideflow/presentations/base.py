@@ -66,6 +66,8 @@ from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.presentations.positioning import compute_chart_dimensions
 
+logger = get_logger(__name__)
+
 class PresentationResult(BaseModel):
     """Results from complete presentation rendering operations.
     
@@ -437,35 +439,21 @@ class Presentation(BaseModel):
         for slide in self.slides:
             # Generate charts for this slide
             for chart in slide.charts:
-                try:
-                    if chart.data_source:
-                        df = chart.data_source.fetch_data()
-                        if chart.data_transforms:
-                            df = apply_data_transforms(chart.data_transforms, df)
-
-                    image_data = chart.generate_chart_image(df)
-
-                    image_url, _ = self.provider.upload_chart_image(
-                        presentation_id, image_data, f"chart_{chart.title or 'untitled'}.png"
-                    )
-
-                    x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
-                        x=chart.x,
-                        y=chart.y,
-                        width=chart.width,
-                        height=chart.height,
-                        dimensions_format=chart.dimensions_format,
-                        alignment_format=chart.alignment_format,
-                    )
-
-                    self.provider.insert_chart_to_slide(
-                        presentation_id, slide.id, image_url,
-                        x_pt, y_pt, width_pt, height_pt
-                    )
-                    total_charts += 1
-                except Exception as e:
-                    logger.error(f"Failed to process chart on slide '{slide.id}'.")
+                max_retries = 3
+                delay_seconds = 3
+                for attempt in range(max_retries):
                     try:
+                        if chart.data_source:
+                            df = chart.data_source.fetch_data()
+                            if chart.data_transforms:
+                                df = apply_data_transforms(chart.data_transforms, df)
+
+                        image_data = chart.generate_chart_image(df)
+
+                        image_url, _ = self.provider.upload_chart_image(
+                            presentation_id, image_data, f"chart_{chart.title or 'untitled'}.png"
+                        )
+
                         x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
                             x=chart.x,
                             y=chart.y,
@@ -474,21 +462,44 @@ class Presentation(BaseModel):
                             dimensions_format=chart.dimensions_format,
                             alignment_format=chart.alignment_format,
                         )
-                        
-                        error_image_url = "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
+
                         self.provider.insert_chart_to_slide(
-                            presentation_id,
-                            slide.id,
-                            error_image_url,
-                            x=x_pt,
-                            y=y_pt,
-                            width=width_pt,
-                            height=height_pt,
+                            presentation_id, slide.id, image_url,
+                            x_pt, y_pt, width_pt, height_pt
                         )
-                        logger.info(f"Inserted error placeholder for chart on slide '{slide.id}'")
-                    except Exception as img_e:
-                        logger.error(f"Failed to insert error placeholder for chart on slide '{slide.id}': {img_e}")
-                    continue
+                        total_charts += 1
+                        break # Break out of retry loop on success
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' (attempt {attempt + 1}/{max_retries}). Retrying in {delay_seconds} seconds. Error: {e}")
+                            time.sleep(delay_seconds)
+                        else:
+                            logger.error(f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' after {max_retries} attempts. Inserting error placeholder. Error: {e}")
+                            # Insert error placeholder on final failure
+                            try:
+                                x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
+                                    x=chart.x,
+                                    y=chart.y,
+                                    width=chart.width,
+                                    height=chart.height,
+                                    dimensions_format=chart.dimensions_format,
+                                    alignment_format=chart.alignment_format,
+                                )
+                                
+                                error_image_url = "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
+                                self.provider.insert_chart_to_slide(
+                                    presentation_id,
+                                    slide.id,
+                                    error_image_url,
+                                    x=x_pt,
+                                    y=y_pt,
+                                    width=width_pt,
+                                    height=height_pt,
+                                )
+                                logger.info(f"Inserted error placeholder for chart on slide '{slide.id}'")
+                            except Exception as img_e:
+                                logger.error(f"Failed to insert error placeholder for chart on slide '{slide.id}': {img_e}")
+                            continue # Continue to next chart/replacement
             
             # Process replacements for this slide
             for replacement in slide.replacements:
