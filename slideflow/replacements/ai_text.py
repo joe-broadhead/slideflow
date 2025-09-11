@@ -62,7 +62,7 @@ Example:
 
 import inspect
 import pandas as pd
-from pydantic import Field, ConfigDict
+from pydantic import Field, ConfigDict, root_validator
 from typing import (
     Any,
     Type,
@@ -71,7 +71,9 @@ from typing import (
     Literal,
     Callable,
     Annotated,
-    Optional
+    Optional,
+    List,
+    Tuple
 )
 
 from slideflow.ai.providers import AIProvider
@@ -168,7 +170,13 @@ class AITextReplacement(BaseReplacement):
     prompt: Annotated[str, Field(..., description = "Prompt template for the AI provider")]
     provider: Annotated[Union[str, Type[AIProvider], AIProvider, Callable[..., str]], Field(default = "openai", description = "Provider name, class, instance, or plain callable")]
     provider_args: Annotated[Dict[str, Any], Field(default_factory = dict, description = "Keyword args for provider init & call")]
-    data_source: Annotated[Optional[DataSourceConfig], Field(default = None, description = "Optional data source to include")]
+    data_source: Annotated[Optional[Union[DataSourceConfig, List[DataSourceConfig]]], Field(default = None, description = "Optional data source(s) to include")]
+
+    @root_validator(pre=True)
+    def _validate_data_source(cls, values):
+        if 'data_source' in values and not isinstance(values['data_source'], list):
+            values['data_source'] = [values['data_source']]
+        return values
 
     model_config = ConfigDict(
         extra = "forbid",
@@ -236,8 +244,8 @@ class AITextReplacement(BaseReplacement):
 
         raise ReplacementError(f"Invalid AI provider: {Prov!r}")
 
-    def fetch_data(self) -> Optional[pd.DataFrame]:
-        """Fetch data from the configured data source for prompt enhancement.
+    def fetch_data(self) -> Optional[List[Tuple[str, pd.DataFrame]]]:
+        """Fetch data from the configured data source(s) for prompt enhancement.
         
         When a data_source is configured, this method retrieves the data that
         will be used to enhance the AI prompt with relevant context. The data
@@ -245,7 +253,7 @@ class AITextReplacement(BaseReplacement):
         to provide the AI with specific information for generating targeted content.
         
         Returns:
-            DataFrame containing the fetched data if a data source is configured,
+            A list of tuples, where each tuple contains the data source name and the DataFrame.
             None if no data source is set (prompt will be used as-is).
             
         Example:
@@ -253,14 +261,15 @@ class AITextReplacement(BaseReplacement):
             ...     type="ai_text",
             ...     placeholder="{{ANALYSIS}}",
             ...     prompt="Analyze this sales data",
-            ...     data_source=sales_source
+            ...     data_source=[sales_source, marketing_source]
             ... )
-            >>> data = replacement.fetch_data()
-            >>> # Returns DataFrame with sales data for prompt context
+            >>> data_frames = replacement.fetch_data()
+            >>> # Returns [('sales', DataFrame), ('marketing', DataFrame)]
         """
-        if self.data_source:
-            return self.data_source.fetch_data()
-        return None
+        if not self.data_source:
+            return None
+        
+        return [(ds.name, ds.fetch_data()) for ds in self.data_source]
 
     def get_replacement(self) -> str:
         """Generate AI-powered text content for the replacement.
@@ -315,14 +324,16 @@ class AITextReplacement(BaseReplacement):
         """
         prompt = self.prompt
 
-        df = self.fetch_data()
-        if df is not None:
-            try:
-                df = self.apply_data_transforms(df)
-            except Exception as e:
-                return 'Summary unable to be generated as the data was not available'
-            data = df.to_dict(orient = "records")
-            prompt += f"\n\nData:\n{data}"
+        named_dfs = self.fetch_data()
+        if named_dfs:
+            for name, df in named_dfs:
+                if df is not None:
+                    try:
+                        df = self.apply_data_transforms(df)
+                    except Exception as e:
+                        return f'Summary unable to be generated as data source "{name}" was not available'
+                    data = df.to_dict(orient="records")
+                    prompt += f"\n\nData from {name}:\n{data}"
 
         fn, call_args = self._prepare_provider()
         return fn(prompt, **call_args)

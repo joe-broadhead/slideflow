@@ -43,7 +43,7 @@ The builder handles:
 
 from pathlib import Path
 from pydantic import TypeAdapter
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.config import ConfigLoader
@@ -346,11 +346,9 @@ class PresentationBuilder:
         """
         config = spec.config.copy()
 
-        data_source_config = config.pop('data_source', None)
-        if data_source_config:
-            data_source = cls._build_data_source(data_source_config)
-            config['data_source'] = data_source
-        
+        if 'data_source' in config:
+            config['data_source'] = cls._build_data_source(config['data_source'])
+
         # Add type to config and let Pydantic discriminated union handle the rest
         config['type'] = spec.type
         
@@ -406,11 +404,9 @@ class PresentationBuilder:
         """
         config = spec.config.copy()
 
-        data_source_config = config.pop('data_source', None)
-        if data_source_config:
-            data_source = cls._build_data_source(data_source_config)
-            config['data_source'] = data_source
-        
+        if 'data_source' in config:
+            config['data_source'] = cls._build_data_source(config['data_source'])
+
         # Add type to config and let Pydantic discriminated union handle the rest
         config['type'] = spec.type
         
@@ -419,25 +415,21 @@ class PresentationBuilder:
         return adapter.validate_python(config)
     
     @classmethod
-    def _build_data_source(cls, config: Dict[str, Any]):
-        """Build a data source configuration from dictionary specification.
+    def _build_data_source(cls, config: Union[Dict[str, Any], List[Dict[str, Any]]]):
+        """Build a data source configuration from a dictionary or list of dictionaries.
         
         Constructs the appropriate data source type (CSV, JSON, Databricks, DBT)
-        based on the configuration dictionary. This method uses Pydantic's
+        based on the configuration. This method uses Pydantic's
         discriminated union system to validate and instantiate the correct
         data source type.
         
-        Data sources are used by charts and replacements to fetch data from
-        external systems. Each data source type has its own configuration
-        requirements and connection parameters.
-        
         Args:
-            config: Dictionary containing data source configuration with at
+            config: A dictionary or list of dictionaries containing data source configuration with at
                 minimum a 'type' field specifying the data source type
                 (csv, json, databricks, dbt) and type-specific parameters.
                 
         Returns:
-            Concrete DataSourceConfig instance (CSVDataSource, JSONDataSource,
+            A single or list of concrete DataSourceConfig instances (CSVDataSource, JSONDataSource,
             DatabricksDataSource, DBTDataSource) based on the type field.
             
         Raises:
@@ -461,5 +453,7 @@ class PresentationBuilder:
             ... }
             >>> data_source = PresentationBuilder._build_data_source(databricks_config)
         """
+        if isinstance(config, list):
+            return [cls._build_data_source(c) for c in config]
         adapter = TypeAdapter(DataSourceConfig)
         return adapter.validate_python(config)
