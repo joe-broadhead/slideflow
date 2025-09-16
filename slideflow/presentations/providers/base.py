@@ -394,13 +394,8 @@ class PresentationProvider(ABC):
         """
         pass
     
-    @abstractmethod
     def get_presentation_url(self, presentation_id: str) -> str:
         """Get the public URL for accessing a presentation.
-        
-        Returns a URL that can be used to view or edit the presentation in the
-        platform's web interface. The URL should be publicly accessible to users
-        who have been granted appropriate permissions.
         
         Args:
             presentation_id: Unique identifier of the presentation.
@@ -418,5 +413,14 @@ class PresentationProvider(ABC):
             >>> url = provider.get_presentation_url("presentation_123")
             >>> print(f"View presentation at: {url}")
             >>> # Example output: "https://docs.google.com/presentation/d/presentation_123"
+        """
+        pass
+
+    @abstractmethod
+    def delete_chart_image(self, file_id: str) -> None:
+        """Delete a chart image from the platform's storage.
+        
+        Args:
+            file_id: The unique identifier of the file to delete.
         """
         pass

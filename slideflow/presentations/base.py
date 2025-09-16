@@ -434,6 +434,7 @@ class Presentation(BaseModel):
 
         total_charts = 0
         total_replacements = 0
+        uploaded_file_ids = []
         
         for slide in self.slides:
             # Generate charts for this slide
@@ -449,9 +450,11 @@ class Presentation(BaseModel):
 
                         image_data = chart.generate_chart_image(df)
 
-                        image_url, _ = self.provider.upload_chart_image(
+                        image_url, file_id = self.provider.upload_chart_image(
                             presentation_id, image_data, f"chart_{chart.title or 'untitled'}.png"
                         )
+                        if file_id:
+                            uploaded_file_ids.append(file_id)
 
                         x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
                             x=chart.x,
@@ -540,6 +543,15 @@ class Presentation(BaseModel):
                     self.provider.config.share_with,
                     getattr(self.provider.config, 'share_role', 'writer')
                 )
+
+        # Clean up uploaded chart images
+        if uploaded_file_ids:
+            logger.info(f"Cleaning up {len(uploaded_file_ids)} uploaded chart images.")
+            for file_id in uploaded_file_ids:
+                try:
+                    self.provider.delete_chart_image(file_id)
+                except Exception as e:
+                    logger.warning(f"Failed to delete chart image {file_id}: {e}")
 
         render_time = time.time() - start_time
         
