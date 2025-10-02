@@ -445,8 +445,6 @@ class Presentation(BaseModel):
                     try:
                         if chart.data_source:
                             df = chart.data_source.fetch_data()
-                            if chart.data_transforms:
-                                df = apply_data_transforms(chart.data_transforms, df)
 
                         image_data = chart.generate_chart_image(df)
 
