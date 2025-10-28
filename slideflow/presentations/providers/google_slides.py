@@ -33,11 +33,10 @@ Example:
     >>> # Create configuration
     >>> config = GoogleSlidesProviderConfig(
     ...     provider_type="google_slides",
-    ...     credentials_path="/path/to/service_account.json",
+    ...     credentials="/path/to/service_account.json",
     ...     template_id="1ABC123_template_id_XYZ789",
     ...     share_with=["viewer@example.com"],
-    ...     share_role="reader"
-    ... )
+    ...     share_role="reader"    ... )
     >>> 
     >>> # Create provider
     >>> provider = GoogleSlidesProvider(config)
@@ -101,7 +100,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     
     Attributes:
         provider_type: Always "google_slides" for this provider.
-        credentials_path: Path to Google service account credentials JSON file.
+        credentials: Path to Google service account credentials JSON file.
         template_id: Optional Google Slides template ID to copy from when creating presentations.
         drive_folder_id: Optional Google Drive folder ID for organizing uploaded chart images.
         presentation_folder_id: Optional Google Drive folder ID for organizing created presentations.
@@ -111,7 +110,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     Example:
         >>> config = GoogleSlidesProviderConfig(
         ...     provider_type="google_slides",
-        ...     credentials_path="/path/to/service_account.json",
+        ...     credentials="/path/to/service_account.json",
         ...     template_id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
         ...     drive_folder_id="1FolderID_for_images",
         ...     presentation_folder_id="1FolderID_for_presentations",
@@ -153,7 +152,7 @@ class GoogleSlidesProvider(PresentationProvider):
     Example:
         >>> config = GoogleSlidesProviderConfig(
         ...     provider_type="google_slides",
-        ...     credentials_path="/path/to/service_account.json"
+        ...     credentials="/path/to/service_account.json"
         ... )
         >>> provider = GoogleSlidesProvider(config)
         >>> 
@@ -197,13 +196,12 @@ class GoogleSlidesProvider(PresentationProvider):
         
         
         # Initialize Google API services
-        if config.credentials is not null:
+        if config.credentials:
             loaded_credentials = config.credentials
-        elif config.credentials is null and os.getenv("GOOGLE_APPLICATION_CREDENTIALS") is not null:
-            loaded_credentials = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-        elif config.credentials is null and os.getenv("GOOGLE_APPLICATION_CREDENTIALS") is null:
-            raise AuthenticationError(f"Credentials config not set and did not find environment variable GOOGLE_APPLICATION_CREDENTIALS. Please provide one of them.")
-
+        elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            loaded_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        else:
+            raise AuthenticationError("Credentials config not set and did not find environment variable GOOGLE_APPLICATION_CREDENTIALS. Please provide one of them.")
 
         if os.path.exists(loaded_credentials) and os.path.isfile(loaded_credentials):
             credentials_path = Path(loaded_credentials)
