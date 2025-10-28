@@ -3,3 +3,4 @@
 /slideflow.egg-info
 .env*
 .venv
+build/*
