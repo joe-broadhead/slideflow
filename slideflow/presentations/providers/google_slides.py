@@ -202,8 +202,7 @@ class GoogleSlidesProvider(PresentationProvider):
         elif config.credentials is null and os.getenv("GOOGLE_APPLICATION_CREDENTIALS") is not null:
             loaded_credentials = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
         elif config.credentials is null and os.getenv("GOOGLE_APPLICATION_CREDENTIALS") is null:
-            if not credentials_path.exists():
-                raise AuthenticationError(f"Credentials config not set and did not find environment variable GOOGLE_APPLICATION_CREDENTIALS. Please provide one of them.")
+            raise AuthenticationError(f"Credentials config not set and did not find environment variable GOOGLE_APPLICATION_CREDENTIALS. Please provide one of them.")
 
 
         if os.path.exists(loaded_credentials) and os.path.isfile(loaded_credentials):
