@@ -11,6 +11,8 @@ The module provides:
 """
 import os
 import time
+import json
+from pathlib import Path
 from google.oauth2 import service_account
 from typing import Any, ClassVar, Optional, Protocol, runtime_checkable
 
@@ -170,7 +172,7 @@ class GeminiProvider:
         vertex: bool = False,
         project: Optional[str] = None,
         location: Optional[str] = None,
-        credentials_path: Optional[str] = None,
+        credentials: Optional[str] = None,
         **defaults: Any,
     ) -> None:
         """Initializes the GeminiProvider instance.
@@ -180,14 +182,14 @@ class GeminiProvider:
             vertex: If True, use Vertex AI instead of Gemini API.
             project: GCP project ID (required for Vertex AI).
             location: GCP location/region (required for Vertex AI).
-            credentials_path: Path to service account key file (optional).
+            credentials: Path to service account key file or a JSON string of the credentials (optional).
             **defaults: Default parameters for all generation requests.
         """
         self.model = model
         self.vertex = vertex
         self.project = project
         self.location = location
-        self.credentials_path = credentials_path or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.credentials = credentials or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         self.defaults = defaults
 
     def generate_text(self, prompt: str, **kwargs: Any) -> str:
@@ -206,7 +208,7 @@ class GeminiProvider:
             APIError: For all other errors.
         """
         params = {**self.defaults, **kwargs}
-        invalid_params = {'model', 'vertex', 'project', 'location', 'credentials_path'}
+        invalid_params = {'model', 'vertex', 'project', 'location', 'credentials'}
         generation_config = {}
         valid_generation_params = {'max_output_tokens', 'temperature', 'top_p', 'top_k'}
 
@@ -229,26 +231,26 @@ class GeminiProvider:
                 scopes_definition = ["https://www.googleapis.com/auth/cloud-platform"]
 
                 # Initialize Google API services
-                if os.path.exists(self.credentials_pathh) and os.path.isfile(self.credentials_path):
-                    credentials_path = Path(self.credentials_path)
+                if self.credentials and os.path.exists(self.credentials) and os.path.isfile(self.credentials):
+                    credentials_path = Path(self.credentials)
 
                     if not credentials_path.exists():
-                        raise AuthenticationError(f"Credentials file not found: {self.credentials_path}")
+                        raise APIAuthenticationError(f"Credentials file not found: {self.credentials}")
                     
-                    credentials = Credentials.from_service_account_file(
+                    credentials = service_account.Credentials.from_service_account_file(
                         str(credentials_path),
                         scopes = scopes_definition
                     )
-                else:
+                elif self.credentials:
                     try:
-                        credentials_data = json.loads(env_var_value)
+                        credentials_data = json.loads(self.credentials)
 
-                        credentials = Credentials.from_service_account_info(
-                            str(self.credentials_path),
+                        credentials = service_account.Credentials.from_service_account_info(
+                            credentials_data,
                             scopes = scopes_definition
                         )
-                    else:
-                        raise AuthenticationError(f"Credentials string not recognized as valid: {config.credentials_path}")
+                    except json.JSONDecodeError:
+                        raise APIAuthenticationError(f"Credentials string not recognized as valid: {self.credentials}")
 
                 client = genai.Client(
                     vertexai = True,

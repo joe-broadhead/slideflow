@@ -21,7 +21,7 @@ Example:
     >>> # Create a configuration
     >>> config = ProviderConfig(
     ...     type="google_slides",
-    ...     config={"credentials_path": "/path/to/creds.json"}
+    ...     config={"credentials": "/path/to/creds.json"}
     ... )
     >>> 
     >>> # Create provider using factory

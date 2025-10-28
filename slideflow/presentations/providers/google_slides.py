@@ -69,6 +69,7 @@ Example:
 import io
 import time
 import threading
+import json
 from pathlib import Path
 from pydantic import Field
 from typing import List, Tuple, Optional, Literal, Dict, Any, Callable
@@ -118,7 +119,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         ... )
     """
     provider_type: Literal["google_slides"] = "google_slides"
-    credentials_path: str = Field(..., description = "Path to Google service account credentials")
+    credentials: str = Field(..., description = "Google service account credentials as a file path or a JSON string.")
     template_id: Optional[str] = Field(None, description = "Google Slides template ID to copy from")
     presentation_folder_id: Optional[str] = Field(None, description = "Google Drive folder ID for presentations")
     new_folder_name: Optional[str] = Field(None, description="Name for a new subfolder to be created in the presentation_folder_id.")
@@ -195,11 +196,11 @@ class GoogleSlidesProvider(PresentationProvider):
         
         
         # Initialize Google API services
-        if os.path.exists(config.credentials_path) and os.path.isfile(config.credentials_path):
-            credentials_path = Path(config.credentials_path)
+        if os.path.exists(config.credentials) and os.path.isfile(config.credentials):
+            credentials_path = Path(config.credentials)
 
             if not credentials_path.exists():
-                raise AuthenticationError(f"Credentials file not found: {config.credentials_path}")
+                raise AuthenticationError(f"Credentials file not found: {config.credentials}")
             
             credentials = Credentials.from_service_account_file(
                 str(credentials_path),
@@ -207,14 +208,14 @@ class GoogleSlidesProvider(PresentationProvider):
             )
         else:
             try:
-                credentials_data = json.loads(env_var_value)
+                credentials_data = json.loads(config.credentials)
 
                 credentials = Credentials.from_service_account_info(
-                    str(config.credentials_path),
+                    credentials_data,
                     scopes = self.SCOPES
                 )
-            else:
-                raise AuthenticationError(f"Credentials string not recognized as valid: {config.credentials_path}")
+            except json.JSONDecodeError:
+                raise AuthenticationError(f"Credentials string not recognized as valid: {config.credentials}")
         
         self.slides_service = build('slides', 'v1', credentials = credentials)
         self.drive_service = build('drive', 'v3', credentials = credentials)

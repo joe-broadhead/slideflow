@@ -28,7 +28,7 @@ Once you have created the template, copy its ID from the URL in your browser.
 Open the `config.yml` file and make the following changes:
 
 -   Replace `your_google_slides_template_id` with the ID of your Google Slides template.
--   Replace `/path/to/your/credentials.json` with the path to your Google Cloud service account credentials file.
+-   Replace `/path/to/your/credentials.json` with the path to your Google Cloud service account credentials file or the JSON string itself.
 
 ## 5. Run the Quickstart
 

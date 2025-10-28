@@ -394,7 +394,7 @@ class ProviderConfig(BaseModel):
         >>> google_config = ProviderConfig(
         ...     type="google_slides",
         ...     config={
-        ...         "credentials_path": "/secure/service_account.json",
+        ...         "credentials": "/path/to/credentials.json or credentials_json",
         ...         "template_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
         ...         "drive_folder_id": "1FolderID_for_images",
         ...         "share_with": ["team@company.com"],

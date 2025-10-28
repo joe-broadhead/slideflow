@@ -80,7 +80,7 @@ class PresentationBuilder:
         >>> # provider:
         >>> #   type: google_slides
         >>> #   config:
-        >>> #     credentials_path: /path/to/creds.json
+        >>> #     credentials: /path/to/creds.json
         >>> # presentation:
         >>> #   name: "{{month}} Report"
         >>> #   slides:
@@ -149,7 +149,7 @@ class PresentationBuilder:
             >>> # provider:
             >>> #   type: google_slides
             >>> #   config:
-            >>> #     credentials_path: "{{CREDS_PATH}}"
+            >>> #     credentials: "{{CREDS_PATH}}"
             >>> # presentation:
             >>> #   name: "Q{{quarter}} {{year}} Report"
             >>> #   slides:
@@ -217,7 +217,7 @@ class PresentationBuilder:
             >>> config = PresentationConfig(
             ...     provider=ProviderConfig(
             ...         type="google_slides",
-            ...         config={"credentials_path": "/path/to/creds.json"}
+            ...         config={"credentials": "/path/to/creds.json"}
             ...     ),
             ...     presentation=PresentationSpec(
             ...         name="Programmatic Presentation",

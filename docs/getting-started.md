@@ -20,7 +20,7 @@ Before you can generate a presentation, you'll need a few things:
     -   Google Slides API
     -   Google Drive API
 
-    Create a service account, download the JSON credentials file, and save it to your local machine. You'll need the path to this file for your configuration.
+    Create a service account and download the JSON credentials. You can provide the credentials as a path to the JSON file or as a JSON string.
 
 ## 3. Create Your Configuration File
 
@@ -41,7 +41,7 @@ presentation:
 provider:
   type: "google_slides"
   config:
-    credentials_path: "/path/to/your/credentials.json"
+    credentials: "/path/to/your/credentials.json"
     template_id: "your_google_slides_template_id"
 ```
 

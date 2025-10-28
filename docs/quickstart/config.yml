@@ -1,7 +1,7 @@
 provider:
   type: "google_slides"
   config:
-    credentials_path: "/path/to/your/credentials.json"
+    credentials: "/path/to/your/credentials.json"
     template_id: "your_google_slides_template_id"
     share_with: ["your_email@email.com"]
     share_role: "writer"
