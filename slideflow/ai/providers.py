@@ -226,11 +226,29 @@ class GeminiProvider:
                     raise APIAuthenticationError("Vertex AI requires project and location")
 
                 credentials = None
-                if self.credentials_path:
-                    credentials = service_account.Credentials.from_service_account_file(
-                        self.credentials_path,
-                        scopes = ["https://www.googleapis.com/auth/cloud-platform"],
+                scopes_definition = ["https://www.googleapis.com/auth/cloud-platform"]
+
+                # Initialize Google API services
+                if os.path.exists(self.credentials_pathh) and os.path.isfile(self.credentials_path):
+                    credentials_path = Path(self.credentials_path)
+
+                    if not credentials_path.exists():
+                        raise AuthenticationError(f"Credentials file not found: {self.credentials_path}")
+                    
+                    credentials = Credentials.from_service_account_file(
+                        str(credentials_path),
+                        scopes = scopes_definition
                     )
+                else:
+                    try:
+                        credentials_data = json.loads(env_var_value)
+
+                        credentials = Credentials.from_service_account_info(
+                            str(self.credentials_path),
+                            scopes = scopes_definition
+                        )
+                    else:
+                        raise AuthenticationError(f"Credentials string not recognized as valid: {config.credentials_path}")
 
                 client = genai.Client(
                     vertexai = True,

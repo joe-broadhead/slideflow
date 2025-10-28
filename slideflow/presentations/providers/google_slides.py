@@ -195,17 +195,27 @@ class GoogleSlidesProvider(PresentationProvider):
         
         
         # Initialize Google API services
+        if os.path.exists(config.credentials_path) and os.path.isfile(config.credentials_path):
+            credentials_path = Path(config.credentials_path)
 
-        # Initialize Google API services
-        credentials_path = Path(config.credentials_path)
-        if not credentials_path.exists():
-            raise AuthenticationError(f"Credentials file not found: {config.credentials_path}")
+            if not credentials_path.exists():
+                raise AuthenticationError(f"Credentials file not found: {config.credentials_path}")
+            
+            credentials = Credentials.from_service_account_file(
+                str(credentials_path),
+                scopes = self.SCOPES
+            )
+        else:
+            try:
+                credentials_data = json.loads(env_var_value)
 
-        credentials = Credentials.from_service_account_file(
-            str(credentials_path),
-            scopes = self.SCOPES
-        )
-
+                credentials = Credentials.from_service_account_info(
+                    str(config.credentials_path),
+                    scopes = self.SCOPES
+                )
+            else:
+                raise AuthenticationError(f"Credentials string not recognized as valid: {config.credentials_path}")
+        
         self.slides_service = build('slides', 'v1', credentials = credentials)
         self.drive_service = build('drive', 'v3', credentials = credentials)
     
