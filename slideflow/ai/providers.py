@@ -17,7 +17,7 @@ from google.oauth2 import service_account
 from typing import Any, ClassVar, Optional, Protocol, runtime_checkable
 
 from slideflow.constants import Defaults, Environment
-from slideflow.cli.utils import handle_google_credentials
+from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.logging import log_api_operation
 from slideflow.utilities.exceptions import AuthenticationError
 

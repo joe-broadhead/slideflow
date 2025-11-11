@@ -84,7 +84,7 @@ from slideflow.presentations.providers.base import (
     PresentationProviderConfig
 )
 from slideflow.constants import GoogleSlides
-from slideflow.cli.utils import handle_google_credentials
+from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger, log_api_operation
 
