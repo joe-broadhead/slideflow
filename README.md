@@ -91,7 +91,7 @@ To create your first presentation, you\'ll need:
 
     -   Set the `credentials` field in your `config.yml` to the path of your JSON credentials file.
     -   Set the `credentials` field in your `config.yml` to the JSON content of your credentials file as a string.
-    -   Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your JSON credentials file or the content of the file itself.
+    -   Set the `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable to the path of your JSON credentials file or the content of the file itself.
 
 Once you have these, you can run the `build` command:
 
