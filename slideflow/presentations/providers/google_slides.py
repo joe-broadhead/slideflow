@@ -84,6 +84,7 @@ from slideflow.presentations.providers.base import (
     PresentationProviderConfig
 )
 from slideflow.constants import GoogleSlides
+from slideflow.cli.utils import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger, log_api_operation
 
@@ -193,36 +194,18 @@ class GoogleSlidesProvider(PresentationProvider):
         """
         super().__init__(config)
         self.config: GoogleSlidesProviderConfig = config
-        
-        
+
+
         # Initialize Google API services
-        if config.credentials:
-            loaded_credentials = config.credentials
-        elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-            loaded_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        else:
-            raise AuthenticationError("Credentials config not set and did not find environment variable GOOGLE_APPLICATION_CREDENTIALS. Please provide one of them.")
+        loaded_credentials = handle_google_credentials(config.credentials)
 
-        if os.path.exists(loaded_credentials) and os.path.isfile(loaded_credentials):
-            credentials_path = Path(loaded_credentials)
-
-            if not credentials_path.exists():
-                raise AuthenticationError(f"Credentials file not found: {loaded_credentials}")
-            
-            credentials = Credentials.from_service_account_file(
-                str(credentials_path),
+        try:
+            credentials = Credentials.from_service_account_info(
+                loaded_credentials,
                 scopes = self.SCOPES
             )
-        else:
-            try:
-                credentials_data = json.loads(loaded_credentials)
-
-                credentials = Credentials.from_service_account_info(
-                    credentials_data,
-                    scopes = self.SCOPES
-                )
-            except json.JSONDecodeError:
-                raise AuthenticationError(f"Credentials string not recognized as valid: {loaded_credentials}")
+        except error_msg:
+            raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
         
         self.slides_service = build('slides', 'v1', credentials = credentials)
         self.drive_service = build('drive', 'v3', credentials = credentials)

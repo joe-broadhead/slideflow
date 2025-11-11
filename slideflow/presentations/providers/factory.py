@@ -131,7 +131,7 @@ class ProviderFactory:
             >>> config = ProviderConfig(
             ...     type="google_slides",
             ...     config={
-            ...         "credentials_path": "/path/to/service_account.json",
+            ...         "credentials": "/path/to/service_account.json",
             ...         "template_id": "template_123"
             ...     }
             ... )
@@ -221,7 +221,7 @@ class ProviderFactory:
             >>> # Create configuration instance
             >>> config = config_class(
             ...     provider_type="google_slides",
-            ...     credentials_path="/path/to/creds.json"
+            ...     credentials="/path/to/creds.json"
             ... )
         """
         return config_registry.get_class(provider_type)

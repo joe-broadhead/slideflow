@@ -17,8 +17,9 @@ from google.oauth2 import service_account
 from typing import Any, ClassVar, Optional, Protocol, runtime_checkable
 
 from slideflow.constants import Defaults, Environment
+from slideflow.cli.utils import handle_google_credentials
 from slideflow.utilities.logging import log_api_operation
-from slideflow.utilities.exceptions import APIError, APIRateLimitError, APIAuthenticationError
+from slideflow.utilities.exceptions import AuthenticationError
 
 @runtime_checkable
 class AIProvider(Protocol):
@@ -159,7 +160,7 @@ class GeminiProvider:
         vertex (bool): Whether to use Vertex AI instead of standard Gemini API.
         project (Optional[str]): GCP project ID (required for Vertex AI).
         location (Optional[str]): GCP location/region (required for Vertex AI).
-        credentials_path (Optional[str]): Path to the service account JSON file.
+        credentials (Optional[str]): Path to the service account JSON file.
         defaults (dict): Default generation parameters (e.g., temperature).
     """
 
@@ -189,7 +190,7 @@ class GeminiProvider:
         self.vertex = vertex
         self.project = project
         self.location = location
-        self.credentials = credentials or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.credentials = credentials
         self.defaults = defaults
 
     def generate_text(self, prompt: str, **kwargs: Any) -> str:
@@ -227,30 +228,18 @@ class GeminiProvider:
                 if not self.project or not self.location:
                     raise APIAuthenticationError("Vertex AI requires project and location")
 
+                loaded_credentials = handle_google_credentials(self.credentials)
                 credentials = None
                 scopes_definition = ["https://www.googleapis.com/auth/cloud-platform"]
 
                 # Initialize Google API services
-                if self.credentials and os.path.exists(self.credentials) and os.path.isfile(self.credentials):
-                    credentials_path = Path(self.credentials)
-
-                    if not credentials_path.exists():
-                        raise APIAuthenticationError(f"Credentials file not found: {self.credentials}")
-                    
-                    credentials = service_account.Credentials.from_service_account_file(
-                        str(credentials_path),
+                try loaded_credentials:
+                    credentials = service_account.Credentials.from_service_account_info(
+                        loaded_credentials,
                         scopes = scopes_definition
                     )
-                elif self.credentials:
-                    try:
-                        credentials_data = json.loads(self.credentials)
-
-                        credentials = service_account.Credentials.from_service_account_info(
-                            credentials_data,
-                            scopes = scopes_definition
-                        )
-                    except json.JSONDecodeError:
-                        raise APIAuthenticationError(f"Credentials string not recognized as valid: {self.credentials}")
+                except error_msg:
+                    raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
 
                 client = genai.Client(
                     vertexai = True,

@@ -48,8 +48,7 @@ Example:
     ...     ),
     ...     provider=ProviderConfig(
     ...         type="google_slides",
-    ...         config={"credentials_path": "/path/to/creds.json"}
-    ...     )
+    ...         config={"credentials": "/path/to/creds.json"}    ...     )
     ... )
 
 Validation:
@@ -480,7 +479,7 @@ class PresentationConfig(BaseModel):
         ...     provider=ProviderConfig(
         ...         type="google_slides",
         ...         config={
-        ...             "credentials_path": "/secure/creds.json",
+        ...             "credentials": "/secure/creds.json",
         ...             "template_id": "presentation_template_123"
         ...         }
         ...     ),
@@ -502,7 +501,7 @@ class PresentationConfig(BaseModel):
         ...     ),
         ...     provider=ProviderConfig(
         ...         type="google_slides",
-        ...         config={"credentials_path": "/path/to/creds.json"}
+        ...         config={"credentials": "/path/to/creds.json"}
         ...     )
         ... )
         
