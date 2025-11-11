@@ -46,8 +46,8 @@ dev = [
 [project.scripts]
 slideflow = "slideflow.cli.main:app"
 
-[tool.setuptools]
-packages = ["slideflow"]
+[tool.setuptools.packages.find]
+include = ["slideflow*"]
 
 [tool.black]
 line-length = 88

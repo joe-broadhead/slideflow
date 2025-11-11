@@ -233,7 +233,7 @@ class GeminiProvider:
                 scopes_definition = ["https://www.googleapis.com/auth/cloud-platform"]
 
                 # Initialize Google API services
-                try loaded_credentials:
+                try:
                     credentials = service_account.Credentials.from_service_account_info(
                         loaded_credentials,
                         scopes = scopes_definition
