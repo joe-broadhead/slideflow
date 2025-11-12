@@ -204,7 +204,7 @@ class GoogleSlidesProvider(PresentationProvider):
                 loaded_credentials,
                 scopes = self.SCOPES
             )
-        except error_msg:
+        except Exception as error_msg:
             raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
         
         self.slides_service = build('slides', 'v1', credentials = credentials)

@@ -19,7 +19,10 @@ from typing import Any, ClassVar, Optional, Protocol, runtime_checkable
 from slideflow.constants import Defaults, Environment
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.logging import log_api_operation
-from slideflow.utilities.exceptions import AuthenticationError
+from slideflow.utilities.exceptions import APIError, APIRateLimitError, APIAuthenticationError
+from slideflow.utilities.logging import get_logger
+
+logger = get_logger(__name__)
 
 @runtime_checkable
 class AIProvider(Protocol):
@@ -238,8 +241,8 @@ class GeminiProvider:
                         loaded_credentials,
                         scopes = scopes_definition
                     )
-                except error_msg:
-                    raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
+                except Exception as error_msg:
+                    raise APIAuthenticationError(f"Credentials authentication failed: {error_msg}")
 
                 client = genai.Client(
                     vertexai = True,
@@ -276,7 +279,7 @@ class GeminiProvider:
                 config = genai.GenerationConfig(**generation_config) if generation_config else None
                 model = genai.GenerativeModel(self.model)
                 response = model.generate_content(
-                    prompt, 
+                    prompt,
                     generation_config=config
                 )
 
