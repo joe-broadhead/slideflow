@@ -31,7 +31,7 @@ Example:
     >>> 
     >>> # Create a Google Slides provider configuration
     >>> config = GoogleSlidesProviderConfig(
-    ...     credentials_path="/path/to/credentials.json"
+    ...     credentials="/path/to/credentials.json"
     ... )
     >>> 
     >>> # Create provider using factory

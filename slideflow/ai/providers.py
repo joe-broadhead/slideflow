@@ -11,12 +11,18 @@ The module provides:
 """
 import os
 import time
+import json
+from pathlib import Path
 from google.oauth2 import service_account
 from typing import Any, ClassVar, Optional, Protocol, runtime_checkable
 
 from slideflow.constants import Defaults, Environment
+from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.logging import log_api_operation
 from slideflow.utilities.exceptions import APIError, APIRateLimitError, APIAuthenticationError
+from slideflow.utilities.logging import get_logger
+
+logger = get_logger(__name__)
 
 @runtime_checkable
 class AIProvider(Protocol):
@@ -157,7 +163,7 @@ class GeminiProvider:
         vertex (bool): Whether to use Vertex AI instead of standard Gemini API.
         project (Optional[str]): GCP project ID (required for Vertex AI).
         location (Optional[str]): GCP location/region (required for Vertex AI).
-        credentials_path (Optional[str]): Path to the service account JSON file.
+        credentials (Optional[str]): Path to the service account JSON file.
         defaults (dict): Default generation parameters (e.g., temperature).
     """
 
@@ -170,7 +176,7 @@ class GeminiProvider:
         vertex: bool = False,
         project: Optional[str] = None,
         location: Optional[str] = None,
-        credentials_path: Optional[str] = None,
+        credentials: Optional[str] = None,
         **defaults: Any,
     ) -> None:
         """Initializes the GeminiProvider instance.
@@ -180,14 +186,14 @@ class GeminiProvider:
             vertex: If True, use Vertex AI instead of Gemini API.
             project: GCP project ID (required for Vertex AI).
             location: GCP location/region (required for Vertex AI).
-            credentials_path: Path to service account key file (optional).
+            credentials: Path to service account key file or a JSON string of the credentials (optional).
             **defaults: Default parameters for all generation requests.
         """
         self.model = model
         self.vertex = vertex
         self.project = project
         self.location = location
-        self.credentials_path = credentials_path or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.credentials = credentials
         self.defaults = defaults
 
     def generate_text(self, prompt: str, **kwargs: Any) -> str:
@@ -206,7 +212,7 @@ class GeminiProvider:
             APIError: For all other errors.
         """
         params = {**self.defaults, **kwargs}
-        invalid_params = {'model', 'vertex', 'project', 'location', 'credentials_path'}
+        invalid_params = {'model', 'vertex', 'project', 'location', 'credentials'}
         generation_config = {}
         valid_generation_params = {'max_output_tokens', 'temperature', 'top_p', 'top_k'}
 
@@ -225,12 +231,18 @@ class GeminiProvider:
                 if not self.project or not self.location:
                     raise APIAuthenticationError("Vertex AI requires project and location")
 
+                loaded_credentials = handle_google_credentials(self.credentials)
                 credentials = None
-                if self.credentials_path:
-                    credentials = service_account.Credentials.from_service_account_file(
-                        self.credentials_path,
-                        scopes = ["https://www.googleapis.com/auth/cloud-platform"],
+                scopes_definition = ["https://www.googleapis.com/auth/cloud-platform"]
+
+                # Initialize Google API services
+                try:
+                    credentials = service_account.Credentials.from_service_account_info(
+                        loaded_credentials,
+                        scopes = scopes_definition
                     )
+                except Exception as error_msg:
+                    raise APIAuthenticationError(f"Credentials authentication failed: {error_msg}")
 
                 client = genai.Client(
                     vertexai = True,
@@ -267,7 +279,7 @@ class GeminiProvider:
                 config = genai.GenerationConfig(**generation_config) if generation_config else None
                 model = genai.GenerativeModel(self.model)
                 response = model.generate_content(
-                    prompt, 
+                    prompt,
                     generation_config=config
                 )
 

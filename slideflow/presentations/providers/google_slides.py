@@ -33,11 +33,10 @@ Example:
     >>> # Create configuration
     >>> config = GoogleSlidesProviderConfig(
     ...     provider_type="google_slides",
-    ...     credentials_path="/path/to/service_account.json",
+    ...     credentials="/path/to/service_account.json",
     ...     template_id="1ABC123_template_id_XYZ789",
     ...     share_with=["viewer@example.com"],
-    ...     share_role="reader"
-    ... )
+    ...     share_role="reader"    ... )
     >>> 
     >>> # Create provider
     >>> provider = GoogleSlidesProvider(config)
@@ -67,8 +66,10 @@ Example:
 """
 
 import io
+import os
 import time
 import threading
+import json
 from pathlib import Path
 from pydantic import Field
 from typing import List, Tuple, Optional, Literal, Dict, Any, Callable
@@ -83,6 +84,7 @@ from slideflow.presentations.providers.base import (
     PresentationProviderConfig
 )
 from slideflow.constants import GoogleSlides
+from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger, log_api_operation
 
@@ -99,7 +101,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     
     Attributes:
         provider_type: Always "google_slides" for this provider.
-        credentials_path: Path to Google service account credentials JSON file.
+        credentials: Path to Google service account credentials JSON file.
         template_id: Optional Google Slides template ID to copy from when creating presentations.
         drive_folder_id: Optional Google Drive folder ID for organizing uploaded chart images.
         presentation_folder_id: Optional Google Drive folder ID for organizing created presentations.
@@ -109,7 +111,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     Example:
         >>> config = GoogleSlidesProviderConfig(
         ...     provider_type="google_slides",
-        ...     credentials_path="/path/to/service_account.json",
+        ...     credentials="/path/to/service_account.json",
         ...     template_id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
         ...     drive_folder_id="1FolderID_for_images",
         ...     presentation_folder_id="1FolderID_for_presentations",
@@ -118,7 +120,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         ... )
     """
     provider_type: Literal["google_slides"] = "google_slides"
-    credentials_path: str = Field(..., description = "Path to Google service account credentials")
+    credentials: Optional[str] = Field(None, description = "Google service account credentials as a file path or a JSON string.")
     template_id: Optional[str] = Field(None, description = "Google Slides template ID to copy from")
     presentation_folder_id: Optional[str] = Field(None, description = "Google Drive folder ID for presentations")
     new_folder_name: Optional[str] = Field(None, description="Name for a new subfolder to be created in the presentation_folder_id.")
@@ -151,7 +153,7 @@ class GoogleSlidesProvider(PresentationProvider):
     Example:
         >>> config = GoogleSlidesProviderConfig(
         ...     provider_type="google_slides",
-        ...     credentials_path="/path/to/service_account.json"
+        ...     credentials="/path/to/service_account.json"
         ... )
         >>> provider = GoogleSlidesProvider(config)
         >>> 
@@ -192,20 +194,19 @@ class GoogleSlidesProvider(PresentationProvider):
         """
         super().__init__(config)
         self.config: GoogleSlidesProviderConfig = config
-        
-        
-        # Initialize Google API services
+
 
         # Initialize Google API services
-        credentials_path = Path(config.credentials_path)
-        if not credentials_path.exists():
-            raise AuthenticationError(f"Credentials file not found: {config.credentials_path}")
+        loaded_credentials = handle_google_credentials(config.credentials)
 
-        credentials = Credentials.from_service_account_file(
-            str(credentials_path),
-            scopes = self.SCOPES
-        )
-
+        try:
+            credentials = Credentials.from_service_account_info(
+                loaded_credentials,
+                scopes = self.SCOPES
+            )
+        except Exception as error_msg:
+            raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
+        
         self.slides_service = build('slides', 'v1', credentials = credentials)
         self.drive_service = build('drive', 'v3', credentials = credentials)
     

@@ -87,7 +87,11 @@ To create your first presentation, you\'ll need:
 1.  **A Google Slides Template:** Create a Google Slides presentation with the layout and branding you want. Note the ID of each slide you want to populate.
 2.  **Your Data:** Have your data ready in a CSV file, or have your Databricks credentials configured.
 3.  **A YAML Configuration File:** This is where you\'ll define your presentation. See the [Configuration](#-configuration) section for more details.
-4.  **Google Cloud Credentials:** You\'ll need a Google Cloud service account with access to the Google Slides and Google Drive APIs. Save the JSON credentials file to your local machine.
+4.  **Google Cloud Credentials:** You'll need a Google Cloud service account with access to the Google Slides and Google Drive APIs. Provide your credentials in one of the following ways:
+
+    -   Set the `credentials` field in your `config.yml` to the path of your JSON credentials file.
+    -   Set the `credentials` field in your `config.yml` to the JSON content of your credentials file as a string.
+    -   Set the `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable to the path of your JSON credentials file or the content of the file itself.
 
 Once you have these, you can run the `build` command:
 
@@ -155,7 +159,7 @@ presentation:
 provider:
   type: "google_slides"
   config:
-    credentials_path: "/path/to/your/credentials.json"
+    credentials: "/path/to/your/credentials.json"
     template_id: "your_google_slides_template_id"
 
 template_paths:

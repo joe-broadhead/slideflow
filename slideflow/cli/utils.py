@@ -20,12 +20,12 @@ Example:
     >>> from slideflow.cli.utils import print_config_summary
     >>> print_config_summary(presentation_config)
 """
-
 from pathlib import Path
 from rich.panel import Panel
 from rich.console import Console
 
 from slideflow.presentations.config import PresentationConfig
+from slideflow.utilities.exceptions import AuthenticationError
 
 console = Console()
 
@@ -124,6 +124,9 @@ def print_config_summary(presentation_config: PresentationConfig) -> None:
         console.print(f"  🔄 Replacements: {total_replacements}")
     if total_charts:
         console.print(f"  📈 Charts: {total_charts}")
+
+
+
 
 def handle_validation_error(error: Exception, verbose: bool = False) -> None:
     """Handle and display validation errors consistently.

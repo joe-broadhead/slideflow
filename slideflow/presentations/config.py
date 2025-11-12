@@ -48,8 +48,7 @@ Example:
     ...     ),
     ...     provider=ProviderConfig(
     ...         type="google_slides",
-    ...         config={"credentials_path": "/path/to/creds.json"}
-    ...     )
+    ...         config={"credentials": "/path/to/creds.json"}    ...     )
     ... )
 
 Validation:
@@ -394,7 +393,7 @@ class ProviderConfig(BaseModel):
         >>> google_config = ProviderConfig(
         ...     type="google_slides",
         ...     config={
-        ...         "credentials_path": "/secure/service_account.json",
+        ...         "credentials": "/path/to/credentials.json or credentials_json",
         ...         "template_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
         ...         "drive_folder_id": "1FolderID_for_images",
         ...         "share_with": ["team@company.com"],
@@ -480,7 +479,7 @@ class PresentationConfig(BaseModel):
         ...     provider=ProviderConfig(
         ...         type="google_slides",
         ...         config={
-        ...             "credentials_path": "/secure/creds.json",
+        ...             "credentials": "/secure/creds.json",
         ...             "template_id": "presentation_template_123"
         ...         }
         ...     ),
@@ -502,7 +501,7 @@ class PresentationConfig(BaseModel):
         ...     ),
         ...     provider=ProviderConfig(
         ...         type="google_slides",
-        ...         config={"credentials_path": "/path/to/creds.json"}
+        ...         config={"credentials": "/path/to/creds.json"}
         ...     )
         ... )
         

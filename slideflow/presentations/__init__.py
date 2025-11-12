@@ -71,7 +71,7 @@ Example Usage:
     >>> # Create provider
     >>> provider_config = GoogleSlidesProviderConfig(
     ...     provider_type="google_slides",
-    ...     credentials_path="/path/to/creds.json"
+    ...     credentials="/path/to/creds.json"
     ... )
     >>> provider = GoogleSlidesProvider(provider_config)
     >>> 
