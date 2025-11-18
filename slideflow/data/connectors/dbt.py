@@ -51,6 +51,7 @@ Example:
 import os
 import time
 import json
+import re
 import shutil
 import threading
 import pandas as pd
@@ -79,13 +80,16 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
     checking out a specific branch. Removes any existing directory at the
     target location before cloning.
     
+    It supports expanding an environment variable for authentication tokens
+    in the format: https://$TOKEN_NAME@...
+    
     Args:
         git_url: Git repository URL to clone.
         clone_dir: Local directory path where the repository will be cloned.
         branch: Optional branch name to checkout. If None, uses default branch.
         
     Raises:
-        DataSourceError: If the Git operation fails.
+        DataSourceError: If the Git operation fails or the token variable is not set.
         
     Example:
         >>> _clone_repo(
@@ -95,6 +99,16 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         ... )
     """
     start_time = time.time()
+
+    # Expand environment variable for token
+    match = re.search(r"\$([A-Z_]+)", git_url)
+    if match:
+        token_name = match.group(1)
+        token = os.getenv(token_name)
+        if not token:
+            raise DataSourceError(f"Environment variable {token_name} not set for Git authentication.")
+        git_url = git_url.replace(f"${token_name}", token)
+
     if clone_dir.exists():
         shutil.rmtree(clone_dir)
     kwargs = {"branch": branch} if branch else {}
