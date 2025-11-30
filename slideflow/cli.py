@@ -58,4 +58,8 @@ Example:
 from slideflow.cli.main import app
 
 if __name__ == "__main__":
-    app()
+    try:
+        app()
+    except SystemExit as e:
+        if e.code != 0:
+            raise

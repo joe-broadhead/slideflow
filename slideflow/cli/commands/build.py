@@ -53,7 +53,7 @@ def build_single_presentation(
     index: int, 
     total: int, 
     print_lock: threading.Lock
-) -> Tuple[str, Any, int]:
+) -> Tuple[str, Any, int, dict]:
     """Build and render a single presentation with thread-safe logging.
     
     This function handles the complete presentation generation process for
@@ -79,6 +79,7 @@ def build_single_presentation(
             - presentation_name (str): Name of the generated presentation
             - result: Presentation result object with URL and metadata
             - index (int): Original index for tracking purposes
+            - params (dict): The parameters used for this presentation.
             
     Raises:
         Exception: Any error during presentation building or rendering.
@@ -94,7 +95,7 @@ def build_single_presentation(
         >>> params = {"title": "Q3 Report", "quarter": "Q3"}
         >>> lock = threading.Lock()
         >>> 
-        >>> name, result, idx = build_single_presentation(
+        >>> name, result, idx, params = build_single_presentation(
         ...     config, registries, params, 1, 1, lock
         ... )
         >>> print(f"Generated: {name} at {result.presentation_url}")
@@ -120,7 +121,7 @@ def build_single_presentation(
             print(f"✅ [{index}/{total}] Generated: {presentation.name}")
             print(f"   URL: {result.presentation_url}")
         
-        return (presentation.name, result, index)
+        return (presentation.name, result, index, params)
         
     except Exception as e:
         with print_lock:
@@ -141,7 +142,7 @@ def build_command(
         False, "--dry-run", 
         help="Validate config without building"
     )
-) -> None:
+) -> List[dict]:
     """Generate presentations from YAML configuration.
     
     This is the main entry point for the build command, which processes
@@ -166,6 +167,10 @@ def build_command(
             actually generating presentations. Useful for testing
             configurations.
             
+    Returns:
+        A list of dictionaries, where each dictionary contains the slide
+        URL and the parameters used for its generation.
+        
     Raises:
         typer.Exit: Exits with code 1 if any error occurs during processing.
         
@@ -223,7 +228,7 @@ def build_command(
         if dry_run:
             print_build_progress(6, 6, "Dry run complete - configuration is valid!")
             print_build_success()
-            return
+            return []
 
         print_build_progress(2, 6, "Initializing presentation builder...")
         time.sleep(0.3)
@@ -267,8 +272,13 @@ def build_command(
             for future in as_completed(future_to_params):
                 index, params = future_to_params[future]
                 try:
-                    name, result, pres_index = future.result()
-                    results.append((name, result))
+                    name, result, pres_index, returned_params = future.result()
+                    
+                    result_dict = returned_params.copy()
+                    result_dict['url'] = result.presentation_url
+                    result_dict['presentation_name'] = name
+                    results.append(result_dict)
+                    
                     completed_count += 1
 
                     with print_lock:
@@ -283,12 +293,14 @@ def build_command(
         time.sleep(0.3)
 
         # Sort results by original order and print summary
-        results.sort(key=lambda x: x[0])  # Sort by name for consistent output
+        results.sort(key=lambda x: x['presentation_name'])  # Sort by name for consistent output
         print(f"\n🎉 Successfully generated {len(results)} presentation(s):")
-        for name, result in results:
-            print(f"  • {name}: {result.presentation_url}")
+        for res in results:
+            print(f"  • {res['presentation_name']}: {res['url']}")
         
         print_build_success()
+        
+        return results
         
     except Exception as e:
         print_build_error(str(e))
