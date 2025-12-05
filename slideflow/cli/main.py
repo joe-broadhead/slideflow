@@ -93,7 +93,7 @@ def main(
     if ctx.invoked_subcommand is None:
         print_slideflow_banner()
         print_help_footer()
-        raise typer.Exit()
+        return
 
 app.command("validate")(validate_command)
 app.command("build")(build_command)
