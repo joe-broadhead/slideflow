@@ -141,6 +141,10 @@ def build_command(
     dry_run: Optional[bool] = typer.Option(
         False, "--dry-run", 
         help="Validate config without building"
+    ),
+    threads: Optional[int] = typer.Option(
+        None, "--threads", "-t",
+        help="Number of concurrent threads to use"
     )
 ) -> List[dict]:
     """Generate presentations from YAML configuration.
@@ -246,7 +250,10 @@ def build_command(
         print_lock = threading.Lock()
         
         # Determine optimal number of workers (limit to avoid overwhelming APIs)
-        max_workers = min(total_presentations, 5)  # Max 5 concurrent presentations
+        if threads:
+            max_workers = threads
+        else:
+            max_workers = min(total_presentations, 5)  # Max 5 concurrent presentations
         
         results = []
         completed_count = 0
