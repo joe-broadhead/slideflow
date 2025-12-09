@@ -143,7 +143,7 @@ def build_command(
         help="Validate config without building"
     ),
     threads: Optional[int] = typer.Option(
-        default=None, "--threads", "-t",
+        None,"--threads", "-t",
         help="Number of concurrent threads to use"
     )
 ) -> List[dict]:
