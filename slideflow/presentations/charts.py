@@ -61,6 +61,8 @@ from abc import ABC, abstractmethod
 from googleapiclient.http import MediaIoBaseUpload
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Dict, Any, Optional, Callable, Union, Annotated, Literal, Tuple
+from concurrent.futures import ProcessPoolExecutor, TimeoutError
+import logging
 
 from slideflow.constants import GoogleSlides, FileExtensions
 from slideflow.utilities.exceptions import ChartGenerationError
@@ -68,6 +70,51 @@ from slideflow.builtins.template_engine import get_template_engine
 from slideflow.presentations.positioning import safe_eval_expression
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
+
+logger = logging.getLogger(__name__)
+
+
+def def _execute_with_retry(func, *args, **kwargs):
+    """
+    Executes a function with a retry mechanism.
+    It will first try to generate a graph and wait 30 seconds.
+    If the process does not answer it will restart it with a 60 seconds timeout,
+    then 90 seconds. If it doesn't work at the end it will raise ChartGenerationError.
+    """
+    timeouts = [30, 60, 90]
+    for i, timeout in enumerate(timeouts):
+        try:
+            with ProcessPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(func, *args, **kwargs)
+                return future.result(timeout=timeout)
+        except TimeoutError:
+            logger.warning(
+                f"Function {func.__name__} timed out after {timeout} seconds. Retrying... "
+                f"Attempt {i + 1} of {len(timeouts)}"
+            )
+            continue
+    raise ChartGenerationError(f"Function {func.__name__} failed after all retries.")
+
+def _execute_with_retry(func, *args, **kwargs):
+    """
+    Executes a function with a retry mechanism.
+    It will first try to generate a graph and wait 30 seconds.
+    If the process does not answer it will restart it with a 60 seconds timeout,
+    then 90 seconds. If it doesn't work at the end it will raise ChartGenerationError.
+    """
+    timeouts = [30, 60, 90]
+    for i, timeout in enumerate(timeouts):
+        try:
+            with ProcessPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(func, *args, **kwargs)
+                return future.result(timeout=timeout)
+        except TimeoutError:
+            logger.warning(
+                f"Function {func.__name__} timed out after {timeout} seconds. Retrying... "
+                f"Attempt {i + 1} of {len(timeouts)}"
+            )
+            continue
+    raise ChartGenerationError(f"Function {func.__name__} failed after all retries.")
 
 class BaseChart(BaseModel, ABC):
     """Abstract base class for all chart types in Slideflow.
@@ -481,7 +528,15 @@ class PlotlyGraphObjects(BaseChart):
         image_width = int(chart_width * POINTS_TO_PIXELS)
         image_height = int(chart_height * POINTS_TO_PIXELS)
         
-        return pio.to_image(fig, format = 'png', engine = 'auto', width = image_width, height = image_height, scale=self.scale)
+        return _execute_with_retry(
+            pio.to_image,
+            fig,
+            format="png",
+            width=image_width,
+            height=image_height,
+            scale=self.scale,
+            engine="auto",
+        )
     
     def _process_trace_config(self, config: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
         """Process trace configuration by replacing column references with data.
