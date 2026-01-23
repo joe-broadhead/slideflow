@@ -74,7 +74,7 @@ from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 logger = logging.getLogger(__name__)
 
 
-def def _execute_with_retry(func, *args, **kwargs):
+def _execute_with_retry(func, *args, **kwargs):
     """
     Executes a function with a retry mechanism.
     It will first try to generate a graph and wait 30 seconds.
@@ -84,6 +84,7 @@ def def _execute_with_retry(func, *args, **kwargs):
     timeouts = [30, 60, 90]
     for i, timeout in enumerate(timeouts):
         try:
+            logger.info(f"Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)")
             with ProcessPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(func, *args, **kwargs)
                 return future.result(timeout=timeout)
@@ -95,26 +96,6 @@ def def _execute_with_retry(func, *args, **kwargs):
             continue
     raise ChartGenerationError(f"Function {func.__name__} failed after all retries.")
 
-def _execute_with_retry(func, *args, **kwargs):
-    """
-    Executes a function with a retry mechanism.
-    It will first try to generate a graph and wait 30 seconds.
-    If the process does not answer it will restart it with a 60 seconds timeout,
-    then 90 seconds. If it doesn't work at the end it will raise ChartGenerationError.
-    """
-    timeouts = [30, 60, 90]
-    for i, timeout in enumerate(timeouts):
-        try:
-            with ProcessPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(func, *args, **kwargs)
-                return future.result(timeout=timeout)
-        except TimeoutError:
-            logger.warning(
-                f"Function {func.__name__} timed out after {timeout} seconds. Retrying... "
-                f"Attempt {i + 1} of {len(timeouts)}"
-            )
-            continue
-    raise ChartGenerationError(f"Function {func.__name__} failed after all retries.")
 
 class BaseChart(BaseModel, ABC):
     """Abstract base class for all chart types in Slideflow.
