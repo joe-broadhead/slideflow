@@ -81,20 +81,23 @@ def _execute_with_retry(func, *args, **kwargs):
     If the process does not answer it will restart it with a 60 seconds timeout,
     then 90 seconds. If it doesn't work at the end it will raise ChartGenerationError.
     """
+    execution_id = uuid.uuid4().hex[:8]
     timeouts = [30, 60, 90]
     for i, timeout in enumerate(timeouts):
         try:
-            logger.info(f"Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)")
+            logger.info(f"[{execution_id}] Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)")
             with ProcessPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(func, *args, **kwargs)
-                return future.result(timeout=timeout)
+                result = future.result(timeout=timeout)
+                logger.info(f"[{execution_id}] Execution of {func.__name__} completed successfully")
+                return result
         except TimeoutError:
             logger.warning(
-                f"Function {func.__name__} timed out after {timeout} seconds. Retrying... "
+                f"[{execution_id}] Function {func.__name__} timed out after {timeout} seconds. Retrying... "
                 f"Attempt {i + 1} of {len(timeouts)}"
             )
             continue
-    raise ChartGenerationError(f"Function {func.__name__} failed after all retries.")
+    raise ChartGenerationError(f"[{execution_id}] Function {func.__name__} failed after all retries.")
 
 
 class BaseChart(BaseModel, ABC):
