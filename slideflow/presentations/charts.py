@@ -84,19 +84,30 @@ def _execute_with_retry(func, *args, **kwargs):
     execution_id = uuid.uuid4().hex[:8]
     timeouts = [30, 60, 90]
     for i, timeout in enumerate(timeouts):
+        executor = ProcessPoolExecutor(max_workers=1)
         try:
             logger.info(f"[{execution_id}] Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)")
-            with ProcessPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(func, *args, **kwargs)
-                result = future.result(timeout=timeout)
-                logger.info(f"[{execution_id}] Execution of {func.__name__} completed successfully")
-                return result
+            future = executor.submit(func, *args, **kwargs)
+            result = future.result(timeout=timeout)
+            logger.info(f"[{execution_id}] Execution of {func.__name__} completed successfully")
+            executor.shutdown(wait=True)
+            return result
         except TimeoutError:
+            # Terminate the stuck process to free resources
+            for pid, process in executor._processes.items():
+                process.terminate()
+            
+            # Do not wait for the process to finish
+            executor.shutdown(wait=False)
+            
             logger.warning(
                 f"[{execution_id}] Function {func.__name__} timed out after {timeout} seconds. Retrying... "
                 f"Attempt {i + 1} of {len(timeouts)}"
             )
             continue
+        except Exception:
+            executor.shutdown(wait=False)
+            raise
     raise ChartGenerationError(f"[{execution_id}] Function {func.__name__} failed after all retries.")
 
 
