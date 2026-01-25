@@ -122,6 +122,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     provider_type: Literal["google_slides"] = "google_slides"
     credentials: Optional[str] = Field(None, description = "Google service account credentials as a file path or a JSON string.")
     template_id: Optional[str] = Field(None, description = "Google Slides template ID to copy from")
+    drive_folder_id: Optional[str] = Field(None, description = "Google Drive folder ID for organizing uploaded chart images.")
     presentation_folder_id: Optional[str] = Field(None, description = "Google Drive folder ID for presentations")
     new_folder_name: Optional[str] = Field(None, description="Name for a new subfolder to be created in the presentation_folder_id.")
     new_folder_name_fn: Optional[Callable] = Field(None, description="Function to generate the new subfolder name dynamically.")
@@ -394,7 +395,7 @@ class GoogleSlidesProvider(PresentationProvider):
                 return _folder_id_cache[cache_key]
 
             # Escape single quotes for Drive query
-            escaped = str(folder_name).replace("'", r"\'")
+            escaped = str(folder_name).replace("'", r"\'" )
 
             try:
                 # Look up an existing folder with that name under the parent
@@ -511,7 +512,12 @@ class GoogleSlidesProvider(PresentationProvider):
         """Upload image to Google Drive and return public URL and file ID."""
         start_time = time.time()
         try:
+            # Prioritize dedicated image folder, fallback to presentation folder
+            destination_folder_id = self.config.drive_folder_id or self._get_or_create_destination_folder()
+            
             file_metadata = {"name": filename}
+            if destination_folder_id:
+                file_metadata["parents"] = [destination_folder_id]
             
             media = MediaIoBaseUpload(
                 io.BytesIO(image_bytes),
@@ -575,10 +581,23 @@ class GoogleSlidesProvider(PresentationProvider):
             raise
 
     def delete_chart_image(self, file_id: str) -> None:
-        """Delete an image from Google Drive."""
+        """Delete (trash) an image from Google Drive."""
         try:
-            self.drive_service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
-            logger.info(f"Deleted chart image with file_id: {file_id}")
+            # Try to move to trash first (requires fewer permissions than delete)
+            body = {'trashed': True}
+            self.drive_service.files().update(
+                fileId=file_id, 
+                body=body, 
+                supportsAllDrives=True
+            ).execute()
+            logger.info(f"Trashed chart image with file_id: {file_id}")
         except HttpError as error:
-            logger.error(f"Error deleting file {file_id}: {error}")
+            if error.resp.status == 403:
+                logger.warning(
+                    f"Could not trash chart image {file_id} (Permission denied). "
+                    "Service Account may lack 'Content Manager' role on the Shared Drive. "
+                    "File remains in Drive."
+                )
+            else:
+                logger.error(f"Error trashing file {file_id}: {error}")
             # Do not re-raise, we want to continue cleanup
