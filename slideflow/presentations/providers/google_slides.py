@@ -140,7 +140,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     new_folder_name_fn: Optional[Callable] = Field(None, description="Function to generate the new subfolder name dynamically.")
     share_with: List[str] = Field(default_factory = list, description = "Email addresses to share presentation with")
     share_role: str = Field(GoogleSlides.PERMISSION_WRITER, description = "Permission role: reader, writer, or commenter")
-    requests_per_second: float = Field(1.0, description = "Maximum number of API requests per second")
+    requests_per_second: float = Field(1.0, gt=0, description = "Maximum number of API requests per second")
 
 class GoogleSlidesProvider(PresentationProvider):
     """Google Slides presentation provider implementation.

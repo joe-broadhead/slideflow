@@ -128,6 +128,10 @@ def validate_command(
     
         presentation_config = PresentationConfig(**loader.config)
 
+        # Validate provider-specific configuration
+        from slideflow.presentations.providers.factory import ProviderFactory
+        ProviderFactory.get_config_class(presentation_config.provider.type)(**presentation_config.provider.config)
+
         print_success()
 
         print_config_summary(presentation_config)
