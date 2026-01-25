@@ -388,7 +388,7 @@ class BaseChart(BaseModel, ABC):
         uploaded_file = drive_service.files().create(
             body = file_metadata,
             media_body = media
-        ).execute()
+        ).execute(num_retries=3)
         
         file_id = uploaded_file['id']
         
@@ -396,7 +396,7 @@ class BaseChart(BaseModel, ABC):
         drive_service.permissions().create(
             fileId = file_id,
             body = {'role': 'reader', 'type': 'anyone'}
-        ).execute()
+        ).execute(num_retries=3)
 
         public_url = f"https://drive.google.com/uc?id={file_id}"
         return public_url, file_id

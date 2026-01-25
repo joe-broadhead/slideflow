@@ -357,7 +357,7 @@ class GoogleSlidesProvider(PresentationProvider):
                         body = permission,
                         sendNotificationEmail=True,
                         supportsAllDrives=True
-                    ).execute()
+                    ).execute(num_retries=3)
                     logger.info(f"Shared presentation with {email} as {role}")
             except HttpError as error:
                 logger.error(f"Error sharing presentation: {error}")
@@ -413,7 +413,7 @@ class GoogleSlidesProvider(PresentationProvider):
                         supportsAllDrives=True,
                         includeItemsFromAllDrives=True,
                     )
-                    .execute()
+                    .execute(num_retries=3)
                 )
                 files = resp.get("files", [])
                 if files:
@@ -434,7 +434,7 @@ class GoogleSlidesProvider(PresentationProvider):
                         fields="id",
                         supportsAllDrives=True,
                     )
-                    .execute()
+                    .execute(num_retries=3)
                 )
                 folder_id = new_folder.get("id")
                 logger.info("Created destination folder '%s' (id=%s)", folder_name, folder_id)
@@ -452,7 +452,7 @@ class GoogleSlidesProvider(PresentationProvider):
         start_time = time.time()
         try:
             body = {'title': title}
-            presentation = self.slides_service.presentations().create(body=body).execute()
+            presentation = self.slides_service.presentations().create(body=body).execute(num_retries=3)
             presentation_id = presentation.get('presentationId')
 
             destination_folder_id = self._get_or_create_destination_folder()
@@ -461,7 +461,7 @@ class GoogleSlidesProvider(PresentationProvider):
             if destination_folder_id:
                 try:
                     # Get the file to update its parents
-                    file = self.drive_service.files().get(fileId=presentation_id, fields='parents', supportsAllDrives=True).execute()
+                    file = self.drive_service.files().get(fileId=presentation_id, fields='parents', supportsAllDrives=True).execute(num_retries=3)
                     previous_parents = ",".join(file.get('parents'))
                     self.drive_service.files().update(
                         fileId=presentation_id,
@@ -469,7 +469,7 @@ class GoogleSlidesProvider(PresentationProvider):
                         removeParents=previous_parents,
                         fields='id, parents',
                         supportsAllDrives=True
-                    ).execute()
+                    ).execute(num_retries=3)
                 except HttpError as e:
                     logger.warning(
                         f"Presentation {presentation_id} created, but failed to move to folder "
@@ -500,7 +500,7 @@ class GoogleSlidesProvider(PresentationProvider):
                 fileId=template_id,
                 body=body,
                 supportsAllDrives=True
-            ).execute()
+            ).execute(num_retries=3)
             presentation_id = copied.get("id")
             logger.info(f"Copied template to '{title}' with ID: {presentation_id}")
             return presentation_id
@@ -512,12 +512,7 @@ class GoogleSlidesProvider(PresentationProvider):
         """Upload image to Google Drive and return public URL and file ID."""
         start_time = time.time()
         try:
-            # Prioritize dedicated image folder, fallback to presentation folder
-            destination_folder_id = self.config.drive_folder_id or self._get_or_create_destination_folder()
-            
             file_metadata = {"name": filename}
-            if destination_folder_id:
-                file_metadata["parents"] = [destination_folder_id]
             
             media = MediaIoBaseUpload(
                 io.BytesIO(image_bytes),
@@ -530,7 +525,7 @@ class GoogleSlidesProvider(PresentationProvider):
                 media_body = media,
                 fields = 'id',
                 supportsAllDrives = True
-            ).execute()
+            ).execute(num_retries=3)
             
             file_id = uploaded_file.get('id')
 
@@ -542,7 +537,7 @@ class GoogleSlidesProvider(PresentationProvider):
                     'type': 'anyone'
                 },
                 supportsAllDrives = True
-            ).execute()
+            ).execute(num_retries=3)
 
             time.sleep(2)
 
@@ -569,15 +564,17 @@ class GoogleSlidesProvider(PresentationProvider):
             response = self.slides_service.presentations().batchUpdate(
                 presentationId = presentation_id,
                 body = body
-            ).execute()
+            ).execute(num_retries=3)
             duration = time.time() - start_time
             log_api_operation("google_slides", "batch_update", True, duration,
                             presentation_id = presentation_id, requests_count = len(requests))
             return response
         except HttpError as error:
             duration = time.time() - start_time
+            error_details = error.content.decode('utf-8') if hasattr(error, 'content') else str(error)
             log_api_operation("google_slides", "batch_update", False, duration,
-                            error = str(error), presentation_id = presentation_id, requests_count = len(requests))
+                            error = error_details, presentation_id = presentation_id, requests_count = len(requests))
+            logger.error(f"Batch update failed for presentation {presentation_id}. Error details: {error_details}")
             raise
 
     def delete_chart_image(self, file_id: str) -> None:
@@ -589,7 +586,7 @@ class GoogleSlidesProvider(PresentationProvider):
                 fileId=file_id, 
                 body=body, 
                 supportsAllDrives=True
-            ).execute()
+            ).execute(num_retries=3)
             logger.info(f"Trashed chart image with file_id: {file_id}")
         except HttpError as error:
             if error.resp.status == 403:
