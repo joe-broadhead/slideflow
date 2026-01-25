@@ -52,7 +52,8 @@ def build_single_presentation(
     params: dict, 
     index: int, 
     total: int, 
-    print_lock: threading.Lock
+    print_lock: threading.Lock,
+    requests_per_second: Optional[float] = None
 ) -> Tuple[str, Any, int, dict]:
     """Build and render a single presentation with thread-safe logging.
     
@@ -73,6 +74,7 @@ def build_single_presentation(
         index: Current presentation index (1-based) for progress reporting.
         total: Total number of presentations being generated.
         print_lock: Threading lock to ensure thread-safe console output.
+        requests_per_second: Optional override for the API rate limit.
         
     Returns:
         Tuple containing:
@@ -112,6 +114,14 @@ def build_single_presentation(
             params=params
         )
         
+        # Hard override if provider is google_slides
+        if requests_per_second is not None and hasattr(presentation.provider, 'config'):
+            if hasattr(presentation.provider.config, 'requests_per_second'):
+                presentation.provider.config.requests_per_second = requests_per_second
+                # Re-initialize rate limiter if it exists
+                from slideflow.presentations.providers.google_slides import _get_rate_limiter
+                presentation.provider.rate_limiter = _get_rate_limiter(requests_per_second, force_update=True)
+
         with print_lock:
             print(f"🔄 [{index}/{total}] Rendering: {presentation.name}")
 
@@ -145,6 +155,10 @@ def build_command(
     threads: Optional[int] = typer.Option(
         None,"--threads", "-t",
         help="Number of concurrent threads to use"
+    ),
+    requests_per_second: Optional[float] = typer.Option(
+        None, "--rps", 
+        help="Override the API rate limit (requests per second)"
     )
 ) -> List[dict]:
     """Generate presentations from YAML configuration.
@@ -170,6 +184,8 @@ def build_command(
         dry_run: If True, validates the configuration and parameters without
             actually generating presentations. Useful for testing
             configurations.
+        threads: Number of concurrent threads to use.
+        requests_per_second: Override the API rate limit.
             
     Returns:
         A list of dictionaries, where each dictionary contains the slide
@@ -183,9 +199,9 @@ def build_command(
         
             slideflow build presentation.yaml
             
-        With custom registry::
+        With custom rate limit::
         
-            slideflow build config.yaml --registry custom_functions.py
+            slideflow build config.yaml --rps 5.0
             
         Batch generation with parameters::
         
@@ -270,7 +286,8 @@ def build_command(
                     params,
                     i,
                     total_presentations,
-                    print_lock
+                    print_lock,
+                    requests_per_second
                 ): (i, params)
                 for i, params in enumerate(param_configs, 1)
             }

@@ -87,10 +87,23 @@ from slideflow.constants import GoogleSlides
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger, log_api_operation
+from slideflow.utilities.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 _folder_creation_lock = threading.Lock()
 _folder_id_cache = {}
+_api_rate_limiter = None
+_rate_limiter_lock = threading.Lock()
+
+def _get_rate_limiter(rps: float, force_update: bool = False) -> RateLimiter:
+    """Get or create the global rate limiter."""
+    global _api_rate_limiter
+    with _rate_limiter_lock:
+        if _api_rate_limiter is None:
+            _api_rate_limiter = RateLimiter(rps)
+        elif force_update:
+            _api_rate_limiter.set_rate(rps)
+        return _api_rate_limiter
 
 class GoogleSlidesProviderConfig(PresentationProviderConfig):
     """Configuration model for Google Slides presentation provider.
@@ -105,18 +118,17 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         template_id: Optional Google Slides template ID to copy from when creating presentations.
         drive_folder_id: Optional Google Drive folder ID for organizing uploaded chart images.
         presentation_folder_id: Optional Google Drive folder ID for organizing created presentations.
+        new_folder_name: Optional name for a new subfolder to be created.
+        new_folder_name_fn: Optional function to generate the new subfolder name dynamically.
         share_with: List of email addresses to automatically share presentations with.
         share_role: Default permission role for shared presentations.
+        requests_per_second: Maximum number of API requests per second (default: 1.0).
         
     Example:
         >>> config = GoogleSlidesProviderConfig(
         ...     provider_type="google_slides",
         ...     credentials="/path/to/service_account.json",
-        ...     template_id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-        ...     drive_folder_id="1FolderID_for_images",
-        ...     presentation_folder_id="1FolderID_for_presentations",
-        ...     share_with=["team@company.com", "manager@company.com"],
-        ...     share_role="reader"
+        ...     requests_per_second=1.0
         ... )
     """
     provider_type: Literal["google_slides"] = "google_slides"
@@ -128,6 +140,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     new_folder_name_fn: Optional[Callable] = Field(None, description="Function to generate the new subfolder name dynamically.")
     share_with: List[str] = Field(default_factory = list, description = "Email addresses to share presentation with")
     share_role: str = Field(GoogleSlides.PERMISSION_WRITER, description = "Permission role: reader, writer, or commenter")
+    requests_per_second: float = Field(1.0, description = "Maximum number of API requests per second")
 
 class GoogleSlidesProvider(PresentationProvider):
     """Google Slides presentation provider implementation.
@@ -208,9 +221,16 @@ class GoogleSlidesProvider(PresentationProvider):
         except Exception as error_msg:
             raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
         
-        self.slides_service = build('slides', 'v1', credentials = credentials)
-        self.drive_service = build('drive', 'v3', credentials = credentials)
+        self.slides_service = build('slides', 'v1', credentials=credentials)
+        self.drive_service = build('drive', 'v3', credentials=credentials)
+        
+        self.rate_limiter = _get_rate_limiter(self.config.requests_per_second)
     
+    def _execute_request(self, request):
+        """Execute a Google API request with rate limiting."""
+        self.rate_limiter.wait()
+        return request.execute(num_retries=3)
+
     def create_presentation(
         self, 
         name: str, 
@@ -352,12 +372,12 @@ class GoogleSlidesProvider(PresentationProvider):
                         'role': role,
                         'emailAddress': email
                     }
-                    self.drive_service.permissions().create(
+                    self._execute_request(self.drive_service.permissions().create(
                         fileId = presentation_id,
                         body = permission,
                         sendNotificationEmail=True,
                         supportsAllDrives=True
-                    ).execute(num_retries=3)
+                    ))
                     logger.info(f"Shared presentation with {email} as {role}")
             except HttpError as error:
                 logger.error(f"Error sharing presentation: {error}")
@@ -395,7 +415,7 @@ class GoogleSlidesProvider(PresentationProvider):
                 return _folder_id_cache[cache_key]
 
             # Escape single quotes for Drive query
-            escaped = str(folder_name).replace("'", r"\'" )
+            escaped = str(folder_name).replace("'", r"\'")
 
             try:
                 # Look up an existing folder with that name under the parent
@@ -405,15 +425,14 @@ class GoogleSlidesProvider(PresentationProvider):
                     f"name = '{escaped}' and trashed = false"
                 )
                 resp = (
-                    self.drive_service.files()
+                    self._execute_request(self.drive_service.files()
                     .list(
                         q=query,
                         pageSize=1,
                         fields="files(id)",
                         supportsAllDrives=True,
                         includeItemsFromAllDrives=True,
-                    )
-                    .execute(num_retries=3)
+                    ))
                 )
                 files = resp.get("files", [])
                 if files:
@@ -424,7 +443,7 @@ class GoogleSlidesProvider(PresentationProvider):
 
                 # Create the folder
                 new_folder = (
-                    self.drive_service.files()
+                    self._execute_request(self.drive_service.files()
                     .create(
                         body={
                             "name": folder_name,
@@ -433,8 +452,7 @@ class GoogleSlidesProvider(PresentationProvider):
                         },
                         fields="id",
                         supportsAllDrives=True,
-                    )
-                    .execute(num_retries=3)
+                    ))
                 )
                 folder_id = new_folder.get("id")
                 logger.info("Created destination folder '%s' (id=%s)", folder_name, folder_id)
@@ -452,7 +470,7 @@ class GoogleSlidesProvider(PresentationProvider):
         start_time = time.time()
         try:
             body = {'title': title}
-            presentation = self.slides_service.presentations().create(body=body).execute(num_retries=3)
+            presentation = self._execute_request(self.slides_service.presentations().create(body=body))
             presentation_id = presentation.get('presentationId')
 
             destination_folder_id = self._get_or_create_destination_folder()
@@ -461,15 +479,15 @@ class GoogleSlidesProvider(PresentationProvider):
             if destination_folder_id:
                 try:
                     # Get the file to update its parents
-                    file = self.drive_service.files().get(fileId=presentation_id, fields='parents', supportsAllDrives=True).execute(num_retries=3)
+                    file = self._execute_request(self.drive_service.files().get(fileId=presentation_id, fields='parents', supportsAllDrives=True))
                     previous_parents = ",".join(file.get('parents'))
-                    self.drive_service.files().update(
+                    self._execute_request(self.drive_service.files().update(
                         fileId=presentation_id,
                         addParents=destination_folder_id,
                         removeParents=previous_parents,
                         fields='id, parents',
                         supportsAllDrives=True
-                    ).execute(num_retries=3)
+                    ))
                 except HttpError as e:
                     logger.warning(
                         f"Presentation {presentation_id} created, but failed to move to folder "
@@ -496,11 +514,11 @@ class GoogleSlidesProvider(PresentationProvider):
             if destination_folder_id:
                 body["parents"] = [destination_folder_id]
                 
-            copied = self.drive_service.files().copy(
+            copied = self._execute_request(self.drive_service.files().copy(
                 fileId=template_id,
                 body=body,
                 supportsAllDrives=True
-            ).execute(num_retries=3)
+            ))
             presentation_id = copied.get("id")
             logger.info(f"Copied template to '{title}' with ID: {presentation_id}")
             return presentation_id
@@ -512,7 +530,12 @@ class GoogleSlidesProvider(PresentationProvider):
         """Upload image to Google Drive and return public URL and file ID."""
         start_time = time.time()
         try:
+            # Prioritize dedicated image folder, fallback to presentation folder
+            destination_folder_id = self.config.drive_folder_id or self._get_or_create_destination_folder()
+            
             file_metadata = {"name": filename}
+            if destination_folder_id:
+                file_metadata["parents"] = [destination_folder_id]
             
             media = MediaIoBaseUpload(
                 io.BytesIO(image_bytes),
@@ -520,24 +543,24 @@ class GoogleSlidesProvider(PresentationProvider):
                 resumable = True
             )
             
-            uploaded_file = self.drive_service.files().create(
+            uploaded_file = self._execute_request(self.drive_service.files().create(
                 body = file_metadata,
                 media_body = media,
                 fields = 'id',
                 supportsAllDrives = True
-            ).execute(num_retries=3)
+            ))
             
             file_id = uploaded_file.get('id')
 
             # Make public
-            self.drive_service.permissions().create(
+            self._execute_request(self.drive_service.permissions().create(
                 fileId = file_id,
                 body = {
                     'role': 'reader',
                     'type': 'anyone'
                 },
                 supportsAllDrives = True
-            ).execute(num_retries=3)
+            ))
 
             time.sleep(2)
 
@@ -561,10 +584,10 @@ class GoogleSlidesProvider(PresentationProvider):
         start_time = time.time()
         try:
             body = {'requests': requests}
-            response = self.slides_service.presentations().batchUpdate(
+            response = self._execute_request(self.slides_service.presentations().batchUpdate(
                 presentationId = presentation_id,
                 body = body
-            ).execute(num_retries=3)
+            ))
             duration = time.time() - start_time
             log_api_operation("google_slides", "batch_update", True, duration,
                             presentation_id = presentation_id, requests_count = len(requests))
@@ -582,11 +605,11 @@ class GoogleSlidesProvider(PresentationProvider):
         try:
             # Try to move to trash first (requires fewer permissions than delete)
             body = {'trashed': True}
-            self.drive_service.files().update(
+            self._execute_request(self.drive_service.files().update(
                 fileId=file_id, 
                 body=body, 
                 supportsAllDrives=True
-            ).execute(num_retries=3)
+            ))
             logger.info(f"Trashed chart image with file_id: {file_id}")
         except HttpError as error:
             if error.resp.status == 403:
