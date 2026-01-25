@@ -70,6 +70,7 @@ from slideflow.builtins.template_engine import get_template_engine
 from slideflow.presentations.positioning import safe_eval_expression
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
+from slideflow.presentations.providers.google_slides import _get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -385,18 +386,23 @@ class BaseChart(BaseModel, ABC):
             resumable = True
         )
         
+        # Use shared rate limiter
+        limiter = _get_rate_limiter(1.0)
+        limiter.wait()
+
         uploaded_file = drive_service.files().create(
             body = file_metadata,
             media_body = media
-        ).execute()
+        ).execute(num_retries=3)
         
         file_id = uploaded_file['id']
         
         # Make publicly viewable
+        limiter.wait()
         drive_service.permissions().create(
             fileId = file_id,
             body = {'role': 'reader', 'type': 'anyone'}
-        ).execute()
+        ).execute(num_retries=3)
 
         public_url = f"https://drive.google.com/uc?id={file_id}"
         return public_url, file_id
