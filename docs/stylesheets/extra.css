@@ -1,0 +1,110 @@
+/* Slideflow docs styles inspired by dbt-nova docs ergonomics. */
+
+/* Match dbt-nova color tokens across sites. */
+:root {
+  --md-primary-fg-color: #7c3aed;
+  --md-accent-fg-color: #f59e0b;
+}
+
+/* Better code block styling */
+.md-typeset code {
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.2rem;
+  padding: 0.1rem 0.3rem;
+}
+
+/* Stronger section headings */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Subtitle styling for landing pages */
+.md-typeset .subtitle {
+  font-size: 1.25rem;
+  color: var(--md-default-fg-color--light);
+  margin-top: -0.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Card-like callouts */
+.tool-card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-badge.stable {
+  background-color: #10b981;
+  color: #fff;
+}
+
+.status-badge.beta {
+  background-color: #f59e0b;
+  color: #fff;
+}
+
+/* Card grid hover behavior */
+.md-typeset .grid.cards > ul > li {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+}
+
+/* Better table styling */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-default-fg-color--lightest);
+}
+
+/* Round admonitions/details to match card language */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0.5rem;
+}
+
+/* Mermaid diagrams: readable sizing + responsive width */
+.md-typeset .mermaid {
+  font-size: 0.9rem;
+  overflow-x: auto;
+}
+
+.md-typeset .mermaid svg {
+  width: 100%;
+  height: auto;
+}
+
+.diagram-large .mermaid {
+  font-size: 1rem;
+}
+
+.diagram-large .mermaid svg {
+  min-height: 520px;
+}
+
+/* Wide diagrams: prefer vertical flow to avoid horizontal compression */
+.diagram-vertical .mermaid svg {
+  width: auto;
+  max-width: 100%;
+}
