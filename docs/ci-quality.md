@@ -5,7 +5,9 @@
 - `CI` (`.github/workflows/ci.yml`)
   - installs project + dev deps
   - runs `pip check`
-  - runs unit tests with coverage gate
+  - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
+  - runs integration marker tests (`-m integration`)
+  - runs e2e marker tests (`-m e2e`)
   - builds distribution artifacts
 - `Docs` (`.github/workflows/docs.yml`)
   - runs `mkdocs build --strict`
@@ -26,6 +28,9 @@
 ```bash
 source .venv/bin/activate
 pytest -q
+pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=70
+pytest -q -m integration
+pytest -q -m e2e
 mkdocs build --strict
 ```
 

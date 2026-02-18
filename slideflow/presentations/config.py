@@ -59,7 +59,8 @@ Validation:
     - Cross-field validation where applicable
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pathlib import Path
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Dict, Any, Annotated, Callable
 
 class ReplacementSpec(BaseModel):
@@ -527,3 +528,15 @@ class PresentationConfig(BaseModel):
     provider: Annotated[ProviderConfig, Field(..., description = "Presentation provider configuration")]
     template_paths: Annotated[Optional[List[str]], Field(None, description = "Custom template search paths (in priority order)")]
     registry: Annotated[Optional[List[str]], Field(None, description = "Paths to custom function registry files")]
+
+    @field_validator("registry", mode = "before")
+    @classmethod
+    def _normalize_registry(cls, value: Any) -> Optional[List[str]]:
+        """Allow both string and list forms for backward-compatible registry config."""
+        if value is None:
+            return None
+        if isinstance(value, (str, Path)):
+            return [str(value)]
+        if isinstance(value, list):
+            return [str(path) for path in value]
+        return value
