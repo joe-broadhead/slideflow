@@ -21,9 +21,9 @@ Key Features:
 
 Example:
     Creating a presentation configuration:
-    
+
     >>> from slideflow.presentations.config import PresentationConfig
-    >>> 
+    >>>
     >>> config = PresentationConfig(
     ...     presentation=PresentationSpec(
     ...         name="Monthly Report",
@@ -60,32 +60,34 @@ Validation:
 """
 
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import List, Optional, Dict, Any, Annotated, Callable
+from typing import Annotated, Any, Callable, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 
 class ReplacementSpec(BaseModel):
     """Configuration specification for text replacements in presentations.
-    
+
     This model defines how text placeholders in presentation templates should
     be replaced with dynamic content. It supports various replacement types
     including static text, AI-generated content, and data-driven table
     replacements.
-    
+
     The configuration is designed to work with the ConfigLoader system, which
     can resolve functions and template expressions before validation. The
     embedded data source configuration allows replacements to fetch data
     from external systems.
-    
+
     Attributes:
         type: The replacement type identifier (text, ai_text, table) that
             determines which replacement class will be instantiated.
         config: Type-specific configuration dictionary containing all parameters
             needed by the replacement implementation, including optional
             data_source configuration.
-            
+
     Example:
         Text replacement configuration:
-        
+
         >>> text_replacement = ReplacementSpec(
         ...     type="text",
         ...     config={
@@ -93,9 +95,9 @@ class ReplacementSpec(BaseModel):
         ...         "value": "Acme Corporation"
         ...     }
         ... )
-        
+
         AI text replacement with data source:
-        
+
         >>> ai_replacement = ReplacementSpec(
         ...     type="ai_text",
         ...     config={
@@ -108,9 +110,9 @@ class ReplacementSpec(BaseModel):
         ...         }
         ...     }
         ... )
-        
+
         Table replacement configuration:
-        
+
         >>> table_replacement = ReplacementSpec(
         ...     type="table",
         ...     config={
@@ -123,33 +125,39 @@ class ReplacementSpec(BaseModel):
         ...     }
         ... )
     """
-    
-    model_config = ConfigDict(extra = "forbid")
-    
-    type: Annotated[str, Field(..., description = "Replacement type: text, ai_text, or table")]
-    config: Annotated[Dict[str, Any], Field(..., description = "Replacement configuration including data_source")]
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Annotated[
+        str, Field(..., description="Replacement type: text, ai_text, or table")
+    ]
+    config: Annotated[
+        Dict[str, Any],
+        Field(..., description="Replacement configuration including data_source"),
+    ]
+
 
 class ChartSpec(BaseModel):
     """Configuration specification for charts in presentations.
-    
+
     This model defines how charts should be generated and positioned within
     presentation slides. It supports multiple chart types including Plotly-based
     visualizations, custom chart functions, and template-driven charts.
-    
+
     The configuration includes all parameters needed for chart generation
     including data sources, positioning, styling, and type-specific options.
     Charts can fetch data from external sources or use static data defined
     in the configuration.
-    
+
     Attributes:
         type: The chart type identifier (plotly_go, custom, template) that
             determines which chart class will be instantiated.
         config: Type-specific configuration dictionary containing chart parameters
             such as traces, layout, positioning, and optional data_source.
-            
+
     Example:
         Plotly line chart configuration:
-        
+
         >>> line_chart = ChartSpec(
         ...     type="plotly_go",
         ...     config={
@@ -172,9 +180,9 @@ class ChartSpec(BaseModel):
         ...         }
         ...     }
         ... )
-        
+
         Custom chart configuration:
-        
+
         >>> custom_chart = ChartSpec(
         ...     type="custom",
         ...     config={
@@ -186,9 +194,9 @@ class ChartSpec(BaseModel):
         ...         "data_source": {...}
         ...     }
         ... )
-        
+
         Template-based chart configuration:
-        
+
         >>> template_chart = ChartSpec(
         ...     type="template",
         ...     config={
@@ -201,24 +209,28 @@ class ChartSpec(BaseModel):
         ...     }
         ... )
     """
-    
-    model_config = ConfigDict(extra = "forbid")
-    
-    type: Annotated[str, Field(..., description = "Chart type: plotly_go or custom")]
-    config: Annotated[Dict[str, Any], Field(..., description = "Chart configuration including data_source")]
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Annotated[str, Field(..., description="Chart type: plotly_go or custom")]
+    config: Annotated[
+        Dict[str, Any],
+        Field(..., description="Chart configuration including data_source"),
+    ]
+
 
 class SlideSpec(BaseModel):
     """Configuration specification for individual slides in presentations.
-    
+
     This model defines the content and layout for a single slide within a
     presentation. Each slide can contain multiple text replacements and charts,
     which are processed during presentation generation to create the final
     slide content.
-    
+
     The slide specification maps to slides in the presentation template,
     using the ID to identify which template slide should be modified with
     the specified content.
-    
+
     Attributes:
         id: Platform-specific identifier that matches a slide in the presentation
             template (e.g., Google Slides slide ID).
@@ -228,10 +240,10 @@ class SlideSpec(BaseModel):
             placeholders in the slide template should be replaced with content.
         charts: List of chart specifications that define visualizations to
             generate and insert into the slide.
-            
+
     Example:
         Complete slide configuration:
-        
+
         >>> slide = SlideSpec(
         ...     id="slide_overview",
         ...     title="Executive Summary",
@@ -268,9 +280,9 @@ class SlideSpec(BaseModel):
         ...         )
         ...     ]
         ... )
-        
+
         Minimal slide with only text replacements:
-        
+
         >>> simple_slide = SlideSpec(
         ...     id="slide_title",
         ...     replacements=[
@@ -281,35 +293,44 @@ class SlideSpec(BaseModel):
         ...     ]
         ... )
     """
-    
-    model_config = ConfigDict(extra = "forbid")
-    
-    id: Annotated[str, Field(..., description = "Slide ID in the Google Slides template")]
-    title: Annotated[Optional[str], Field(None, description = "Slide title for documentation")]
-    replacements: Annotated[List[ReplacementSpec], Field(default_factory = list, description = "Text replacements for this slide")]
-    charts: Annotated[List[ChartSpec], Field(default_factory = list, description = "Charts to generate for this slide")]
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: Annotated[str, Field(..., description="Slide ID in the Google Slides template")]
+    title: Annotated[
+        Optional[str], Field(None, description="Slide title for documentation")
+    ]
+    replacements: Annotated[
+        List[ReplacementSpec],
+        Field(default_factory=list, description="Text replacements for this slide"),
+    ]
+    charts: Annotated[
+        List[ChartSpec],
+        Field(default_factory=list, description="Charts to generate for this slide"),
+    ]
+
 
 class PresentationSpec(BaseModel):
     """Configuration specification for complete presentation content.
-    
+
     This model defines the overall structure and content of a presentation,
     including metadata and the collection of slides that make up the
     presentation. It serves as the container for all slide-level configurations
     and provides the presentation-wide settings.
-    
+
     The presentation specification works with presentation templates to define
     what content should be inserted where, without being tied to any specific
     presentation platform.
-    
+
     Attributes:
         name: Human-readable name for the presentation that will be used as
             the presentation title in the target platform.
         slides: Ordered list of slide specifications that define the content
             and layout for each slide in the presentation.
-            
+
     Example:
         Complete presentation specification:
-        
+
         >>> presentation = PresentationSpec(
         ...     name="Q4 2024 Financial Report",
         ...     slides=[
@@ -344,9 +365,9 @@ class PresentationSpec(BaseModel):
         ...         )
         ...     ]
         ... )
-        
+
         Minimal presentation:
-        
+
         >>> simple_presentation = PresentationSpec(
         ...     name="Weekly Update",
         ...     slides=[
@@ -362,35 +383,40 @@ class PresentationSpec(BaseModel):
         ...     ]
         ... )
     """
-    
-    model_config = ConfigDict(extra = "forbid")
-    
-    name: Annotated[str, Field(..., description = "Presentation name")]
-    name_fn: Annotated[Optional[Callable], Field(None, description = "Optional name function")]
-    slides: Annotated[List[SlideSpec], Field(..., description = "List of slides in the presentation")]
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, Field(..., description="Presentation name")]
+    name_fn: Annotated[
+        Optional[Callable], Field(None, description="Optional name function")
+    ]
+    slides: Annotated[
+        List[SlideSpec], Field(..., description="List of slides in the presentation")
+    ]
+
 
 class ProviderConfig(BaseModel):
     """Configuration for presentation platform providers.
-    
+
     This model defines how to connect to and configure different presentation
     platforms such as Google Slides, PowerPoint, or custom presentation systems.
     It uses a type-based approach where the provider type determines which
     concrete provider class will be instantiated.
-    
+
     The configuration structure allows for platform-specific settings while
     maintaining a consistent interface across different presentation providers.
     Each provider type has its own configuration schema defined in the
     provider-specific configuration classes.
-    
+
     Attributes:
         type: Provider type identifier that determines which presentation
             provider will be used (google_slides, powerpoint, etc.).
         config: Provider-specific configuration dictionary containing all
             parameters needed by the chosen provider implementation.
-            
+
     Example:
         Google Slides provider configuration:
-        
+
         >>> google_config = ProviderConfig(
         ...     type="google_slides",
         ...     config={
@@ -401,9 +427,9 @@ class ProviderConfig(BaseModel):
         ...         "share_role": "reader"
         ...     }
         ... )
-        
+
         Custom provider configuration:
-        
+
         >>> custom_config = ProviderConfig(
         ...     type="my_custom_provider",
         ...     config={
@@ -413,9 +439,9 @@ class ProviderConfig(BaseModel):
         ...         "custom_setting": "value"
         ...     }
         ... )
-        
+
         Development/testing configuration:
-        
+
         >>> test_config = ProviderConfig(
         ...     type="mock_provider",
         ...     config={
@@ -424,25 +450,31 @@ class ProviderConfig(BaseModel):
         ...     }
         ... )
     """
-    
-    model_config = ConfigDict(extra = "forbid")
-    
-    type: Annotated[str, Field(..., description = "Provider type: 'google_slides', 'powerpoint', etc.")]
-    config: Annotated[Dict[str, Any], Field(..., description = "Provider-specific configuration")]
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Annotated[
+        str,
+        Field(..., description="Provider type: 'google_slides', 'powerpoint', etc."),
+    ]
+    config: Annotated[
+        Dict[str, Any], Field(..., description="Provider-specific configuration")
+    ]
+
 
 class PresentationConfig(BaseModel):
     """Root configuration model for complete presentation generation.
-    
+
     This is the top-level configuration model that contains all necessary
     information to build a presentation from start to finish. It combines
     the presentation content specification with provider configuration and
     system-wide settings.
-    
+
     The configuration is typically loaded from YAML files through the
     ConfigLoader system, which handles template resolution, function execution,
     and parameter substitution before creating this validated configuration
     object.
-    
+
     Attributes:
         presentation: Complete specification of the presentation content
             including all slides, charts, and text replacements.
@@ -454,10 +486,10 @@ class PresentationConfig(BaseModel):
         registry: Optional list of paths to Python files containing
             `function_registry` dictionaries. These registries are used to
             extend Slideflow with custom functions.
-            
+
     Example:
         Complete presentation configuration:
-        
+
         >>> config = PresentationConfig(
         ...     presentation=PresentationSpec(
         ...         name="Monthly Business Review",
@@ -490,9 +522,9 @@ class PresentationConfig(BaseModel):
         ...     ],
         ...     registry=["custom_functions.py", "shared_registry.py"]
         ... )
-        
+
         Minimal configuration:
-        
+
         >>> minimal_config = PresentationConfig(
         ...     presentation=PresentationSpec(
         ...         name="Simple Report",
@@ -505,31 +537,41 @@ class PresentationConfig(BaseModel):
         ...         config={"credentials": "/path/to/creds.json"}
         ...     )
         ... )
-        
+
     Usage:
         The configuration is typically used with PresentationBuilder:
-        
+
         >>> from slideflow.presentations.builder import PresentationBuilder
-        >>> 
+        >>>
         >>> # Load from YAML
         >>> presentation = PresentationBuilder.from_yaml(
         ...     yaml_path=Path("config.yaml"),
         ...     params={"month": "March"}
         ... )
-        >>> 
+        >>>
         >>> # Or from configuration object
         >>> presentation = PresentationBuilder.from_config(config)
         >>> result = presentation.render()
     """
-    
-    model_config = ConfigDict(extra = "forbid")
 
-    presentation: Annotated[PresentationSpec, Field(..., description = "Presentation specification")]
-    provider: Annotated[ProviderConfig, Field(..., description = "Presentation provider configuration")]
-    template_paths: Annotated[Optional[List[str]], Field(None, description = "Custom template search paths (in priority order)")]
-    registry: Annotated[Optional[List[str]], Field(None, description = "Paths to custom function registry files")]
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("registry", mode = "before")
+    presentation: Annotated[
+        PresentationSpec, Field(..., description="Presentation specification")
+    ]
+    provider: Annotated[
+        ProviderConfig, Field(..., description="Presentation provider configuration")
+    ]
+    template_paths: Annotated[
+        Optional[List[str]],
+        Field(None, description="Custom template search paths (in priority order)"),
+    ]
+    registry: Annotated[
+        Optional[List[str]],
+        Field(None, description="Paths to custom function registry files"),
+    ]
+
+    @field_validator("registry", mode="before")
     @classmethod
     def _normalize_registry(cls, value: Any) -> Optional[List[str]]:
         """Allow both string and list forms for backward-compatible registry config."""

@@ -21,17 +21,17 @@ Key Features:
 
 Example:
     Basic configuration loading:
-    
+
     >>> from slideflow.utilities.config import ConfigLoader
     >>> from pathlib import Path
-    >>> 
+    >>>
     >>> # config.yaml:
     >>> # name: "Report for {quarter}"
     >>> # data_source:
     >>> #   query: !func get_quarterly_data
     >>> #   params:
     >>> #     quarter: "{quarter}"
-    >>> 
+    >>>
     >>> loader = ConfigLoader(
     ...     yaml_path=Path("config.yaml"),
     ...     registry_paths=[Path("functions.py")],
@@ -39,55 +39,56 @@ Example:
     ... )
     >>> config = loader.config
     >>> # Results in resolved configuration with functions and parameters
-    
+
     Function registry usage:
-    
+
     >>> # functions.py:
     >>> # def get_quarterly_data(quarter):
     >>> #     return f"SELECT * FROM sales WHERE quarter = '{quarter}'"
-    >>> # 
+    >>> #
     >>> # function_registry = {
     >>> #     "get_quarterly_data": get_quarterly_data
     >>> # }
 """
 
-import re
-import sys
-import yaml
 import importlib
-import pkgutil
 import importlib.util
-from pathlib import Path
+import pkgutil
+import sys
 from functools import cached_property
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Any, List, Mapping, Callable, Sequence
+from pathlib import Path
+from typing import Any, Callable, List, Mapping, Sequence
+
+import yaml  # type: ignore[import-untyped]
+from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.utilities.exceptions import ConfigurationError
 
+
 def render_params(obj: Any, params: Mapping[str, str]) -> Any:
     """Recursively substitute parameters in nested data structures.
-    
+
     This function traverses nested dictionaries, lists, and strings to perform
     parameter substitution using Python's str.format() method. It preserves
     double-brace syntax ({{...}}) for template engines while substituting
     single-brace parameters ({param}).
-    
+
     The function handles:
     - Nested dictionaries and lists recursively
     - String formatting with parameter substitution
     - Preservation of template syntax (double braces)
     - Safe handling of missing parameters
-    
+
     Args:
         obj: The data structure to process. Can be dict, list, string, or any value.
         params: Dictionary of parameter names to replacement values.
-        
+
     Returns:
         Copy of the input object with parameter substitutions applied.
-        
+
     Example:
         Basic parameter substitution:
-        
+
         >>> data = {
         ...     "title": "Report for {quarter}",
         ...     "filters": [
@@ -107,9 +108,9 @@ def render_params(obj: Any, params: Mapping[str, str]) -> Any:
         >>> #     ],
         >>> #     "template": "{{PLACEHOLDER}}"  # Unchanged
         >>> # }
-        
+
         Missing parameter handling:
-        
+
         >>> data = {"title": "Report for {quarter}", "subtitle": "Data for {missing}"}
         >>> params = {"quarter": "Q3"}
         >>> result = render_params(data, params)
@@ -133,49 +134,50 @@ def render_params(obj: Any, params: Mapping[str, str]) -> Any:
         return rendered.replace(double_l, "{{").replace(double_r, "}}")
     return obj
 
+
 def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
     """Load a function registry from a Python file.
-    
+
     This function dynamically imports a Python module and extracts its
     function_registry dictionary. The registry should contain mappings
     of string names to callable functions that can be used in YAML
     configuration files.
-    
+
     The function handles:
     - Dynamic module loading from file paths
     - Proper module naming and package structure
     - Validation of registry format and content
     - Error handling for missing files or invalid registries
-    
+
     Args:
         registry_path: Path to Python file containing function_registry.
             The file must define a module-level variable named
             'function_registry' of type dict[str, Callable].
-            
+
     Returns:
         Dictionary mapping function names to callable objects.
-        
+
     Raises:
         ConfigurationError: If the file doesn't exist, can't be imported,
             or doesn't contain a valid function_registry.
-            
+
     Example:
         Registry file structure:
-        
+
         >>> # functions.py:
         >>> def calculate_growth(current, previous):
         ...     return ((current - previous) / previous) * 100
-        >>> 
+        >>>
         >>> def format_currency(amount, symbol="$"):
         ...     return f"{symbol}{amount:,.2f}"
-        >>> 
+        >>>
         >>> function_registry = {
         ...     "calculate_growth": calculate_growth,
         ...     "format_currency": format_currency
         ... }
-        
+
         Loading the registry:
-        
+
         >>> from pathlib import Path
         >>> registry = load_registry_from_path(Path("functions.py"))
         >>> growth_func = registry["calculate_growth"]
@@ -216,7 +218,9 @@ def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
     except ConfigurationError:
         raise
     except Exception as e:
-        raise ConfigurationError(f"Failed to load registry module from {path}: {e}") from e
+        raise ConfigurationError(
+            f"Failed to load registry module from {path}: {e}"
+        ) from e
     finally:
         sys.path[:] = original_sys_path
 
@@ -231,34 +235,35 @@ def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
         raise ConfigurationError(f"`function_registry` must be a dict in {path}")
     return registry
 
+
 def resolve_functions(obj: Any, registry: dict[str, Callable]) -> Any:
     """Recursively resolve function references in nested data structures.
-    
+
     This function traverses nested dictionaries, lists, and values to replace
     string function names with actual callable objects from the registry.
     It's typically used after parameter substitution to resolve function
     references in YAML configurations.
-    
+
     The function handles:
     - Nested dictionaries and lists recursively
     - String-to-function resolution using registry lookup
     - Preservation of non-function values
     - Safe handling of unknown function names
-    
+
     Args:
         obj: The data structure to process. Can be dict, list, string, or any value.
         registry: Dictionary mapping function names to callable objects.
-        
+
     Returns:
         Copy of the input object with function name strings replaced by
         actual callable objects where matches are found in the registry.
-        
+
     Example:
         Function resolution in configuration:
-        
+
         >>> def my_transform(df):
         ...     return df * 2
-        >>> 
+        >>>
         >>> registry = {"my_transform": my_transform}
         >>> data = {
         ...     "charts": [
@@ -272,9 +277,9 @@ def resolve_functions(obj: Any, registry: dict[str, Callable]) -> Any:
         >>> result = resolve_functions(data, registry)
         >>> # result["charts"][0]["chart_fn"] is now the actual function
         >>> assert callable(result["charts"][0]["chart_fn"])
-        
+
         Non-matching strings remain unchanged:
-        
+
         >>> data = {"function": "unknown_function", "value": 42}
         >>> result = resolve_functions(data, {})
         >>> # Result: {"function": "unknown_function", "value": 42}
@@ -287,50 +292,51 @@ def resolve_functions(obj: Any, registry: dict[str, Callable]) -> Any:
         return registry[obj]
     return obj
 
+
 def search_registries_in_package() -> dict[str, Callable]:
     """Automatically discover and merge function registries from package modules.
-    
+
     This function performs automatic discovery of function registries by walking
     through all modules in the current package hierarchy. It imports each module
     and checks for a 'function_registry' variable, merging all found registries
     into a single dictionary.
-    
+
     The discovery process:
     1. Determines the root package name from the current module
     2. Walks through all submodules using pkgutil.walk_packages
     3. Imports each module and looks for function_registry
     4. Merges all registries, with later discoveries overriding earlier ones
-    
+
     This enables automatic registration of functions without explicit imports,
     supporting a plugin-like architecture where modules can contribute functions
     simply by defining a function_registry variable.
-    
+
     Returns:
         Merged dictionary of all function registries found in the package.
         Returns empty dict if no registries are found or package detection fails.
-        
+
     Example:
         Package structure with auto-discovery:
-        
+
         >>> # slideflow/transforms/math.py:
         >>> def add_constant(df, value=1):
         ...     return df + value
-        >>> 
+        >>>
         >>> function_registry = {"add_constant": add_constant}
-        >>> 
+        >>>
         >>> # slideflow/transforms/text.py:
         >>> def uppercase_column(df, column):
         ...     df[column] = df[column].str.upper()
         ...     return df
-        >>> 
+        >>>
         >>> function_registry = {"uppercase_column": uppercase_column}
-        >>> 
+        >>>
         >>> # Usage:
         >>> merged_registry = search_registries_in_package()
         >>> # merged_registry contains both add_constant and uppercase_column
-        
+
         Registry collision handling:
-        
+
         >>> # If multiple modules define the same function name,
         >>> # the last one discovered wins (based on import order)
     """
@@ -341,7 +347,9 @@ def search_registries_in_package() -> dict[str, Callable]:
         return merged
 
     pkg = importlib.import_module(pkg_name)
-    for finder, mod_name, ispkg in pkgutil.walk_packages(pkg.__path__, pkg.__name__ + "."):
+    for finder, mod_name, ispkg in pkgutil.walk_packages(
+        pkg.__path__, pkg.__name__ + "."
+    ):
         try:
             mod = importlib.import_module(mod_name)
         except ImportError:
@@ -351,14 +359,15 @@ def search_registries_in_package() -> dict[str, Callable]:
             merged.update(reg)
     return merged
 
+
 class ConfigLoader(BaseModel):
     """Advanced configuration loader with template resolution and function registry support.
-    
+
     This class provides a comprehensive configuration loading system that combines
     YAML parsing, parameter substitution, and function registry resolution into
     a single, cached interface. It's designed to handle complex configuration
     scenarios common in data processing and presentation generation.
-    
+
     Key Features:
     - YAML file loading with safe parsing
     - Parameter substitution using {param} syntax
@@ -366,25 +375,25 @@ class ConfigLoader(BaseModel):
     - Automatic package discovery of function registries
     - Cached configuration parsing for performance
     - Recursive resolution of nested structures
-    
+
     The configuration loading process follows these steps:
     1. Load raw YAML content from file
     2. Apply parameter substitution throughout the structure
     3. Discover and merge function registries from package and files
     4. Resolve function references in the configuration
     5. Cache the final result for subsequent access
-    
+
     Attributes:
         yaml_path: Path to the YAML configuration file to load.
         registry_paths: List of Python files containing function registries.
         params: Dictionary of parameters for template substitution.
-        
+
     Example:
         Complete configuration loading workflow:
-        
+
         >>> from slideflow.utilities.config import ConfigLoader
         >>> from pathlib import Path
-        >>> 
+        >>>
         >>> # config.yaml:
         >>> # name: "Report for {quarter} {year}"
         >>> # data_transforms:
@@ -394,7 +403,7 @@ class ConfigLoader(BaseModel):
         >>> # charts:
         >>> #   - type: custom
         >>> #     chart_fn: !func create_trend_chart
-        >>> 
+        >>>
         >>> loader = ConfigLoader(
         ...     yaml_path=Path("config.yaml"),
         ...     registry_paths=[Path("custom_functions.py")],
@@ -404,40 +413,38 @@ class ConfigLoader(BaseModel):
         ...         "baseline": "Q2"
         ...     }
         ... )
-        >>> 
+        >>>
         >>> # Access resolved configuration (cached after first access)
         >>> config = loader.config
         >>> # config now contains:
         >>> # - Substituted parameters
         >>> # - Resolved function references
         >>> # - All nested structures processed
-        
+
         Performance considerations:
-        
+
         >>> # First access parses and caches
         >>> config1 = loader.config  # YAML parsed, functions resolved
-        >>> 
+        >>>
         >>> # Subsequent accesses use cache
         >>> config2 = loader.config  # Returns cached result
         >>> assert config1 is config2  # Same object reference
     """
-    yaml_path: Path = Field(..., description = "YAML file to load")
+
+    yaml_path: Path = Field(..., description="YAML file to load")
     registry_paths: List[Path] = Field(
-        ..., description = "One or more Python files defining `function_registry`"
+        ..., description="One or more Python files defining `function_registry`"
     )
     params: Mapping[str, Any] = Field(
-        default_factory = dict,
-        description = "Values for {param} substitution"
+        default_factory=dict, description="Values for {param} substitution"
     )
 
-    model_config = ConfigDict(
-        arbitrary_types_allowed = True
-    )
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @cached_property
     def config(self) -> Any:
         """Load and process the complete configuration with caching.
-        
+
         This property orchestrates the entire configuration loading pipeline:
         1. Loads raw YAML content from the specified file
         2. Applies parameter substitution using the provided params
@@ -445,40 +452,40 @@ class ConfigLoader(BaseModel):
         4. Loads additional registries from specified registry_paths
         5. Resolves function references in the configuration
         6. Caches the result for subsequent access
-        
+
         The processing is performed only once due to the @cached_property
         decorator, making repeated access efficient.
-        
+
         Returns:
             Fully processed configuration object with parameters substituted
             and function references resolved. The return type depends on the
             YAML content structure.
-            
+
         Raises:
             ConfigurationError: If YAML file cannot be read, contains invalid
                 syntax, or function registries cannot be loaded.
             FileNotFoundError: If yaml_path or any registry_path doesn't exist.
-            
+
         Example:
             Accessing the processed configuration:
-            
+
             >>> loader = ConfigLoader(
             ...     yaml_path=Path("presentation.yaml"),
             ...     registry_paths=[Path("functions.py")],
             ...     params={"environment": "production"}
             ... )
-            >>> 
+            >>>
             >>> # First access triggers full processing
             >>> config = loader.config
-            >>> 
+            >>>
             >>> # Access configuration elements
             >>> presentation_name = config["presentation"]["name"]
             >>> chart_function = config["charts"][0]["chart_fn"]
-            >>> 
+            >>>
             >>> # Function references are now callable
             >>> assert callable(chart_function)
         """
-        raw = yaml.safe_load(self.yaml_path.read_text(encoding = "utf-8"))
+        raw = yaml.safe_load(self.yaml_path.read_text(encoding="utf-8"))
         rendered = render_params(raw, self.params)
 
         merged_registry = search_registries_in_package()

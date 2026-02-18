@@ -114,4 +114,5 @@ nav:
       - Security: security.md
       - Release: release-process.md
   - Development:
+      - Compatibility Policy: compatibility-policy.md
       - CI & Quality: ci-quality.md

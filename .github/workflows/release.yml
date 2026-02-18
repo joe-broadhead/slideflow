@@ -42,6 +42,18 @@ jobs:
         run: |
           python scripts/ci/check_version_consistency.py "${GITHUB_REF_NAME}"
 
+      - name: Check code formatting
+        run: |
+          python -m black --check slideflow tests scripts
+
+      - name: Run lint checks
+        run: |
+          python -m ruff check slideflow tests scripts
+
+      - name: Run type checks
+        run: |
+          python -m mypy slideflow
+
       - name: Run release test suite
         run: |
           python -m pytest -q \
@@ -60,6 +72,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install dist/*.whl
           bash scripts/ci/run_quickstart_smoke.sh
+
+      - name: Verify distribution package identity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          dist_files = [path.name for path in Path("dist").iterdir() if path.is_file()]
+          if not dist_files:
+            raise SystemExit("No built distribution files found in dist/.")
+
+          if not all("slideflow_presentations" in file_name for file_name in dist_files):
+            raise SystemExit(
+              f"Expected all artifacts to contain 'slideflow_presentations', got: {dist_files}"
+            )
+          print("Distribution identity check passed:", dist_files)
+          PY
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create and push release tag
         env:
@@ -83,6 +114,3 @@ jobs:
           name: v${{ steps.branch.outputs.version }}
           generate_release_notes: true
           files: dist/*
-
-      - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1

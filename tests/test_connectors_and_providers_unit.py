@@ -50,7 +50,9 @@ class DummyProvider(PresentationProvider):
     def create_presentation(self, name: str, template_id=None) -> str:
         return f"{name}:{template_id or 'none'}"
 
-    def upload_chart_image(self, presentation_id: str, image_data: bytes, filename: str):
+    def upload_chart_image(
+        self, presentation_id: str, image_data: bytes, filename: str
+    ):
         return ("https://example/image.png", "file-id")
 
     def insert_chart_to_slide(
@@ -65,7 +67,9 @@ class DummyProvider(PresentationProvider):
     ) -> None:
         return None
 
-    def replace_text_in_slide(self, presentation_id: str, slide_id: str, placeholder: str, replacement: str) -> int:
+    def replace_text_in_slide(
+        self, presentation_id: str, slide_id: str, placeholder: str, replacement: str
+    ) -> int:
         return 1
 
     def share_presentation(self, presentation_id: str, emails, role="writer") -> None:
@@ -161,8 +165,14 @@ def test_databricks_connector_connect_disconnect_and_fetch(monkeypatch):
 
     api_logs = []
     data_logs = []
-    monkeypatch.setattr(databricks_module, "log_api_operation", lambda *a, **k: api_logs.append((a, k)))
-    monkeypatch.setattr(databricks_module, "log_data_operation", lambda *a, **k: data_logs.append((a, k)))
+    monkeypatch.setattr(
+        databricks_module, "log_api_operation", lambda *a, **k: api_logs.append((a, k))
+    )
+    monkeypatch.setattr(
+        databricks_module,
+        "log_data_operation",
+        lambda *a, **k: data_logs.append((a, k)),
+    )
 
     connector = databricks_module.DatabricksConnector("SELECT 1")
     assert connector.connect() is fake_conn
@@ -201,7 +211,9 @@ def test_databricks_connector_fetch_logs_failure(monkeypatch):
             return FailingCursor()
 
     logs = []
-    monkeypatch.setattr(databricks_module, "log_api_operation", lambda *a, **k: logs.append((a, k)))
+    monkeypatch.setattr(
+        databricks_module, "log_api_operation", lambda *a, **k: logs.append((a, k))
+    )
 
     connector = databricks_module.DatabricksConnector("SELECT fail")
     monkeypatch.setattr(connector, "connect", lambda: FailingConnection())
@@ -217,8 +229,14 @@ def test_provider_result_models_and_factory_registration():
         presentation_id="p1",
         presentation_url="https://example/p1",
         slide_results=[
-            ProviderSlideResult(slide_id="s1", chart_urls=[("u1", "p1")], replacements_made=2),
-            ProviderSlideResult(slide_id="s2", chart_urls=[("u2", "p2"), ("u3", "p3")], replacements_made=1),
+            ProviderSlideResult(
+                slide_id="s1", chart_urls=[("u1", "p1")], replacements_made=2
+            ),
+            ProviderSlideResult(
+                slide_id="s2",
+                chart_urls=[("u2", "p2"), ("u3", "p3")],
+                replacements_made=1,
+            ),
         ],
     )
     assert result.total_charts_generated == 3
@@ -234,9 +252,18 @@ def test_provider_result_models_and_factory_registration():
 
     assert isinstance(provider, DummyProvider)
     assert provider.config.token == "abc"
-    assert "dummy_provider" in provider_factory_module.ProviderFactory.get_available_providers()
-    assert provider_factory_module.ProviderFactory.get_provider_class("dummy_provider") is DummyProvider
-    assert provider_factory_module.ProviderFactory.get_config_class("dummy_provider") is DummyProviderConfig
+    assert (
+        "dummy_provider"
+        in provider_factory_module.ProviderFactory.get_available_providers()
+    )
+    assert (
+        provider_factory_module.ProviderFactory.get_provider_class("dummy_provider")
+        is DummyProvider
+    )
+    assert (
+        provider_factory_module.ProviderFactory.get_config_class("dummy_provider")
+        is DummyProviderConfig
+    )
 
 
 def test_provider_factory_rejects_unsupported_provider():
@@ -252,9 +279,15 @@ def test_google_provider_helper_methods(monkeypatch):
 
     copy_calls = []
     create_calls = []
-    monkeypatch.setattr(provider, "_copy_template", lambda t, n: copy_calls.append((t, n)) or "copied")
-    monkeypatch.setattr(provider, "_create_presentation", lambda n: create_calls.append(n) or "created")
-    monkeypatch.setattr(provider, "_upload_image_to_drive", lambda data, name: ("https://img", "file-1"))
+    monkeypatch.setattr(
+        provider, "_copy_template", lambda t, n: copy_calls.append((t, n)) or "copied"
+    )
+    monkeypatch.setattr(
+        provider, "_create_presentation", lambda n: create_calls.append(n) or "created"
+    )
+    monkeypatch.setattr(
+        provider, "_upload_image_to_drive", lambda data, name: ("https://img", "file-1")
+    )
 
     assert provider.create_presentation("Deck") == "copied"
     assert copy_calls == [("template-1", "Deck")]
@@ -266,10 +299,17 @@ def test_google_provider_helper_methods(monkeypatch):
     assert provider.create_presentation("Plain Deck") == "created"
     assert create_calls == ["Plain Deck"]
 
-    assert provider.upload_chart_image("p1", b"bytes", "x.png") == ("https://img", "file-1")
+    assert provider.upload_chart_image("p1", b"bytes", "x.png") == (
+        "https://img",
+        "file-1",
+    )
 
     batch_calls = []
-    monkeypatch.setattr(provider, "_batch_update", lambda pres_id, reqs: batch_calls.append((pres_id, reqs)) or {})
+    monkeypatch.setattr(
+        provider,
+        "_batch_update",
+        lambda pres_id, reqs: batch_calls.append((pres_id, reqs)) or {},
+    )
     provider.insert_chart_to_slide("p1", "s1", "https://img", 1, 2, 3, 4)
     assert batch_calls and batch_calls[0][0] == "p1"
     assert batch_calls[0][1][0]["createImage"]["url"] == "https://img"
@@ -277,7 +317,9 @@ def test_google_provider_helper_methods(monkeypatch):
     monkeypatch.setattr(
         provider,
         "_batch_update",
-        lambda _pres_id, _reqs: {"replies": [{"replaceAllText": {"occurrencesChanged": 7}}]},
+        lambda _pres_id, _reqs: {
+            "replies": [{"replaceAllText": {"occurrencesChanged": 7}}]
+        },
     )
     assert provider.replace_text_in_slide("p1", "s1", "{{X}}", "Y") == 7
 
@@ -304,9 +346,13 @@ def test_google_provider_execute_request_and_batch_update(monkeypatch):
         batchUpdate=lambda presentationId, body: ("request", presentationId, body)
     )
     provider.slides_service = SimpleNamespace(presentations=lambda: presentations)
-    monkeypatch.setattr(provider, "_execute_request", lambda request: {"request": request})
+    monkeypatch.setattr(
+        provider, "_execute_request", lambda request: {"request": request}
+    )
     logs = []
-    monkeypatch.setattr(google_provider_module, "log_api_operation", lambda *a, **k: logs.append((a, k)))
+    monkeypatch.setattr(
+        google_provider_module, "log_api_operation", lambda *a, **k: logs.append((a, k))
+    )
 
     response = provider._batch_update("p1", [{"replaceAllText": {}}])
     assert response["request"][1] == "p1"

@@ -20,15 +20,17 @@ Functions:
     abbreviate_currency: Combine abbreviation with currency formatting
 """
 
-import math
 import decimal
-import numpy as np
-from typing import Any, List, Tuple, Union, Optional
+import math
+from typing import Any, List, Optional, Tuple, Union
 
-from slideflow.utilities.logging import get_logger
+import numpy as np
+
 from slideflow.utilities.exceptions import DataTransformError
+from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
+
 
 def abbreviate(value: Any, suffixes: Optional[List[Tuple[float, str]]] = None) -> str:
     """Abbreviate large numeric values using standard suffixes.
@@ -53,26 +55,26 @@ def abbreviate(value: Any, suffixes: Optional[List[Tuple[float, str]]] = None) -
             - Numbers >= 1,000: Formatted with suffix (e.g., "1.2K", "3.4M")
             - Numbers < 1,000: Formatted with 2 decimal places and commas
             - Non-numeric values: Converted to string without modification
-            
+
     Example:
         >>> abbreviate(1234)
         '1.2K'
-        
+
         >>> abbreviate(1234567)
         '1.2M'
-        
+
         >>> abbreviate(1234567890)
         '1.2B'
-        
+
         >>> abbreviate(42.75)
         '42.75'
-        
+
         >>> abbreviate(1234, [(1e3, "k"), (1e6, "m")])
         '1.2k'
-        
+
         >>> abbreviate("N/A")
         'N/A'
-        
+
     Note:
         - Maintains sign for negative numbers
         - Boolean values are treated as non-numeric
@@ -82,13 +84,16 @@ def abbreviate(value: Any, suffixes: Optional[List[Tuple[float, str]]] = None) -
         if isinstance(value, decimal.Decimal):
             value = float(value)
 
-        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
-            abs_val = abs(value)
+        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+            value, bool
+        ):
+            numeric_value = float(value)
+            abs_val = abs(numeric_value)
             suffixes = suffixes or [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")]
             for threshold, suffix in suffixes:
                 if abs_val >= threshold:
-                    return f"{value / threshold:.1f}{suffix}"
-            return f"{value:,.2f}"
+                    return f"{numeric_value / threshold:.1f}{suffix}"
+            return f"{numeric_value:,.2f}"
         return str(value)
     except (TypeError, ValueError, decimal.InvalidOperation, AttributeError) as e:
         logger.warning(f"Formatting failed for value {value}: {e}")
@@ -96,6 +101,7 @@ def abbreviate(value: Any, suffixes: Optional[List[Tuple[float, str]]] = None) -
     except Exception as e:
         logger.error(f"Unexpected error formatting {value}: {e}")
         raise DataTransformError(f"Critical formatting error: {e}") from e
+
 
 def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
     """Format a numeric value as a percentage string.
@@ -121,26 +127,26 @@ def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
             - Valid numbers: Formatted as "XX.XX%" with specified precision
             - NaN values: Returns "NaN%"
             - Non-numeric values: Converted to string without modification
-            
+
     Example:
         >>> percentage(0.1234)
         '12.34%'
-        
+
         >>> percentage(0.1234, ndigits=1)
         '12.3%'
-        
+
         >>> percentage(25.5, from_ratio=False)
         '25.50%'
-        
+
         >>> percentage(0.05, ndigits=0)
         '5%'
-        
+
         >>> percentage(float('nan'))
         'NaN%'
-        
+
         >>> percentage("TBD")
         'TBD'
-        
+
     Note:
         - Handles negative percentages correctly
         - Boolean values are treated as non-numeric
@@ -152,7 +158,9 @@ def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
         if isinstance(value, decimal.Decimal):
             value = float(value)
 
-        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
+        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+            value, bool
+        ):
             if math.isnan(value):
                 return "NaN%"
             val = value * 100 if from_ratio else value
@@ -164,6 +172,7 @@ def percentage(value: Any, ndigits: int = 2, from_ratio: bool = True) -> str:
     except Exception as e:
         logger.error(f"Unexpected error in percentage formatting {value}: {e}")
         raise DataTransformError(f"Critical percentage formatting error: {e}") from e
+
 
 def round_value(value: Any, ndigits: int = 2) -> Union[float, Any]:
     """Round a numeric value to specified decimal places.
@@ -184,23 +193,23 @@ def round_value(value: Any, ndigits: int = 2) -> Union[float, Any]:
         Rounded value:
             - Numeric inputs: Float rounded to specified precision
             - Non-numeric inputs: Original value unchanged
-            
+
     Example:
         >>> round_value(3.14159)
         3.14
-        
+
         >>> round_value(3.14159, ndigits=4)
         3.1416
-        
+
         >>> round_value(1234.5, ndigits=-2)
         1200.0
-        
+
         >>> round_value(decimal.Decimal('3.14159'), ndigits=3)
         3.142
-        
+
         >>> round_value("N/A")
         'N/A'
-        
+
     Note:
         - Uses Python's built-in round() function
         - Decimal values are converted to float before rounding
@@ -211,7 +220,9 @@ def round_value(value: Any, ndigits: int = 2) -> Union[float, Any]:
         if isinstance(value, decimal.Decimal):
             value = float(value)
 
-        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
+        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+            value, bool
+        ):
             return round(float(value), ndigits)
         return value
     except (TypeError, ValueError, decimal.InvalidOperation) as e:
@@ -221,6 +232,7 @@ def round_value(value: Any, ndigits: int = 2) -> Union[float, Any]:
         logger.error(f"Unexpected error rounding {value}: {e}")
         raise DataTransformError(f"Critical rounding error: {e}") from e
 
+
 def format_currency(
     value: Any,
     currency_symbol: str = "€",
@@ -228,7 +240,7 @@ def format_currency(
     decimals: int = 2,
     negative_parens: bool = False,
     thousands_sep: str = ",",
-    decimal_sep: str = "."
+    decimal_sep: str = ".",
 ) -> str:
     """Format a numeric value as a currency string.
 
@@ -258,26 +270,26 @@ def format_currency(
 
     Returns:
         Formatted currency string. Non-numeric inputs return string representation.
-        
+
     Example:
         >>> format_currency(1234.56)
         '€1,234.56'
-        
+
         >>> format_currency(1234.56, currency_symbol="$", symbol_position="prefix")
         '$1,234.56'
-        
+
         >>> format_currency(-500, negative_parens=True)
         '(€500.00)'
-        
+
         >>> format_currency(1234.5, thousands_sep=".", decimal_sep=",")
         '€1.234,50'
-        
+
         >>> format_currency(42, decimals=0)
         '€42'
-        
+
         >>> format_currency("N/A")
         'N/A'
-        
+
     Note:
         - Always shows the specified number of decimal places
         - Handles negative zero correctly
@@ -315,6 +327,7 @@ def format_currency(
 
     return formatted
 
+
 def abbreviate_currency(
     value: Any,
     currency_symbol: str = "€",
@@ -323,7 +336,7 @@ def abbreviate_currency(
     suffixes: Optional[List[Tuple[float, str]]] = None,
     decimals: int = 2,
     thousands_sep: str = ",",
-    decimal_sep: str = "."
+    decimal_sep: str = ".",
 ) -> str:
     """Combine number abbreviation with currency formatting.
 
@@ -359,29 +372,29 @@ def abbreviate_currency(
     Returns:
         Formatted string combining currency symbol and abbreviated value.
         Non-numeric inputs return string representation.
-        
+
     Example:
         >>> abbreviate_currency(1234567)
         '€1.2M'
-        
+
         >>> abbreviate_currency(1234567, currency_symbol="$")
         '$1.2M'
-        
+
         >>> abbreviate_currency(999)
         '€999.00'
-        
+
         >>> abbreviate_currency(-5000000, negative_parens=True)
         '(€5.0M)'
-        
+
         >>> abbreviate_currency(1500, suffixes=[(1e3, "k")])
         '€1.5k'
-        
+
         >>> abbreviate_currency(1234567890)
         '€1.2B'
-        
+
         >>> abbreviate_currency("N/A")
         'N/A'
-        
+
     Note:
         - Values >= 1,000 are abbreviated with 1 decimal place
         - Values < 1,000 use full currency formatting
@@ -392,7 +405,9 @@ def abbreviate_currency(
         if isinstance(value, decimal.Decimal):
             value = float(value)
 
-        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
+        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+            value, bool
+        ):
             numeric_value = float(value)
             abs_val = abs(numeric_value)
             suffixes = suffixes or [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")]
@@ -404,7 +419,11 @@ def abbreviate_currency(
             else:
                 formatted = f"{abs_val:,.{decimals}f}"
                 if thousands_sep != "," or decimal_sep != ".":
-                    formatted = formatted.replace(",", "TEMP").replace(".", decimal_sep).replace("TEMP", thousands_sep)
+                    formatted = (
+                        formatted.replace(",", "TEMP")
+                        .replace(".", decimal_sep)
+                        .replace("TEMP", thousands_sep)
+                    )
                 abbreviated = formatted
 
             if symbol_position == "prefix":
@@ -427,6 +446,7 @@ def abbreviate_currency(
     except Exception as e:
         logger.error(f"Unexpected error in currency abbreviation {value}: {e}")
         raise DataTransformError(f"Critical currency abbreviation error: {e}") from e
+
 
 function_registry = {
     "abbreviate": abbreviate,

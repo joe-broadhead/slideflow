@@ -7,15 +7,25 @@ import slideflow.cli.commands.validate as validate_command_module
 
 
 def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(build_command_module, "print_build_header", lambda *a, **k: None)
-    monkeypatch.setattr(build_command_module, "print_build_progress", lambda *a, **k: None)
-    monkeypatch.setattr(build_command_module, "print_build_success", lambda *a, **k: None)
+    monkeypatch.setattr(
+        build_command_module, "print_build_header", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        build_command_module, "print_build_progress", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        build_command_module, "print_build_success", lambda *a, **k: None
+    )
     monkeypatch.setattr(build_command_module, "print_build_error", lambda *a, **k: None)
     monkeypatch.setattr(build_command_module.time, "sleep", lambda *_: None)
 
-    monkeypatch.setattr(validate_command_module, "print_validation_header", lambda *a, **k: None)
+    monkeypatch.setattr(
+        validate_command_module, "print_validation_header", lambda *a, **k: None
+    )
     monkeypatch.setattr(validate_command_module, "print_success", lambda *a, **k: None)
-    monkeypatch.setattr(validate_command_module, "print_config_summary", lambda *a, **k: None)
+    monkeypatch.setattr(
+        validate_command_module, "print_config_summary", lambda *a, **k: None
+    )
     monkeypatch.setattr(validate_command_module, "print_error", lambda *a, **k: None)
 
 
@@ -64,7 +74,9 @@ def test_validate_command_with_real_loader_and_registry(tmp_path, monkeypatch):
     _write_registry(registry_path)
     _write_config(config_path)
 
-    validate_command_module.validate_command(config_file=config_path, registry_paths=None)
+    validate_command_module.validate_command(
+        config_file=config_path, registry_paths=None
+    )
 
 
 @pytest.mark.integration
@@ -91,7 +103,9 @@ def test_validate_fails_when_registry_function_is_missing(tmp_path, monkeypatch)
     )
 
     with pytest.raises(validate_command_module.typer.Exit) as exc_info:
-        validate_command_module.validate_command(config_file=config_path, registry_paths=None)
+        validate_command_module.validate_command(
+            config_file=config_path, registry_paths=None
+        )
 
     assert exc_info.value.code == 1
 
@@ -112,7 +126,9 @@ def test_e2e_validate_then_build_dry_run_with_param_csv(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    validate_command_module.validate_command(config_file=config_path, registry_paths=None)
+    validate_command_module.validate_command(
+        config_file=config_path, registry_paths=None
+    )
 
     result = build_command_module.build_command(
         config_file=config_path,

@@ -17,23 +17,23 @@ Key Features:
 
 Example:
     Using the union type in configuration:
-    
+
     >>> from slideflow.data.connectors import DataSourceConfig
-    >>> 
+    >>>
     >>> # CSV configuration
     >>> csv_config = {
     ...     "type": "csv",
     ...     "name": "sales_data",
     ...     "file_path": "/data/sales.csv"
     ... }
-    >>> 
-    >>> # JSON configuration  
+    >>>
+    >>> # JSON configuration
     >>> json_config = {
     ...     "type": "json",
     ...     "name": "api_data",
     ...     "file_path": "/data/api_response.json"
     ... }
-    >>> 
+    >>>
     >>> # Both are valid DataSourceConfig instances
     >>> configs = [csv_config, json_config]
     >>> for config in configs:
@@ -46,22 +46,23 @@ Supported Data Source Types:
     - "dbt": DBT models in Databricks
 """
 
-from pydantic import Field
 from typing import Annotated, Union
 
+from pydantic import Field
+
 from slideflow.data.connectors.csv import CSVSourceConfig
-from slideflow.data.connectors.json import JSONSourceConfig
-from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig
 from slideflow.data.connectors.databricks import DatabricksSourceConfig
+from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig
+from slideflow.data.connectors.json import JSONSourceConfig
 
 DataSourceConfig = Annotated[
     Union[
         CSVSourceConfig,
         JSONSourceConfig,
         DatabricksSourceConfig,
-        DBTDatabricksSourceConfig
+        DBTDatabricksSourceConfig,
     ],
-    Field(discriminator = "type"),
+    Field(discriminator="type"),
 ]
 """Discriminated union of all available data source configurations.
 

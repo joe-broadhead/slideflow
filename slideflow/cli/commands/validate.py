@@ -22,46 +22,51 @@ The validation process includes:
 
 Example:
     Command-line usage::
-    
+
         # Validate basic configuration
         slideflow validate config.yaml
-        
+
         # Validate with custom registries
         slideflow validate config.yaml --registry custom.py
-        
+
         # Validate with multiple registries
         slideflow validate config.yaml -r reg1.py -r reg2.py
 """
 
-import typer
-import yaml
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from slideflow.utilities import ConfigLoader
+import typer
+import yaml  # type: ignore[import-untyped]
+
+from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.cli.theme import (
-    print_validation_header,
-    print_success,
     print_config_summary,
-    print_error
+    print_error,
+    print_success,
+    print_validation_header,
 )
 from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
+from slideflow.utilities import ConfigLoader
+
 
 def validate_command(
-    config_file: Path = typer.Argument(..., help = "Path to YAML configuration file"),
+    config_file: Path = typer.Argument(..., help="Path to YAML configuration file"),
     registry_paths: Optional[List[Path]] = typer.Option(
-        None, "--registry", "-r", 
-        help = "Path to Python registry files (can be used multiple times)"
-    )
+        None,
+        "--registry",
+        "-r",
+        help="Path to Python registry files (can be used multiple times)",
+    ),
 ) -> None:
     """Validate YAML configuration and registry files.
-    
+
     Performs comprehensive validation of Slideflow configuration files
     including YAML syntax, function registry resolution, and semantic
     validation using Pydantic models. This command helps identify
     configuration issues before attempting to build presentations.
-    
+
     The validation process includes:
         1. YAML file existence and readability checks
         2. YAML syntax validation
@@ -69,30 +74,30 @@ def validate_command(
         4. Parameter template processing
         5. Pydantic model validation for type safety
         6. Configuration completeness verification
-    
+
     Args:
         config_file: Path to the YAML configuration file to validate.
             Must be a readable file with valid YAML syntax.
         registry_paths: List of Python files containing function registries.
             Defaults to ["registry.py"]. These files are loaded to resolve
             function references in the configuration.
-            
+
     Raises:
         typer.Exit: Exits with code 1 if validation fails at any stage.
-        
+
     Examples:
         Basic validation::
-        
+
             slideflow validate presentation.yaml
-            
+
         With custom registry::
-        
+
             slideflow validate config.yaml --registry custom_functions.py
-            
+
         Multiple registries::
-        
+
             slideflow validate config.yaml -r base.py -r custom.py
-            
+
     Validation Checks:
         - File existence and permissions
         - YAML syntax correctness
@@ -101,18 +106,18 @@ def validate_command(
         - Data source configuration validity
         - Presentation structure completeness
         - Provider configuration correctness
-        
+
     Output:
         On success, displays:
             - Validation success message
             - Configuration summary with key details
             - Slide count and structure information
-            
+
         On failure, displays:
             - Detailed error message indicating the issue
             - File and line information when applicable
             - Suggestions for fixing common problems
-            
+
     Note:
         - Validation does not perform actual data fetching or API calls
         - Registry functions are resolved but not executed
@@ -120,39 +125,30 @@ def validate_command(
         - This command is safe to run in CI/CD pipelines
     """
 
-    print_validation_header(config_file)
-    
+    print_validation_header(str(config_file))
+
     try:
-        raw_config = yaml.safe_load(config_file.read_text(encoding = "utf-8")) or {}
+        raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
         config_registry = raw_config.get("registry")
 
-        config_registry_paths: List[Path] = []
-        if config_registry is not None:
-            if isinstance(config_registry, (str, Path)):
-                config_registry_paths = [Path(config_registry)]
-            elif isinstance(config_registry, list):
-                config_registry_paths = [Path(p) for p in config_registry]
-            else:
-                raise ValueError("`registry` in config must be a path or list of paths")
-
-        default_registry = Path("registry.py")
-        default_registry_paths = [default_registry] if default_registry.exists() else []
-        resolved_registry_paths = (
-            list(registry_paths)
-            if registry_paths is not None
-            else (config_registry_paths or default_registry_paths)
+        resolved_registry_paths = resolve_registry_paths(
+            config_file=config_file,
+            cli_registry_paths=registry_paths,
+            config_registry=config_registry,
         )
 
         loader = ConfigLoader(
-            yaml_path = config_file,
-            registry_paths = resolved_registry_paths
+            yaml_path=config_file, registry_paths=resolved_registry_paths
         )
-    
+
         presentation_config = PresentationConfig(**loader.config)
 
         # Validate provider-specific configuration
         from slideflow.presentations.providers.factory import ProviderFactory
-        ProviderFactory.get_config_class(presentation_config.provider.type)(**presentation_config.provider.config)
+
+        ProviderFactory.get_config_class(presentation_config.provider.type)(
+            **presentation_config.provider.config
+        )
 
         # Validate chart/replacement specs deeply so unresolved function refs fail validation.
         for slide_spec in presentation_config.presentation.slides:
@@ -161,7 +157,7 @@ def validate_command(
         print_success()
 
         print_config_summary(presentation_config)
-        
+
     except Exception as e:
         print_error(str(e))
         raise typer.Exit(1)

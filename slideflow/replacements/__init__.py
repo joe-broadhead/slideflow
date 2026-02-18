@@ -27,18 +27,18 @@ Replacement Types:
 
 Example:
     Creating different types of replacements:
-    
+
     >>> from slideflow.replacements import (
     ...     TextReplacement, AITextReplacement, TableReplacement
     ... )
-    >>> 
+    >>>
     >>> # Static text replacement
     >>> text_replacement = TextReplacement(
     ...     type="text",
     ...     placeholder="{{COMPANY_NAME}}",
     ...     replacement="Acme Corporation"
     ... )
-    >>> 
+    >>>
     >>> # AI-generated content
     >>> ai_replacement = AITextReplacement(
     ...     type="ai_text",
@@ -47,14 +47,14 @@ Example:
     ...     provider="openai",
     ...     data_source=sales_data_source
     ... )
-    >>> 
+    >>>
     >>> # Table-based replacement
     >>> table_replacement = TableReplacement(
     ...     type="table",
     ...     prefix="METRICS_",
     ...     data_source=metrics_data_source
     ... )
-    >>> 
+    >>>
     >>> # Use replacements
     >>> content = text_replacement.get_replacement()
     >>> summary = ai_replacement.get_replacement()
@@ -67,19 +67,20 @@ Architecture:
     replacement class based on configuration.
 """
 
-from pydantic import Field
-from typing import Union, Annotated
+from typing import Annotated, Union
 
-from slideflow.replacements.base import BaseReplacement
-from slideflow.replacements.text import TextReplacement
-from slideflow.replacements.table import TableReplacement
+from pydantic import Field
+
 from slideflow.replacements.ai_text import AITextReplacement
+from slideflow.replacements.base import BaseReplacement
+from slideflow.replacements.table import TableReplacement
+from slideflow.replacements.text import TextReplacement
 from slideflow.replacements.utils import dataframe_to_replacement_object
 
 # Discriminated union for all replacement types
 ReplacementUnion = Annotated[
     Union[TextReplacement, AITextReplacement, TableReplacement],
-    Field(discriminator = "type")
+    Field(discriminator="type"),
 ]
 """Union type for all available replacement types with discriminated validation.
 
@@ -105,10 +106,10 @@ Example:
 """
 
 __all__ = [
-    'BaseReplacement',
-    'TextReplacement',
-    'TableReplacement', 
-    'AITextReplacement',
-    'ReplacementUnion',
-    'dataframe_to_replacement_object',
+    "BaseReplacement",
+    "TextReplacement",
+    "TableReplacement",
+    "AITextReplacement",
+    "ReplacementUnion",
+    "dataframe_to_replacement_object",
 ]

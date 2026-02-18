@@ -78,7 +78,7 @@ SlideFlow works in three simple steps:
 ## 🛠 Installation
 
 ```bash
-pip install git+https://github.com/joe-broadhead/slideflow.git
+pip install slideflow-presentations
 ```
 
 ---

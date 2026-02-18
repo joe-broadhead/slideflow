@@ -14,11 +14,11 @@ Example:
     Basic usage with OpenAI provider::
 
         from slideflow.ai import OpenAIProvider, create_provider
-        
+
         # Direct instantiation
         provider = OpenAIProvider(api_key="your-api-key")
         result = provider.generate("Summarize Q3 performance")
-        
+
         # Using factory with registry
         provider = create_provider("openai", api_key="your-api-key")
         result = provider.generate("Create executive summary")
@@ -27,21 +27,22 @@ Attributes:
     ai_provider_registry: Global registry instance for AI providers
 """
 
-from slideflow.ai.providers import (
-    AIProvider, OpenAIProvider, GeminiProvider
-)
+from slideflow.ai.providers import AIProvider, GeminiProvider, OpenAIProvider
 from slideflow.ai.registry import (
-    ai_provider_registry, get_provider_class, register_provider, 
-    list_available_providers, create_provider
+    ai_provider_registry,
+    create_provider,
+    get_provider_class,
+    list_available_providers,
+    register_provider,
 )
 
 __all__ = [
-    'AIProvider', 
-    'OpenAIProvider', 
-    'GeminiProvider',
-    'ai_provider_registry',
-    'get_provider_class',
-    'register_provider',
-    'list_available_providers',
-    'create_provider'
+    "AIProvider",
+    "OpenAIProvider",
+    "GeminiProvider",
+    "ai_provider_registry",
+    "get_provider_class",
+    "register_provider",
+    "list_available_providers",
+    "create_provider",
 ]

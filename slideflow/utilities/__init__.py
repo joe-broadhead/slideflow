@@ -16,10 +16,10 @@ Key Components:
 
 Example:
     Basic utility usage across Slideflow:
-    
+
     >>> from slideflow.utilities import ConfigLoader, get_logger, apply_data_transforms
     >>> from pathlib import Path
-    >>> 
+    >>>
     >>> # Load configuration with template resolution
     >>> loader = ConfigLoader(
     ...     yaml_path=Path("config.yaml"),
@@ -27,12 +27,12 @@ Example:
     ...     params={"environment": "production"}
     ... )
     >>> config = loader.config
-    >>> 
+    >>>
     >>> # Set up logging
     >>> from slideflow.utilities import setup_logging
     >>> setup_logging(level="INFO", enable_debug=True)
     >>> logger = get_logger(__name__)
-    >>> 
+    >>>
     >>> # Apply data transformations
     >>> import pandas as pd
     >>> df = pd.DataFrame({"sales": [100, 200, 300]})
@@ -55,43 +55,43 @@ Performance Features:
 from slideflow.utilities.config import ConfigLoader
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import (
-    SlideFlowError,
+    APIError,
+    APIRateLimitError,
+    AuthenticationError,
+    ChartGenerationError,
     ConfigurationError,
     DataSourceError,
     DataTransformError,
-    APIError,
-    APIRateLimitError,
     ProviderError,
     RenderingError,
-    AuthenticationError,
-    ChartGenerationError,
-    ReplacementError
+    ReplacementError,
+    SlideFlowError,
 )
 from slideflow.utilities.logging import (
-    setup_logging,
     get_logger,
-    log_performance,
+    log_api_operation,
     log_data_operation,
-    log_api_operation
+    log_performance,
+    setup_logging,
 )
 
 __all__ = [
-    'ConfigLoader',
-    'apply_data_transforms',
-    'SlideFlowError',
-    'ConfigurationError', 
-    'DataSourceError',
-    'DataTransformError',
-    'APIError',
-    'APIRateLimitError',
-    'ProviderError',
-    'RenderingError',
-    'AuthenticationError',
-    'ChartGenerationError',
-    'ReplacementError',
-    'setup_logging',
-    'get_logger',
-    'log_performance',
-    'log_data_operation',
-    'log_api_operation',
+    "ConfigLoader",
+    "apply_data_transforms",
+    "SlideFlowError",
+    "ConfigurationError",
+    "DataSourceError",
+    "DataTransformError",
+    "APIError",
+    "APIRateLimitError",
+    "ProviderError",
+    "RenderingError",
+    "AuthenticationError",
+    "ChartGenerationError",
+    "ReplacementError",
+    "setup_logging",
+    "get_logger",
+    "log_performance",
+    "log_data_operation",
+    "log_api_operation",
 ]

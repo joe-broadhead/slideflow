@@ -24,15 +24,15 @@ Registry System:
 
 Example:
     Using the registry system::
-    
+
         from slideflow.core.registry import create_function_registry
-        
+
         # Create a custom registry
         my_registry = create_function_registry("transformations")
-        
+
         # Register functions
         my_registry.register_function("capitalize", str.upper)
-        
+
         # Use registered functions
         func = my_registry.get("capitalize")
         result = func("hello")  # "HELLO"
@@ -43,10 +43,10 @@ Attributes:
     ClassRegistry: Registry specialized for class types and constructors
 """
 
-from slideflow.core.registry import BaseRegistry, FunctionRegistry, ClassRegistry
+from slideflow.core.registry import BaseRegistry, ClassRegistry, FunctionRegistry
 
 __all__ = [
     "BaseRegistry",
-    "FunctionRegistry", 
+    "FunctionRegistry",
     "ClassRegistry",
 ]

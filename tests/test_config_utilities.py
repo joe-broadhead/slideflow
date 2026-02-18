@@ -1,7 +1,6 @@
 import importlib
 import importlib.util
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -36,11 +35,15 @@ def test_load_registry_from_path_fails_when_file_missing(tmp_path):
         load_registry_from_path(missing)
 
 
-def test_load_registry_from_path_fails_when_module_spec_is_unavailable(tmp_path, monkeypatch):
+def test_load_registry_from_path_fails_when_module_spec_is_unavailable(
+    tmp_path, monkeypatch
+):
     registry_file = tmp_path / "registry.py"
     registry_file.write_text("function_registry = {}\n")
 
-    monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        importlib.util, "spec_from_file_location", lambda *_args, **_kwargs: None
+    )
 
     with pytest.raises(ConfigurationError, match="Unable to load module specification"):
         load_registry_from_path(registry_file)
@@ -59,14 +62,8 @@ def test_load_registry_from_path_forces_target_parent_path_precedence(tmp_path):
     (bad_pkg / "__init__.py").write_text("")
     (good_pkg / "__init__.py").write_text("")
 
-    (bad_pkg / "helpers.py").write_text(
-        "def source_marker():\n"
-        "    return 'bad'\n"
-    )
-    (good_pkg / "helpers.py").write_text(
-        "def source_marker():\n"
-        "    return 'good'\n"
-    )
+    (bad_pkg / "helpers.py").write_text("def source_marker():\n" "    return 'bad'\n")
+    (good_pkg / "helpers.py").write_text("def source_marker():\n" "    return 'good'\n")
     registry_file = good_pkg / "registry.py"
     registry_file.write_text(
         "from .helpers import source_marker\n"
@@ -82,7 +79,9 @@ def test_load_registry_from_path_forces_target_parent_path_precedence(tmp_path):
     }
     original_sys_path = list(sys.path)
     sys.path[:] = [str(bad_parent), str(good_parent)] + [
-        entry for entry in original_sys_path if entry not in {str(bad_parent), str(good_parent)}
+        entry
+        for entry in original_sys_path
+        if entry not in {str(bad_parent), str(good_parent)}
     ]
     try:
         for name in list(sys.modules):
