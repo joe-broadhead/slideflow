@@ -54,7 +54,7 @@ Security:
 
 from typing import Optional, Tuple, Union
 from operator import add, sub, mul, truediv
-from ast import Add, Sub, Mult, Div, parse, Expression, BinOp, Num
+from ast import Add, Sub, Mult, Div, parse, Expression, BinOp, Constant
 
 from slideflow.utilities.exceptions import ChartGenerationError
 
@@ -160,12 +160,7 @@ def safe_eval_expression(expr: str) -> Union[float, int]:
                 raise ChartGenerationError(f"Result too large: {result}")
             
             return result
-        elif isinstance(node, Num):
-            return node.n
-        # Handle newer Python versions that use Constant instead of Num
-        elif hasattr(node, 'n'):  # Fallback for different Python versions
-            return node.n
-        elif hasattr(node, 'value') and isinstance(node.value, (int, float)):
+        elif isinstance(node, Constant) and isinstance(node.value, (int, float)):
             return node.value
         else:
             raise ChartGenerationError(f'Unsupported AST node type: {type(node)}')

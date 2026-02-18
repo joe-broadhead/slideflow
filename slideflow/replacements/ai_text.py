@@ -62,7 +62,7 @@ Example:
 
 import inspect
 import pandas as pd
-from pydantic import Field, ConfigDict, root_validator
+from pydantic import Field, ConfigDict, model_validator
 from typing import (
     Any,
     Type,
@@ -172,9 +172,11 @@ class AITextReplacement(BaseReplacement):
     provider_args: Annotated[Dict[str, Any], Field(default_factory = dict, description = "Keyword args for provider init & call")]
     data_source: Annotated[Optional[Union[DataSourceConfig, List[DataSourceConfig]]], Field(default = None, description = "Optional data source(s) to include")]
 
-    @root_validator(pre=True)
-    def _validate_data_source(cls, values):
-        if 'data_source' in values and not isinstance(values['data_source'], list):
+    @model_validator(mode = "before")
+    @classmethod
+    def _validate_data_source(cls, values: Any) -> Any:
+        if isinstance(values, dict) and 'data_source' in values and values['data_source'] is not None and not isinstance(values['data_source'], list):
+            values = dict(values)
             values['data_source'] = [values['data_source']]
         return values
 
