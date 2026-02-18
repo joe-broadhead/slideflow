@@ -12,7 +12,7 @@ provider:
   type: "google_slides"
   config: {...}
 
-template_paths: ["./templates"] # optional
+template_paths: ["./templates"] # optional additional paths (prepended before defaults)
 registry: ["./registry.py"] # optional
 ```
 
@@ -141,7 +141,7 @@ Common positioning fields in chart config:
 ```yaml
 - type: "template"
   config:
-    template_name: "bar_chart"
+    template_name: "bars/bar_basic"
     template_config:
       title: "Monthly Revenue"
       x_column: "month"
@@ -215,5 +215,6 @@ vars:
 
 ## Template paths and registries
 
-- `template_paths`: additional chart-template search paths
+- `template_paths`: additional chart-template search paths (highest precedence)
+  - default fallbacks still apply: `./templates`, `~/.slideflow/templates`, packaged built-ins
 - `registry`: one or many Python files exposing `function_registry`

@@ -81,6 +81,13 @@ slideflow build config.yml
 
 Validation should be treated as mandatory in CI and release workflows.
 
+To discover built-in chart templates:
+
+```bash
+slideflow templates list --details
+slideflow templates info bars/bar_basic
+```
+
 ## Quick smoke check (recommended after install)
 
 Run the checked-in smoke sample with no external credentials:

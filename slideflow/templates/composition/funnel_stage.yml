@@ -1,0 +1,24 @@
+name: "Funnel Stage"
+description: "Funnel chart for stage conversion analysis."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "stage_column"
+    type: "string"
+    required: true
+    description: "Funnel stage labels"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Funnel stage values"
+template: |
+  traces:
+    - type: "funnel"
+      y: "${{ stage_column }}"
+      x: "${{ value_column }}"
+      textinfo: "value+percent initial"
+  layout_config:
+    title: "{{ title }}"

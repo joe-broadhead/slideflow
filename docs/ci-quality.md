@@ -55,7 +55,7 @@ bash scripts/ci/run_quickstart_smoke.sh
 
 ## Coverage policy
 
-- CI enforces a minimum coverage floor (`--cov-fail-under=75`)
+- CI enforces a minimum coverage floor (`--cov-fail-under=80`)
 - Raise this threshold over time; do not lower it without explicit approval
 
 ## Branching policy

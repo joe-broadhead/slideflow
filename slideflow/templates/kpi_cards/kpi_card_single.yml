@@ -1,0 +1,21 @@
+name: "KPI Card Single"
+description: "Single KPI indicator card."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Indicator title"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Current KPI value"
+template: |
+  traces:
+    - type: "indicator"
+      mode: "number"
+      value: "${{ value_column }}"
+      title:
+        text: "{{ title }}"
+  layout_config:
+    title: "{{ title }}"

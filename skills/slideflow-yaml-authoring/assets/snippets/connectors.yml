@@ -1,0 +1,25 @@
+# Connector snippets
+csv:
+  type: "csv"
+  name: "sales_csv"
+  file_path: "./data/sales.csv"
+
+json:
+  type: "json"
+  name: "events_json"
+  file_path: "./data/events.json"
+  orient: "records"
+
+databricks:
+  type: "databricks"
+  name: "warehouse_query"
+  query: "SELECT * FROM mart.sales LIMIT 100"
+
+databricks_dbt:
+  type: "databricks_dbt"
+  name: "dbt_model"
+  model_alias: "revenue_model"
+  package_url: "https://github.com/org/dbt-project.git"
+  project_dir: "/tmp/dbt_workspace"
+  branch: "main"
+  target: "prod"

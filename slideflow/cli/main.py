@@ -24,6 +24,11 @@ Example:
 import typer
 
 from slideflow.cli.commands import build_command, validate_command
+from slideflow.cli.commands.templates import (
+    templates_app,
+    templates_info,
+    templates_list,
+)
 from slideflow.cli.theme import print_help_footer, print_slideflow_banner
 from slideflow.utilities.logging import setup_logging
 
@@ -102,6 +107,12 @@ def main(
 
 app.command("validate")(validate_command)
 app.command("build")(build_command)
+if hasattr(app, "add_typer"):
+    app.add_typer(templates_app, name="templates")
+else:
+    # Compatibility fallback for minimal Typer stubs used in tests.
+    app.command("templates-list")(templates_list)
+    app.command("templates-info")(templates_info)
 
 if __name__ == "__main__":
     app()

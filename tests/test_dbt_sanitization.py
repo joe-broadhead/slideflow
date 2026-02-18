@@ -51,6 +51,102 @@ def test_resolve_managed_clone_dir_uses_managed_workspace(tmp_path):
     assert clone_dir.parent.exists()
 
 
+def test_resolve_managed_clone_dir_includes_compile_inputs_in_identity(tmp_path):
+    workspace = str(tmp_path / "workspace")
+    package_url = "https://github.com/org/repo.git"
+    branch = "main"
+
+    baseline = dbt_module._resolve_managed_clone_dir(
+        project_dir=workspace,
+        package_url=package_url,
+        branch=branch,
+        target="prod",
+        vars={"as_of_date": "2026-02-18"},
+        profiles_dir="/tmp/profiles_a",
+        profile_name="default",
+    )
+    different_target = dbt_module._resolve_managed_clone_dir(
+        project_dir=workspace,
+        package_url=package_url,
+        branch=branch,
+        target="dev",
+        vars={"as_of_date": "2026-02-18"},
+        profiles_dir="/tmp/profiles_a",
+        profile_name="default",
+    )
+    different_vars = dbt_module._resolve_managed_clone_dir(
+        project_dir=workspace,
+        package_url=package_url,
+        branch=branch,
+        target="prod",
+        vars={"as_of_date": "2026-02-19"},
+        profiles_dir="/tmp/profiles_a",
+        profile_name="default",
+    )
+    different_profile = dbt_module._resolve_managed_clone_dir(
+        project_dir=workspace,
+        package_url=package_url,
+        branch=branch,
+        target="prod",
+        vars={"as_of_date": "2026-02-18"},
+        profiles_dir="/tmp/profiles_b",
+        profile_name="analytics",
+    )
+
+    assert baseline != different_target
+    assert baseline != different_vars
+    assert baseline != different_profile
+
+
+def test_get_compiled_project_keeps_variant_clone_paths_isolated(monkeypatch, tmp_path):
+    dbt_module._compiled_projects_cache.clear()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True, exist_ok=True)
+
+    class _Runner:
+        def invoke(self, _args):
+            return None
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    workspace = str(tmp_path / "workspace")
+    package_url = "https://github.com/org/repo.git"
+    branch = "main"
+
+    path_a = dbt_module._get_compiled_project(
+        package_url=package_url,
+        project_dir=workspace,
+        branch=branch,
+        target="prod",
+        vars={"country": "US"},
+        profiles_dir=None,
+        profile_name=None,
+    )
+    path_b = dbt_module._get_compiled_project(
+        package_url=package_url,
+        project_dir=workspace,
+        branch=branch,
+        target="prod",
+        vars={"country": "CA"},
+        profiles_dir=None,
+        profile_name=None,
+    )
+    path_a_again = dbt_module._get_compiled_project(
+        package_url=package_url,
+        project_dir=workspace,
+        branch=branch,
+        target="prod",
+        vars={"country": "US"},
+        profiles_dir=None,
+        profile_name=None,
+    )
+
+    assert path_a != path_b
+    assert path_a_again == path_a
+
+
 def test_clone_repo_refuses_to_delete_unmanaged_existing_path(tmp_path):
     unmanaged_clone_dir = tmp_path / "existing_clone"
     unmanaged_clone_dir.mkdir()

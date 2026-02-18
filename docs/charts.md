@@ -53,7 +53,7 @@ This chart type allows you to use a reusable YAML template to define your chart.
 - type: "template"
   config:
     title: "Monthly Active Users"
-    template_name: "bar_chart"
+    template_name: "bar_basic"
     data_source:
       type: "csv"
       name: "mau_data"
@@ -64,6 +64,9 @@ This chart type allows you to use a reusable YAML template to define your chart.
       y_column: "mau"
       y_title: "Active Users"
 ```
+
+Built-in templates are bundled with SlideFlow. Local templates can override
+built-ins when names collide.
 
 ### 3. Custom Chart (`custom`)
 

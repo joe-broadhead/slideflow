@@ -56,6 +56,9 @@ slideflow = "slideflow.cli.main:app"
 [tool.setuptools.packages.find]
 include = ["slideflow*"]
 
+[tool.setuptools.package-data]
+slideflow = ["templates/**/*.yml"]
+
 [tool.black]
 line-length = 88
 target-version = ['py312']

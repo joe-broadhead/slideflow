@@ -1,0 +1,36 @@
+name: "Area Stacked"
+description: "Stacked area chart for cumulative trend composition."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "X-axis column"
+  - name: "y1_column"
+    type: "string"
+    required: true
+    description: "First area series"
+  - name: "y2_column"
+    type: "string"
+    required: true
+    description: "Second area series"
+template: |
+  traces:
+    - type: "scatter"
+      mode: "lines"
+      stackgroup: "one"
+      x: "${{ x_column }}"
+      y: "${{ y1_column }}"
+      name: "{{ y1_column|title_case }}"
+    - type: "scatter"
+      mode: "lines"
+      stackgroup: "one"
+      x: "${{ x_column }}"
+      y: "${{ y2_column }}"
+      name: "{{ y2_column|title_case }}"
+  layout_config:
+    title: "{{ title }}"

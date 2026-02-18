@@ -59,7 +59,7 @@ jobs:
           python -m pytest -q \
             --cov=slideflow \
             --cov-report=term \
-            --cov-fail-under=75
+            --cov-fail-under=80
 
       - name: Build distribution artifacts
         run: |

@@ -109,6 +109,8 @@ nav:
       - Replacements: replacements.md
       - Charts: charts.md
       - Templating: templating.md
+      - Template Catalog: template-catalog.md
+      - Template Authoring: template-authoring.md
   - Operations:
       - Testing: testing.md
       - Security: security.md
@@ -116,3 +118,4 @@ nav:
   - Development:
       - Compatibility Policy: compatibility-policy.md
       - CI & Quality: ci-quality.md
+      - Agent Skills: agent-skills.md

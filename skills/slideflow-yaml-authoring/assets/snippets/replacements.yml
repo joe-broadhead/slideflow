@@ -1,0 +1,24 @@
+# Replacement snippets
+text:
+  type: "text"
+  config:
+    placeholder: "{{TOTAL_REVENUE}}"
+    replacement: "42"
+
+table:
+  type: "table"
+  config:
+    prefix: "METRIC_"
+    data_source:
+      type: "csv"
+      name: "metrics"
+      file_path: "./data/metrics.csv"
+
+ai_text:
+  type: "ai_text"
+  config:
+    placeholder: "{{SUMMARY}}"
+    prompt: "Summarize top 3 insights"
+    provider: "openai"
+    provider_args:
+      model: "gpt-4o"

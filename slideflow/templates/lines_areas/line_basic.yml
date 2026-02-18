@@ -1,0 +1,25 @@
+name: "Line Basic"
+description: "Single-series line chart for trend tracking."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "X-axis column"
+  - name: "y_column"
+    type: "string"
+    required: true
+    description: "Y-axis column"
+template: |
+  traces:
+    - type: "scatter"
+      mode: "lines+markers"
+      x: "${{ x_column }}"
+      y: "${{ y_column }}"
+      name: "{{ y_column|title_case }}"
+  layout_config:
+    title: "{{ title }}"

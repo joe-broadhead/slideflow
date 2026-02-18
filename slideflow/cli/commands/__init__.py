@@ -8,6 +8,7 @@ functionality.
 Available Commands:
     validate: Validate YAML configuration files and registry modules
     build: Generate presentations from configuration files
+    templates: Discover template names and parameter contracts
 
 Each command is implemented as a separate module with comprehensive error
 handling, progress reporting, and user-friendly output formatting.
@@ -17,6 +18,7 @@ Example:
 
     $ slideflow validate config.yaml
     $ slideflow build config.yaml --params-path data.csv
+    $ slideflow templates list --details
     $ slideflow build config.yaml --dry-run
 
 Usage:
@@ -27,6 +29,17 @@ Usage:
 """
 
 from slideflow.cli.commands.build import build_command
+from slideflow.cli.commands.templates import (
+    templates_app,
+    templates_info_command,
+    templates_list_command,
+)
 from slideflow.cli.commands.validate import validate_command
 
-__all__ = ["validate_command", "build_command"]
+__all__ = [
+    "validate_command",
+    "build_command",
+    "templates_app",
+    "templates_list_command",
+    "templates_info_command",
+]

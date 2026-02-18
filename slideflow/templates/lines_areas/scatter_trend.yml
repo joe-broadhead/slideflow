@@ -1,0 +1,25 @@
+name: "Scatter Trend"
+description: "Scatter chart for relationship and trend inspection."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "X-axis metric"
+  - name: "y_column"
+    type: "string"
+    required: true
+    description: "Y-axis metric"
+template: |
+  traces:
+    - type: "scatter"
+      mode: "markers"
+      x: "${{ x_column }}"
+      y: "${{ y_column }}"
+      name: "{{ title }}"
+  layout_config:
+    title: "{{ title }}"

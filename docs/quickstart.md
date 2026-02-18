@@ -40,7 +40,7 @@ Expected outcome:
 
 - A new presentation is copied from your template
 - Slide 1 gets `{{MONTH}}` replacement and a bar chart from `docs/quickstart/data.csv`
-- Slide 2 gets a template chart from `docs/quickstart/bar_chart.yml`
+- Slide 2 gets a template chart from the built-in `bar_basic` template
 
 ## 3. Batch mode (multi-deck)
 

@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import pytest
 
+import slideflow.builtins.template_engine as template_engine_module
 from slideflow.builtins.template_engine import TemplateEngine
 from slideflow.utilities.exceptions import ChartGenerationError
 
@@ -58,3 +61,40 @@ def test_list_templates_returns_sorted_template_names(tmp_path):
     engine = TemplateEngine([tmp_path])
 
     assert engine.list_templates() == ["alpha", "zeta"]
+
+
+def test_default_engine_can_load_packaged_builtin_templates():
+    engine = TemplateEngine()
+    rendered = engine.render_template(
+        "bar_basic",
+        {"title": "Revenue", "x_column": "month", "y_column": "revenue"},
+    )
+
+    assert rendered["traces"][0]["type"] == "bar"
+    assert rendered["layout_config"]["title"] == "Revenue"
+
+
+def test_local_template_precedence_overrides_packaged_builtin(tmp_path):
+    custom_templates = tmp_path / "templates"
+    custom_templates.mkdir(parents=True, exist_ok=True)
+    (custom_templates / "bar_basic.yml").write_text(
+        "name: Local Override\n"
+        "description: Local override for built-in bar_basic\n"
+        "parameters:\n"
+        "  - name: title\n"
+        "    type: string\n"
+        "    required: true\n"
+        "template:\n"
+        "  traces:\n"
+        '    - type: "scatter"\n'
+        "  layout_config:\n"
+        '    title: "{{ title }}"\n'
+    )
+
+    builtins_path = (
+        Path(template_engine_module.__file__).resolve().parents[1] / "templates"
+    )
+    engine = TemplateEngine([custom_templates, builtins_path])
+    template = engine.load_template("bar_basic")
+
+    assert template.name == "Local Override"

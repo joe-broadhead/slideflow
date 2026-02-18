@@ -1,0 +1,41 @@
+name: "Combo Bar Line"
+description: "Dual-axis combo chart with bar + line overlay."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "X-axis category column"
+  - name: "bar_column"
+    type: "string"
+    required: true
+    description: "Bar metric column"
+  - name: "line_column"
+    type: "string"
+    required: true
+    description: "Line metric column"
+template: |
+  traces:
+    - type: "bar"
+      x: "${{ x_column }}"
+      y: "${{ bar_column }}"
+      name: "{{ bar_column|title_case }}"
+      yaxis: "y"
+    - type: "scatter"
+      mode: "lines+markers"
+      x: "${{ x_column }}"
+      y: "${{ line_column }}"
+      name: "{{ line_column|title_case }}"
+      yaxis: "y2"
+  layout_config:
+    title: "{{ title }}"
+    yaxis:
+      title: "{{ bar_column|title_case }}"
+    yaxis2:
+      title: "{{ line_column|title_case }}"
+      overlaying: "y"
+      side: "right"

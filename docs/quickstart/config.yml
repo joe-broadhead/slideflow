@@ -6,9 +6,6 @@ provider:
     share_with: ["your_email@email.com"]
     share_role: "writer"
 
-template_paths:
-  - "docs/quickstart"
-
 presentation:
   name: "Quickstart Presentation"
   slides:
@@ -43,7 +40,7 @@ presentation:
         - type: "template"
           config:
             title: "Monthly Active Users"
-            template_name: "bar_chart"
+            template_name: "bar_basic"
             data_source:
               type: "csv"
               name: "quickstart_data"

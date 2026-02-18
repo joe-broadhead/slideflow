@@ -54,13 +54,14 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
     -   **AI-Generated Text:** Use OpenAI or Gemini to generate summaries, insights, or any other text, right from your data.
 -   **Powerful Charting Engine:**
     -   **Plotly Graph Objects:** Create any chart you can imagine with the full power of Plotly.
-    -   **YAML Chart Templates:** Define reusable chart styles and configurations.
+    -   **YAML Chart Templates:** Use packaged built-ins or define reusable local templates.
     -   **Custom Python Functions:** For when you need complete control over your chart generation logic.
 -   **Extensible and Customizable:**
     -   Use **Function Registries** to extend SlideFlow with your own Python functions for data transformations, formatting, and more.
 -   **Powerful CLI:**
     -   `slideflow build`: Generate one or many presentations.
     -   `slideflow validate`: Validate your configuration before you build.
+    -   `slideflow templates`: Inspect available template names and parameter contracts.
     -   Generate multiple presentations from a single template using a CSV parameter file.
 
 ---
