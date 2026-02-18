@@ -269,6 +269,8 @@ def build_command(
                 )
                 presentation_config = PresentationConfig(**loader.config)
                 ProviderFactory.get_config_class(presentation_config.provider.type)(**presentation_config.provider.config)
+                for slide_spec in presentation_config.presentation.slides:
+                    PresentationBuilder._build_slide(slide_spec)
             print_build_progress(6, 6, "Dry run complete - configuration is valid!")
             print_build_success()
             return []

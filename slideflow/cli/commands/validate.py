@@ -44,6 +44,7 @@ from slideflow.cli.theme import (
     print_config_summary,
     print_error
 )
+from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 
 def validate_command(
@@ -134,6 +135,10 @@ def validate_command(
         # Validate provider-specific configuration
         from slideflow.presentations.providers.factory import ProviderFactory
         ProviderFactory.get_config_class(presentation_config.provider.type)(**presentation_config.provider.config)
+
+        # Validate chart/replacement specs deeply so unresolved function refs fail validation.
+        for slide_spec in presentation_config.presentation.slides:
+            PresentationBuilder._build_slide(slide_spec)
 
         print_success()
 
