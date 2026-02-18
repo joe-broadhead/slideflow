@@ -1,10 +1,3 @@
-:root {
-  --md-primary-fg-color: #0d47a1;
-  --md-primary-fg-color--light: #1976d2;
-  --md-primary-fg-color--dark: #0b3c8c;
-  --md-accent-fg-color: #29b6f6;
-}
-
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3 {
@@ -19,12 +12,4 @@
 .md-typeset .admonition,
 .md-typeset details {
   border-radius: 0.5rem;
-}
-
-.md-header {
-  box-shadow: 0 2px 10px rgba(13, 71, 161, 0.2);
-}
-
-.md-tabs {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
