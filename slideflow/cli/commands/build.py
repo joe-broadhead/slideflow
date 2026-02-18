@@ -33,7 +33,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 import pandas as pd
 import typer
@@ -55,12 +55,12 @@ from slideflow.utilities import ConfigLoader
 def build_single_presentation(
     config_file: Path,
     registry_files: List[Path],
-    params: dict,
+    params: dict[str, Any],
     index: int,
     total: int,
     print_lock: threading.Lock,
     requests_per_second: Optional[float] = None,
-) -> Tuple[str, Any, int, dict]:
+) -> Tuple[str, Any, int, dict[str, Any]]:
     """Build and render a single presentation with thread-safe logging.
 
     This function handles the complete presentation generation process for
@@ -259,9 +259,12 @@ def build_command(
             config_registry=config_registry,
         )
 
-        param_configs = (
+        raw_param_configs = (
             pd.read_csv(params_path).to_dict(orient="records") if params_path else [{}]
         )
+        param_configs: List[dict[str, Any]] = [
+            cast(dict[str, Any], dict(row)) for row in raw_param_configs
+        ]
         total_presentations = len(param_configs)
         if total_presentations == 0:
             raise ValueError(

@@ -631,7 +631,7 @@ class PlotlyGraphObjects(BaseChart):
             >>> processed = chart._process_trace_config(config, df)
             >>> # processed = {"x": ["Jan", "Feb"], "y": [100, 150], "name": "Revenue"}
         """
-        processed = {}
+        processed: Dict[str, Any] = {}
         for key, value in config.items():
             if isinstance(value, str) and value.startswith("$") and "%{" not in value:
                 # Column reference: "$column_name" -> df['column_name']
@@ -657,7 +657,7 @@ class PlotlyGraphObjects(BaseChart):
                 # Process lists that might contain column references
                 # Column references are $word (alphanumeric/underscore), including complex names like $_color_col_0
                 column_ref_pattern = re.compile(r"^\$([a-zA-Z_]\w*)$")
-                processed_list = []
+                processed_list: List[Any] = []
 
                 for item in value:
                     if isinstance(item, str):
@@ -794,7 +794,7 @@ class CustomChart(BaseChart):
             >>> processed = chart._process_config(config, df)
             >>> # processed["x_data"] is now a pandas Series with ["Jan", "Feb"]
         """
-        processed = {}
+        processed: Dict[str, Any] = {}
         for key, value in config.items():
             if isinstance(value, str) and value.startswith("$"):
                 column_name = value[1:]

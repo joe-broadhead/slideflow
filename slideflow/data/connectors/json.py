@@ -35,7 +35,7 @@ Example:
 """
 
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal, Type
+from typing import Annotated, ClassVar, Literal, Type, cast
 
 import pandas as pd
 from pydantic import ConfigDict, Field
@@ -43,6 +43,8 @@ from pydantic import ConfigDict, Field
 from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
 from slideflow.utilities.logging import log_data_operation
+
+JSONOrient = Literal["split", "records", "index", "columns", "values", "table"]
 
 
 class JSONConnector(DataConnector):
@@ -68,7 +70,11 @@ class JSONConnector(DataConnector):
         >>> print(f"Loaded {len(data)} records with {len(data.columns)} fields")
     """
 
-    def __init__(self, file_path: str, orient: str = Defaults.JSON_ORIENT) -> None:
+    def __init__(
+        self,
+        file_path: str,
+        orient: JSONOrient = cast(JSONOrient, Defaults.JSON_ORIENT),
+    ) -> None:
         """Initialize the JSON connector.
 
         Args:
@@ -79,7 +85,7 @@ class JSONConnector(DataConnector):
                 Common values: 'records', 'index', 'split', 'table', 'values'.
         """
         self.file_path = file_path
-        self.orient = orient
+        self.orient: JSONOrient = orient
 
     def fetch_data(self) -> pd.DataFrame:
         """Read JSON file and return as DataFrame.
@@ -102,7 +108,7 @@ class JSONConnector(DataConnector):
             >>> df = connector.fetch_data()
             >>> print(df.head())
         """
-        df = pd.read_json(self.file_path, orient=self.orient)
+        df = pd.read_json(self.file_path, orient=cast(JSONOrient, self.orient))
         log_data_operation(
             "fetch", "json", len(df), file_path=self.file_path, orient=self.orient
         )
@@ -171,9 +177,9 @@ class JSONSourceConfig(BaseSourceConfig):
     )
     file_path: Annotated[Path, Field(..., description="Path to the JSON file")]
     orient: Annotated[
-        str,
+        JSONOrient,
         Field(
-            default=Defaults.JSON_ORIENT,
+            default=cast(JSONOrient, Defaults.JSON_ORIENT),
             description="`orient` parameter passed to pandas.read_json",
         ),
     ]

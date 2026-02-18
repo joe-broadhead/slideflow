@@ -29,7 +29,7 @@ Example:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -91,7 +91,7 @@ class BaseReplacement(BaseModel, ABC):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    def fetch_data(self) -> Optional[pd.DataFrame]:
+    def fetch_data(self) -> Optional[pd.DataFrame | List[Tuple[str, pd.DataFrame]]]:
         """Fetch data from external sources for this replacement.
 
         This method provides a hook for subclasses to implement custom data
