@@ -88,7 +88,7 @@ Integration Features:
     - CLI interface for automation and scripting
 """
 
-__version__ = "0.0.0"
+__version__ = "0.0.2"
 
 # Core data functionality
 from slideflow.data import (

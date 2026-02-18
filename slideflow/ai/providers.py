@@ -133,10 +133,6 @@ class OpenAIProvider:
                             model = self.model, chars_generated = len(content))
             return content.strip()
             
-        except openai.APIError as e:
-            duration = time.time() - start_time
-            log_api_operation("openai", "generate_text", False, duration, error = str(e))
-            raise APIError(f"OpenAI API error: {e}") from e
         except openai.RateLimitError as e:
             duration = time.time() - start_time
             log_api_operation("openai", "generate_text", False, duration, error = "rate_limit")
@@ -145,6 +141,10 @@ class OpenAIProvider:
             duration = time.time() - start_time
             log_api_operation("openai", "generate_text", False, duration, error = "auth_failed")
             raise APIAuthenticationError(f"OpenAI authentication failed: {e}") from e
+        except openai.APIError as e:
+            duration = time.time() - start_time
+            log_api_operation("openai", "generate_text", False, duration, error = str(e))
+            raise APIError(f"OpenAI API error: {e}") from e
         except Exception as e:
             duration = time.time() - start_time
             log_api_operation("openai", "generate_text", False, duration, error = "unexpected")
@@ -273,14 +273,13 @@ class GeminiProvider:
                 api_key = os.getenv(Environment.GOOGLE_API_KEY) or os.getenv(Environment.GEMINI_API_KEY)
                 if not api_key:
                     raise APIAuthenticationError(f"Gemini API requires {Environment.GOOGLE_API_KEY} or {Environment.GEMINI_API_KEY} environment variable")
-                
-                genai.configure(api_key = api_key)
-                
-                config = genai.GenerationConfig(**generation_config) if generation_config else None
-                model = genai.GenerativeModel(self.model)
-                response = model.generate_content(
-                    prompt,
-                    generation_config=config
+
+                client = genai.Client(api_key = api_key)
+                config = types.GenerateContentConfig(**generation_config) if generation_config else None
+                response = client.models.generate_content(
+                    model = self.model,
+                    contents = prompt,
+                    config = config
                 )
 
                 text_content = getattr(response, 'text', None)

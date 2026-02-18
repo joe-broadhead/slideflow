@@ -1,8 +1,25 @@
 site_name: SlideFlow
+site_description: Automated data-driven presentation generation for Google Slides.
+strict: true
+
+theme:
+    name: readthedocs
+
+markdown_extensions:
+    - admonition
+    - toc:
+          permalink: true
+
 nav:
     - Home: index.md
-    - Getting Started: getting-started.md
-    - Quickstart: quickstart.md
-    - Replacements: replacements.md
-    - Charts: charts.md
-    - Templating: templating.md
+    - Getting Started:
+          - Installation: getting-started.md
+          - Quickstart: quickstart.md
+          - Troubleshooting: troubleshooting.md
+    - User Guide:
+          - Replacements: replacements.md
+          - Charts: charts.md
+          - Templating: templating.md
+    - Engineering:
+          - Testing Strategy: testing.md
+          - Release Process: release-process.md

@@ -1,41 +1,47 @@
-# Quickstart Example
+# Quickstart
 
-This guide will walk you through running the quickstart example.
+This quickstart runs the checked-in sample in `docs/quickstart/`.
 
-## 1. Prerequisites
+## 1. Update sample config
 
-Before you begin, make sure you have followed the steps in the [Getting Started](getting-started.md) guide to install SlideFlow and set up your Google Cloud credentials.
+Open `docs/quickstart/config.yml` and set:
 
-## 2. Download the Quickstart Files
+- `provider.config.template_id`
+- `provider.config.credentials`
+- slide IDs under `presentation.slides[*].id`
 
-The quickstart files are located in the `docs/quickstart` directory of the SlideFlow repository. You will need:
+## 2. Validate configuration
 
--   `config.yml`: The configuration file for the quickstart presentation.
--   `data.csv`: The sample data for the presentation.
--   `bar_chart.yml`: A template for a reusable bar chart.
--   `registry.py`: An empty registry file.
+```bash
+slideflow validate docs/quickstart/config.yml --registry docs/quickstart/registry.py
+```
 
-## 3. Create a Google Slides Template
+If validation passes, your config, template references, and provider config are structurally valid.
 
-Create a new Google Slides presentation to use as a template. In this template, you will need:
-
--   Two slides. The `config.yml` file uses the example IDs `g1_0_0` and `g1_0_1`. You will need to replace these with the actual IDs of the slides in your template. The first slide should have a text box with the placeholder `{{MONTH}}`.
-
-Once you have created the template, copy its ID from the URL in your browser.
-
-## 4. Update the Configuration
-
-Open the `config.yml` file and make the following changes:
-
--   Replace `your_google_slides_template_id` with the ID of your Google Slides template.
--   Replace `/path/to/your/credentials.json` with the path to your Google Cloud service account credentials file or the JSON string itself.
-
-## 5. Run the Quickstart
-
-Now you are ready to run the quickstart. From your terminal, run the following command:
+## 3. Build presentation
 
 ```bash
 slideflow build docs/quickstart/config.yml --registry docs/quickstart/registry.py
 ```
 
-SlideFlow will generate a new presentation in your Google Drive with two slides. The first slide will contain a bar chart of the monthly revenue, and the second slide will contain a bar chart of the monthly active users, generated from the `bar_chart.yml` template.
+Expected result:
+
+- A new presentation is created from your template.
+- Slide 1 gets `{{MONTH}}` replacement plus bar chart from CSV.
+- Slide 2 gets a template chart from `docs/quickstart/bar_chart.yml`.
+
+## 4. Batch mode (optional)
+
+Use `--params-path` to generate multiple variants from one config:
+
+```bash
+slideflow build docs/quickstart/config.yml \
+  --registry docs/quickstart/registry.py \
+  --params-path variants.csv
+```
+
+`variants.csv` headers map to `{param}` placeholders used in config.
+
+## 5. Troubleshooting
+
+If build fails, check [Troubleshooting](troubleshooting.md).

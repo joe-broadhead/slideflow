@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slideflow"
-version = "0.0.0"
+version = "0.0.2"
 description = "Automated Google Slides presentation builder with charts and data replacements."
 authors = [
     { name = "Joe Broadhead" },
@@ -34,6 +34,7 @@ requires-python = ">=3.12"
 
 [project.optional-dependencies]
 ai = ["openai", "google-genai"]
+docs = ["mkdocs>=1.6"]
 dev = [
     "pytest",
     "pytest-cov",
@@ -62,3 +63,11 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+    "integration: integration tests that may hit external systems",
+    "e2e: end-to-end workflow tests",
+]

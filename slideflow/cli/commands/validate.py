@@ -44,12 +44,13 @@ from slideflow.cli.theme import (
     print_config_summary,
     print_error
 )
+from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 
 def validate_command(
     config_file: Path = typer.Argument(..., help = "Path to YAML configuration file"),
     registry_paths: Optional[List[Path]] = typer.Option(
-        ["registry.py"], "--registry", "-r", 
+        None, "--registry", "-r", 
         help = "Path to Python registry files (can be used multiple times)"
     )
 ) -> None:
@@ -121,9 +122,12 @@ def validate_command(
     print_validation_header(config_file)
     
     try:
+        default_registry = Path("registry.py")
+        resolved_registry_paths = list(registry_paths) if registry_paths else ([default_registry] if default_registry.exists() else [])
+
         loader = ConfigLoader(
             yaml_path = config_file,
-            registry_paths = list(registry_paths) if registry_paths else []
+            registry_paths = resolved_registry_paths
         )
     
         presentation_config = PresentationConfig(**loader.config)
@@ -131,6 +135,10 @@ def validate_command(
         # Validate provider-specific configuration
         from slideflow.presentations.providers.factory import ProviderFactory
         ProviderFactory.get_config_class(presentation_config.provider.type)(**presentation_config.provider.config)
+
+        # Validate chart/replacement specs deeply so unresolved function refs fail validation.
+        for slide_spec in presentation_config.presentation.slides:
+            PresentationBuilder._build_slide(slide_spec)
 
         print_success()
 

@@ -73,6 +73,10 @@ logger = get_logger(__name__)
 _compiled_projects_cache: dict[tuple, Path] = {}
 _cache_lock = threading.Lock()
 
+def _sanitize_git_url(git_url: str) -> str:
+    """Redact embedded basic-auth credentials from Git URLs."""
+    return re.sub(r"(https?://)([^/@]+)@", r"\1***@", git_url)
+
 def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
     """Clone a Git repository for DBT project access.
     
@@ -108,6 +112,7 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         if not token:
             raise DataSourceError(f"Environment variable {token_name} not set for Git authentication.")
         git_url = git_url.replace(f"${token_name}", token)
+    safe_git_url = _sanitize_git_url(git_url)
 
     if clone_dir.exists():
         shutil.rmtree(clone_dir)
@@ -116,15 +121,16 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         Repo.clone_from(git_url, clone_dir, **kwargs)
         duration = time.time() - start_time
         log_data_operation("clone", "dbt_project", context = {
-            "git_url": git_url, "branch": branch or "default", 
+            "git_url": safe_git_url, "branch": branch or "default", 
             "target_dir": str(clone_dir), "duration_seconds": duration
         })
     except Exception as e:
         duration = time.time() - start_time
+        safe_error = _sanitize_git_url(str(e))
         log_data_operation("clone", "dbt_project", context = {
-            "git_url": git_url, "error": str(e), "duration_seconds": duration
+            "git_url": safe_git_url, "error": safe_error, "duration_seconds": duration
         })
-        raise DataSourceError(f"Error cloning {git_url}: {e}")
+        raise DataSourceError(f"Error cloning {safe_git_url}: {safe_error}")
 
 def _get_compiled_project(
     package_url: str,

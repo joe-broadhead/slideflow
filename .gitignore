@@ -3,5 +3,8 @@
 /slideflow.egg-info
 .env*
 .venv
+uv.lock
+.coverage
+site/
 build/*
 dist/*

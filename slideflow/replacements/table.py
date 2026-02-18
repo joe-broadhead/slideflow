@@ -71,7 +71,7 @@ Example:
 """
 
 import pandas as pd
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Annotated, Any, Callable, Dict, Optional, Literal
 
 from slideflow.replacements.base import BaseReplacement
@@ -287,6 +287,12 @@ class TableReplacement(BaseReplacement):
         extra = "forbid"
     )
 
+    @model_validator(mode = "after")
+    def _validate_source_or_replacements(self):
+        if self.replacements is None and self.data_source is None:
+            raise ValueError("Table replacement requires either `replacements` or `data_source`.")
+        return self
+
     def fetch_data(self) -> Optional[pd.DataFrame]:
         """Fetch tabular data from the configured data source.
         
@@ -396,6 +402,9 @@ class TableReplacement(BaseReplacement):
             return self.replacements
 
         df = self.fetch_data()
+
+        if df is None:
+            raise ValueError("Table replacement has no data to process. Provide `replacements` or `data_source`.")
 
         if df is not None:
             df = self.apply_data_transforms(df)
