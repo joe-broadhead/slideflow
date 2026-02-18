@@ -48,24 +48,25 @@ Example:
     >>> print(f"Retrieved {len(data)} rows from DBT model")
 """
 
-import os
-import time
+import hashlib
 import json
+import os
 import re
 import shutil
 import threading
-import hashlib
-import pandas as pd
-from git import Repo
+import time
 from pathlib import Path
+from typing import Any, ClassVar, Literal, Optional, Type
+
+import pandas as pd
 from dbt.cli.main import dbtRunner
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, Any, Literal, ClassVar, Type
+from git import Repo
+from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.constants import Defaults
-from slideflow.utilities.exceptions import DataSourceError
+from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
 from slideflow.data.connectors.databricks import DatabricksConnector
-from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
+from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
 
 logger = get_logger(__name__)

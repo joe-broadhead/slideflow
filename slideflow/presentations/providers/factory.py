@@ -32,9 +32,9 @@ Example:
 """
 
 from typing import Type
-from slideflow.presentations.config import ProviderConfig
+
 from slideflow.core.registry import create_class_registry
-from slideflow.utilities.exceptions import ConfigurationError
+from slideflow.presentations.config import ProviderConfig
 from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
@@ -43,6 +43,7 @@ from slideflow.presentations.providers.google_slides import (
     GoogleSlidesProvider,
     GoogleSlidesProviderConfig,
 )
+from slideflow.utilities.exceptions import ConfigurationError
 
 provider_registry = create_class_registry(
     "presentation_providers", PresentationProvider

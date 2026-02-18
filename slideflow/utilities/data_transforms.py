@@ -64,11 +64,12 @@ Error Handling:
     - Transformation position in the pipeline
 """
 
-import pandas as pd
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from slideflow.utilities.logging import get_logger
+import pandas as pd
+
 from slideflow.utilities.exceptions import DataTransformError
+from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
 

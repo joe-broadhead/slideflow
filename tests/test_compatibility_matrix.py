@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 import pytest
 from pydantic import TypeAdapter
@@ -8,9 +8,9 @@ import slideflow
 from slideflow.cli.commands import build_command, validate_command
 from slideflow.data.connectors import (
     CSVSourceConfig,
-    DBTDatabricksSourceConfig,
     DatabricksSourceConfig,
     DataSourceConfig,
+    DBTDatabricksSourceConfig,
     JSONSourceConfig,
 )
 from slideflow.presentations.charts import (

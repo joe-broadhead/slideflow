@@ -52,9 +52,9 @@ Security:
     code execution attacks. Only basic arithmetic operations are supported.
 """
 
+from ast import Add, BinOp, Constant, Div, Expression, Mult, Sub, parse
+from operator import add, mul, sub, truediv
 from typing import Optional, Tuple, Union
-from operator import add, sub, mul, truediv
-from ast import Add, Sub, Mult, Div, parse, Expression, BinOp, Constant
 
 from slideflow.utilities.exceptions import ChartGenerationError
 

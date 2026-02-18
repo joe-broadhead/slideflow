@@ -54,17 +54,17 @@ Modules:
     registry: Function registry for builtins
 """
 
-from slideflow.builtins.table_utils import create_dynamic_colors, create_growth_colors
+from slideflow.builtins.column_utils import (
+    abbreviate_currency_columns,
+    abbreviate_number_columns,
+)
 from slideflow.builtins.formatting import (
     abbreviate,
     format_currency,
-    percentage,
     green_or_red,
+    percentage,
 )
-from slideflow.builtins.column_utils import (
-    abbreviate_number_columns,
-    abbreviate_currency_columns,
-)
+from slideflow.builtins.table_utils import create_dynamic_colors, create_growth_colors
 
 __all__ = [
     "create_dynamic_colors",

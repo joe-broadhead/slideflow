@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 import slideflow.data.connectors.dbt as dbt_module

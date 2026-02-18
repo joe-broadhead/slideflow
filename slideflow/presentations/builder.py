@@ -42,19 +42,20 @@ The builder handles:
 """
 
 from pathlib import Path
-from pydantic import TypeAdapter
-from typing import Dict, Any, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union, cast
 
-from slideflow.utilities.logging import get_logger
-from slideflow.utilities.config import ConfigLoader
-from slideflow.replacements import ReplacementUnion
-from slideflow.replacements.base import BaseReplacement
-from slideflow.presentations.charts import BaseChart, ChartUnion
+from pydantic import TypeAdapter
+
+from slideflow.builtins.template_engine import set_template_paths
 from slideflow.data.connectors import DataSourceConfig
 from slideflow.presentations.base import Presentation, Slide
+from slideflow.presentations.charts import BaseChart, ChartUnion
 from slideflow.presentations.config import PresentationConfig
 from slideflow.presentations.providers import ProviderFactory
-from slideflow.builtins.template_engine import set_template_paths
+from slideflow.replacements import ReplacementUnion
+from slideflow.replacements.base import BaseReplacement
+from slideflow.utilities.config import ConfigLoader
+from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
 

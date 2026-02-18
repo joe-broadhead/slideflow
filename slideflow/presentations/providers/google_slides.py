@@ -66,24 +66,21 @@ Example:
 """
 
 import io
-import os
-import time
 import threading
-import json
-from pathlib import Path
-from pydantic import Field
-from typing import List, Tuple, Optional, Literal, Dict, Any, Callable
+import time
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
-from google.oauth2.service_account import Credentials
+from pydantic import Field
 
+from slideflow.constants import GoogleSlides
 from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
 )
-from slideflow.constants import GoogleSlides
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger, log_api_operation

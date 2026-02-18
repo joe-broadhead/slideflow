@@ -12,20 +12,18 @@ The module provides:
 
 import os
 import time
-import json
-from pathlib import Path
-from google.oauth2 import service_account
 from typing import Any, ClassVar, Optional, Protocol, runtime_checkable
+
+from google.oauth2 import service_account
 
 from slideflow.constants import Defaults, Environment
 from slideflow.utilities.auth import handle_google_credentials
-from slideflow.utilities.logging import log_api_operation
 from slideflow.utilities.exceptions import (
+    APIAuthenticationError,
     APIError,
     APIRateLimitError,
-    APIAuthenticationError,
 )
-from slideflow.utilities.logging import get_logger
+from slideflow.utilities.logging import get_logger, log_api_operation
 
 logger = get_logger(__name__)
 

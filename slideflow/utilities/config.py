@@ -51,16 +51,16 @@ Example:
     >>> # }
 """
 
-import re
-import sys
-import yaml  # type: ignore[import-untyped]
 import importlib
-import pkgutil
 import importlib.util
-from pathlib import Path
+import pkgutil
+import sys
 from functools import cached_property
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Any, List, Mapping, Callable, Sequence
+from pathlib import Path
+from typing import Any, Callable, List, Mapping, Sequence
+
+import yaml  # type: ignore[import-untyped]
+from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.utilities.exceptions import ConfigurationError
 

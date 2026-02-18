@@ -52,25 +52,26 @@ Example:
 """
 
 import io
+import logging
 import re
 import uuid
-import pandas as pd
-import plotly.io as pio
-import plotly.graph_objects as go
 from abc import ABC, abstractmethod
-from googleapiclient.http import MediaIoBaseUpload
-from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import List, Dict, Any, Optional, Callable, Union, Annotated, Literal, Tuple
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
-import logging
+from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-from slideflow.constants import GoogleSlides, FileExtensions
-from slideflow.utilities.exceptions import ChartGenerationError
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
+from googleapiclient.http import MediaIoBaseUpload
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from slideflow.builtins.template_engine import get_template_engine
-from slideflow.presentations.positioning import safe_eval_expression
-from slideflow.utilities.data_transforms import apply_data_transforms
+from slideflow.constants import FileExtensions, GoogleSlides
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
+from slideflow.presentations.positioning import safe_eval_expression
 from slideflow.presentations.providers.google_slides import _get_rate_limiter
+from slideflow.utilities.data_transforms import apply_data_transforms
+from slideflow.utilities.exceptions import ChartGenerationError
 
 logger = logging.getLogger(__name__)
 

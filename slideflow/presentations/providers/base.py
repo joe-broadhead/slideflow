@@ -32,8 +32,9 @@ Example:
 """
 
 from abc import ABC, abstractmethod
-from pydantic import BaseModel, Field
 from typing import List, Optional, Tuple
+
+from pydantic import BaseModel, Field
 
 
 class ProviderSlideResult(BaseModel):

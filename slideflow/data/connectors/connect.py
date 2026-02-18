@@ -46,13 +46,14 @@ Supported Data Source Types:
     - "dbt": DBT models in Databricks
 """
 
-from pydantic import Field
 from typing import Annotated, Union
 
+from pydantic import Field
+
 from slideflow.data.connectors.csv import CSVSourceConfig
-from slideflow.data.connectors.json import JSONSourceConfig
-from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig
 from slideflow.data.connectors.databricks import DatabricksSourceConfig
+from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig
+from slideflow.data.connectors.json import JSONSourceConfig
 
 DataSourceConfig = Annotated[
     Union[

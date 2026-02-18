@@ -20,13 +20,14 @@ Functions:
     abbreviate_currency: Combine abbreviation with currency formatting
 """
 
-import math
 import decimal
-import numpy as np
-from typing import Any, List, Tuple, Union, Optional
+import math
+from typing import Any, List, Optional, Tuple, Union
 
-from slideflow.utilities.logging import get_logger
+import numpy as np
+
 from slideflow.utilities.exceptions import DataTransformError
+from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -22,11 +22,11 @@ Example:
 """
 
 from pathlib import Path
-from rich.panel import Panel
+
 from rich.console import Console
+from rich.panel import Panel
 
 from slideflow.presentations.config import PresentationConfig
-from slideflow.utilities.exceptions import AuthenticationError
 
 console = Console()
 
@@ -87,7 +87,7 @@ def print_config_summary(presentation_config: PresentationConfig) -> None:
     presentation = presentation_config.presentation
     slides_count = len(presentation.slides)
 
-    console.print(f"\n[cyan]Summary:[/cyan]")
+    console.print("\n[cyan]Summary:[/cyan]")
     console.print(f"  📄 Presentation: {presentation.name}")
     console.print(f"  📊 Slides: {slides_count}")
 
@@ -162,7 +162,7 @@ def handle_validation_error(error: Exception, verbose: bool = False) -> None:
         This function provides similar functionality to print_error in
         theme.py but with a different interface. Consider consolidating.
     """
-    console.print(f"[red]❌ Validation failed:[/red]")
+    console.print("[red]❌ Validation failed:[/red]")
     if verbose:
         console.print(f"[red]{str(error)}[/red]")
     else:

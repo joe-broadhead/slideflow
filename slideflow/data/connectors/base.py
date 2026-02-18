@@ -28,10 +28,11 @@ Example:
     ...     connector_class = MyConnector
 """
 
-import pandas as pd
 from abc import ABC, abstractmethod
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Annotated, ClassVar, Type, Any, Optional
+from typing import Annotated, Any, ClassVar, Optional, Type
+
+import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.data.cache import get_data_cache
 

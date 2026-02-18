@@ -67,13 +67,14 @@ Architecture:
     replacement class based on configuration.
 """
 
-from pydantic import Field
-from typing import Union, Annotated
+from typing import Annotated, Union
 
-from slideflow.replacements.base import BaseReplacement
-from slideflow.replacements.text import TextReplacement
-from slideflow.replacements.table import TableReplacement
+from pydantic import Field
+
 from slideflow.replacements.ai_text import AITextReplacement
+from slideflow.replacements.base import BaseReplacement
+from slideflow.replacements.table import TableReplacement
+from slideflow.replacements.text import TextReplacement
 from slideflow.replacements.utils import dataframe_to_replacement_object
 
 # Discriminated union for all replacement types

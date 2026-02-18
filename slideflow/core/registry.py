@@ -59,10 +59,10 @@ Example:
 
 import inspect
 from abc import ABC
-from typing import Dict, Generic, TypeVar, Type, List, Optional, Any, Callable
+from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar
 
-from slideflow.utilities.logging import get_logger
 from slideflow.utilities.exceptions import ProviderError
+from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
 

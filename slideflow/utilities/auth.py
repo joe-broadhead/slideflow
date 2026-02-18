@@ -1,8 +1,9 @@
-import os
 import json
+import os
 from typing import Optional
-from slideflow.utilities.exceptions import AuthenticationError
+
 from slideflow.constants import Environment
+from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)

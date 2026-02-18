@@ -60,8 +60,9 @@ Validation:
 """
 
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import List, Optional, Dict, Any, Annotated, Callable
+from typing import Annotated, Any, Callable, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ReplacementSpec(BaseModel):

@@ -41,16 +41,17 @@ Example:
 
 import os
 import time
+from typing import Annotated, Any, ClassVar, Literal, Optional, Type
+
 import pandas as pd
 from databricks import sql
-from pydantic import Field, ConfigDict
-from typing import Any, Annotated, Literal, ClassVar, Optional, Type
+from pydantic import ConfigDict, Field
 
-from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
+from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
 from slideflow.utilities.logging import (
     get_logger,
-    log_data_operation,
     log_api_operation,
+    log_data_operation,
 )
 
 logger = get_logger(__name__)

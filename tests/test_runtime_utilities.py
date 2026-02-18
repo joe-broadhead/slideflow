@@ -1,14 +1,14 @@
 import json
 
+import pandas as pd
 import pytest
+
 import slideflow.utilities.rate_limiter as rate_limiter_module
 from slideflow.constants import Environment
 from slideflow.data.cache import DataSourceCache, get_data_cache
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.rate_limiter import RateLimiter
-
-import pandas as pd
 
 
 def test_data_source_cache_lifecycle_and_singleton_behavior():

@@ -33,21 +33,22 @@ Example:
         slideflow validate config.yaml -r reg1.py -r reg2.py
 """
 
+from pathlib import Path
+from typing import List, Optional
+
 import typer
 import yaml  # type: ignore[import-untyped]
-from pathlib import Path
-from typing import Optional, List
 
-from slideflow.utilities import ConfigLoader
+from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.cli.theme import (
-    print_validation_header,
-    print_success,
     print_config_summary,
     print_error,
+    print_success,
+    print_validation_header,
 )
-from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
+from slideflow.utilities import ConfigLoader
 
 
 def validate_command(

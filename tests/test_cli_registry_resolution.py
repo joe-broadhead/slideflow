@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from slideflow.cli.commands._registry import resolve_registry_paths
 
 

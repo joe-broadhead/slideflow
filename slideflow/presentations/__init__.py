@@ -127,35 +127,35 @@ Performance Features:
     - Parallel chart generation for multi-chart presentations
 """
 
-from slideflow.presentations.config import (
-    PresentationConfig,
-    PresentationSpec,
-    SlideSpec,
-    ProviderConfig,
-    ReplacementSpec,
-    ChartSpec,
-)
-from slideflow.presentations.builder import PresentationBuilder
-from slideflow.presentations.providers.google_slides import GoogleSlidesProvider
 from slideflow.presentations.base import (
     Presentation,
-    Slide,
     PresentationResult,
+    Slide,
     SlideResult,
 )
+from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.charts import (
     BaseChart,
-    PlotlyGraphObjects,
-    CustomChart,
-    TemplateChart,
     ChartUnion,
+    CustomChart,
+    PlotlyGraphObjects,
+    TemplateChart,
+)
+from slideflow.presentations.config import (
+    ChartSpec,
+    PresentationConfig,
+    PresentationSpec,
+    ProviderConfig,
+    ReplacementSpec,
+    SlideSpec,
 )
 from slideflow.presentations.positioning import (
-    compute_chart_dimensions,
-    safe_eval_expression,
-    convert_dimensions,
     apply_alignment,
+    compute_chart_dimensions,
+    convert_dimensions,
+    safe_eval_expression,
 )
+from slideflow.presentations.providers.google_slides import GoogleSlidesProvider
 
 __all__ = [
     # Base classes

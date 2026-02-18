@@ -43,7 +43,7 @@ Attributes:
     ClassRegistry: Registry specialized for class types and constructors
 """
 
-from slideflow.core.registry import BaseRegistry, FunctionRegistry, ClassRegistry
+from slideflow.core.registry import BaseRegistry, ClassRegistry, FunctionRegistry
 
 __all__ = [
     "BaseRegistry",

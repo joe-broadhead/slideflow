@@ -32,8 +32,9 @@ Attributes:
 """
 
 from typing import Type
+
+from slideflow.ai.providers import AIProvider, GeminiProvider, OpenAIProvider
 from slideflow.core.registry import create_provider_registry
-from slideflow.ai.providers import AIProvider, OpenAIProvider, GeminiProvider
 
 ai_provider_registry = create_provider_registry("ai_providers", AIProvider)
 

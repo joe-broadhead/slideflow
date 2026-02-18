@@ -31,8 +31,10 @@ Example:
     >>> # costs: ['234.6K', '345.7K', '456.8K']
 """
 
-import pandas as pd
 from typing import List
+
+import pandas as pd
+
 from slideflow.builtins.formatting.format import abbreviate, abbreviate_currency
 
 

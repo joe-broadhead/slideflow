@@ -53,22 +53,21 @@ Attributes:
         built-in functions.
 """
 
-from slideflow.core.registry import create_function_registry
+from slideflow.builtins.column_utils import (
+    abbreviate_currency_columns,
+    abbreviate_number_columns,
+    format_percentages,
+    round_numbers,
+)
 from slideflow.builtins.table_utils import (
     create_dynamic_colors,
     create_growth_colors,
     create_performance_colors,
+    create_traffic_light_colors,
     growth_color_function,
     performance_color_function,
-    create_traffic_light_colors,
 )
-
-from slideflow.builtins.column_utils import (
-    abbreviate_number_columns,
-    abbreviate_currency_columns,
-    format_percentages,
-    round_numbers,
-)
+from slideflow.core.registry import create_function_registry
 
 builtin_function_registry = create_function_registry("builtin_functions")
 

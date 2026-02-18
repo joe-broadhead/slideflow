@@ -55,18 +55,18 @@ Example:
 """
 
 import time
-import pandas as pd
-from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, model_validator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional, Dict, Any, Annotated, Tuple, Callable, TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional, Tuple
 
-from slideflow.utilities.logging import get_logger
+import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from slideflow.presentations.positioning import compute_chart_dimensions
+from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
 from slideflow.utilities.exceptions import RenderingError
-from slideflow.utilities.data_transforms import apply_data_transforms
-from slideflow.presentations.providers.base import PresentationProvider
-from slideflow.presentations.positioning import compute_chart_dimensions
+from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
 

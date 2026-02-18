@@ -90,81 +90,81 @@ Integration Features:
 
 __version__ = "0.0.2"
 
-# Core data functionality
-from slideflow.data import (
-    DataSourceCache,
-    get_data_cache,
-    DataSourceConfig,
-    DataConnector,
-    BaseSourceConfig,
-    CSVConnector,
-    CSVSourceConfig,
-    JSONConnector,
-    JSONSourceConfig,
-    DatabricksConnector,
-    DatabricksSourceConfig,
-    DBTDatabricksConnector,
-    DBTDatabricksSourceConfig,
-)
-
-# Replacement functionality
-from slideflow.replacements import (
-    BaseReplacement,
-    TextReplacement,
-    TableReplacement,
-    AITextReplacement,
-    ReplacementUnion,
-    dataframe_to_replacement_object,
-)
-
 # AI providers
-from slideflow.ai import AIProvider, OpenAIProvider, GeminiProvider
-
-# Presentation functionality
-from slideflow.presentations import (
-    PresentationBuilder,
-    BaseChart,
-    PlotlyGraphObjects,
-    CustomChart,
-    TemplateChart,
-    ChartUnion,
-)
-
-# Utilities
-from slideflow.utilities import ConfigLoader
-from slideflow.utilities.data_transforms import apply_data_transforms
+from slideflow.ai import AIProvider, GeminiProvider, OpenAIProvider
 from slideflow.builtins.formatting import (
-    green_or_red,
     abbreviate,
     format_currency,
+    green_or_red,
     percentage,
-)
-
-# Core registry utilities for extensibility
-from slideflow.core.registry import (
-    BaseRegistry,
-    FunctionRegistry,
-    ClassRegistry,
-    ProviderRegistry,
-    create_function_registry,
-    create_class_registry,
-    create_provider_registry,
 )
 
 # CLI
 from slideflow.cli import app as cli_app
 
+# Core registry utilities for extensibility
+from slideflow.core.registry import (
+    BaseRegistry,
+    ClassRegistry,
+    FunctionRegistry,
+    ProviderRegistry,
+    create_class_registry,
+    create_function_registry,
+    create_provider_registry,
+)
+
+# Core data functionality
+from slideflow.data import (
+    BaseSourceConfig,
+    CSVConnector,
+    CSVSourceConfig,
+    DatabricksConnector,
+    DatabricksSourceConfig,
+    DataConnector,
+    DataSourceCache,
+    DataSourceConfig,
+    DBTDatabricksConnector,
+    DBTDatabricksSourceConfig,
+    JSONConnector,
+    JSONSourceConfig,
+    get_data_cache,
+)
+
+# Presentation functionality
+from slideflow.presentations import (
+    BaseChart,
+    ChartUnion,
+    CustomChart,
+    PlotlyGraphObjects,
+    PresentationBuilder,
+    TemplateChart,
+)
+
+# Replacement functionality
+from slideflow.replacements import (
+    AITextReplacement,
+    BaseReplacement,
+    ReplacementUnion,
+    TableReplacement,
+    TextReplacement,
+    dataframe_to_replacement_object,
+)
+
+# Utilities
+from slideflow.utilities import ConfigLoader
+from slideflow.utilities.data_transforms import apply_data_transforms
+
 # Exceptions
 from slideflow.utilities.exceptions import (
-    SlideFlowError,
+    AuthenticationError,
+    ChartGenerationError,
     ConfigurationError,
     DataSourceError,
     DataTransformError,
     ProviderError,
     RenderingError,
-    AuthenticationError,
-    ChartGenerationError,
     ReplacementError,
+    SlideFlowError,
 )
 
 __all__ = [

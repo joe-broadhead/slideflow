@@ -1,6 +1,6 @@
+import threading
 from pathlib import Path
 from types import SimpleNamespace
-import threading
 
 import pandas as pd
 import pytest

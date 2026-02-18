@@ -70,12 +70,13 @@ Example:
     ... )
 """
 
-import pandas as pd
-from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import Annotated, Any, Callable, Dict, Optional, Literal
+from typing import Annotated, Any, Callable, Dict, Literal, Optional
 
-from slideflow.replacements.base import BaseReplacement
+import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from slideflow.data.connectors.connect import DataSourceConfig
+from slideflow.replacements.base import BaseReplacement
 from slideflow.replacements.utils import dataframe_to_replacement_object
 
 

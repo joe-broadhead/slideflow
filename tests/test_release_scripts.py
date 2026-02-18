@@ -2,7 +2,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATE_SCRIPT = ROOT / "scripts" / "ci" / "validate_release_branch.py"
 VERSION_SCRIPT = ROOT / "scripts" / "ci" / "check_version_consistency.py"

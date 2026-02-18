@@ -34,14 +34,15 @@ Example:
     >>> print(f"Loaded {len(data)} rows from JSON")
 """
 
-import pandas as pd
 from pathlib import Path
-from pydantic import Field, ConfigDict
-from typing import Annotated, Literal, ClassVar, Type
+from typing import Annotated, ClassVar, Literal, Type
+
+import pandas as pd
+from pydantic import ConfigDict, Field
 
 from slideflow.constants import Defaults
+from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
 from slideflow.utilities.logging import log_data_operation
-from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
 
 
 class JSONConnector(DataConnector):

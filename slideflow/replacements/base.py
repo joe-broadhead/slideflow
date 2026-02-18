@@ -29,9 +29,10 @@ Example:
 """
 
 from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.utilities.data_transforms import apply_data_transforms
 

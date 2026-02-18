@@ -30,11 +30,12 @@ Example:
     # Shows progress bar at 60%
 """
 
-from rich.text import Text
-from rich.table import Table
-from rich.panel import Panel
+from typing import Any, Optional
+
 from rich.console import Console
-from typing import Optional, Any
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 console = Console(force_terminal=True, color_system="truecolor")
 
@@ -287,7 +288,7 @@ def print_build_success(presentation_url: Optional[str] = None) -> None:
     """
 
     if presentation_url:
-        console.print(f"\n[bold blue]📡 Presentation URL:[/bold blue]")
+        console.print("\n[bold blue]📡 Presentation URL:[/bold blue]")
         console.print(f"[bold magenta]\n{presentation_url}[/bold magenta]")
 
     console.print(

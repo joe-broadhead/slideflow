@@ -5,9 +5,8 @@ algorithm. It is designed to help prevent API quota exhaustion when making
 concurrent requests to external services like Google APIs.
 """
 
-import time
 import threading
-from typing import Optional
+import time
 
 
 class RateLimiter:

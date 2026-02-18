@@ -22,9 +22,10 @@ Example:
 """
 
 import typer
+
+from slideflow.cli.commands import build_command, validate_command
+from slideflow.cli.theme import print_help_footer, print_slideflow_banner
 from slideflow.utilities.logging import setup_logging
-from slideflow.cli.commands import validate_command, build_command
-from slideflow.cli.theme import print_slideflow_banner, print_help_footer
 
 app = typer.Typer(
     name="slideflow",

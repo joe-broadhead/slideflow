@@ -29,26 +29,27 @@ Example:
         slideflow build config.yaml --dry-run
 """
 
-import time
-import typer
 import threading
-import yaml  # type: ignore[import-untyped]
-import pandas as pd
-from pathlib import Path
-from typing import Optional, List, Tuple, Any
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, List, Optional, Tuple
 
-from slideflow.presentations import PresentationBuilder
-from slideflow.utilities import ConfigLoader
-from slideflow.presentations.config import PresentationConfig
-from slideflow.presentations.providers.factory import ProviderFactory
+import pandas as pd
+import typer
+import yaml  # type: ignore[import-untyped]
+
 from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.cli.theme import (
     print_build_error,
     print_build_header,
-    print_build_success,
     print_build_progress,
+    print_build_success,
 )
+from slideflow.presentations import PresentationBuilder
+from slideflow.presentations.config import PresentationConfig
+from slideflow.presentations.providers.factory import ProviderFactory
+from slideflow.utilities import ConfigLoader
 
 
 def build_single_presentation(
@@ -293,7 +294,7 @@ def build_command(
         )
         time.sleep(0.5)
 
-        print_build_progress(4, 6, f"Starting concurrent generation...")
+        print_build_progress(4, 6, "Starting concurrent generation...")
         time.sleep(0.3)
 
         # Create thread lock for safe printing

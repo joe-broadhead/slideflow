@@ -42,12 +42,13 @@ Example:
     >>> # Result: "15.3% growth in Q2"
 """
 
-import pandas as pd
-from pydantic import Field, field_validator, ConfigDict
-from typing import Annotated, Optional, Callable, Literal, Dict, Any
+from typing import Annotated, Any, Callable, Dict, Literal, Optional
 
-from slideflow.replacements.base import BaseReplacement
+import pandas as pd
+from pydantic import ConfigDict, Field, field_validator
+
 from slideflow.data.connectors.connect import DataSourceConfig
+from slideflow.replacements.base import BaseReplacement
 
 
 class TextReplacement(BaseReplacement):

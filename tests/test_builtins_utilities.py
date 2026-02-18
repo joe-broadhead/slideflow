@@ -3,8 +3,8 @@ import decimal
 import pandas as pd
 import pytest
 
-import slideflow.builtins.registry as builtins_registry_module
 import slideflow.builtins.formatting.format as format_module
+import slideflow.builtins.registry as builtins_registry_module
 from slideflow.builtins.column_utils import (
     abbreviate_currency_columns,
     abbreviate_number_columns,

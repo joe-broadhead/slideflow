@@ -51,9 +51,9 @@ Integration:
     - Provider operations log API calls and authentication events
 """
 
-import sys
 import logging
-from typing import Optional, Any
+import sys
+from typing import Any, Optional
 
 
 def setup_logging(

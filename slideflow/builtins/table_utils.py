@@ -44,8 +44,9 @@ Example:
     >>> # Color columns are now available as $_color_col_0, $_color_col_1, etc.
 """
 
+from typing import Any, Callable, List
+
 import pandas as pd
-from typing import List, Callable, Any
 
 
 def create_dynamic_colors(

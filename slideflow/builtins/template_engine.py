@@ -56,11 +56,12 @@ Functions:
     reset_template_engine: Reset to default configuration
 """
 
-import yaml  # type: ignore[import-untyped]
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+import yaml  # type: ignore[import-untyped]
+from jinja2 import BaseLoader, Environment, select_autoescape
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional, Union
-from jinja2 import Environment, BaseLoader, select_autoescape
 
 from slideflow.utilities.exceptions import ChartGenerationError
 

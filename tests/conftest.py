@@ -184,7 +184,7 @@ def _install_typer_stub() -> None:
 
 
 def _install_rich_stub() -> None:
-    rich = _ensure_module("rich")
+    _ensure_module("rich")
     rich_console = _ensure_module("rich.console")
     rich_panel = _ensure_module("rich.panel")
     rich_table = _ensure_module("rich.table")

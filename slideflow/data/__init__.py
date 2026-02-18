@@ -82,19 +82,19 @@ Components:
 """
 
 from slideflow.data.cache import DataSourceCache, get_data_cache
-from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.data.connectors import (
-    DataConnector,
     BaseSourceConfig,
     CSVConnector,
     CSVSourceConfig,
-    JSONConnector,
-    JSONSourceConfig,
     DatabricksConnector,
     DatabricksSourceConfig,
+    DataConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
+    JSONConnector,
+    JSONSourceConfig,
 )
+from slideflow.data.connectors.connect import DataSourceConfig
 
 __all__ = [
     "DataSourceCache",

@@ -61,27 +61,28 @@ Example:
 """
 
 import inspect
-import pandas as pd
-from pydantic import Field, ConfigDict, model_validator
 from typing import (
-    Any,
-    Type,
-    Dict,
-    Union,
-    Literal,
-    Callable,
     Annotated,
-    Optional,
+    Any,
+    Callable,
+    Dict,
     List,
+    Literal,
+    Optional,
     Tuple,
+    Type,
+    Union,
     cast,
 )
 
+import pandas as pd
+from pydantic import ConfigDict, Field, model_validator
+
 from slideflow.ai.providers import AIProvider
 from slideflow.ai.registry import get_provider_class
+from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.replacements.base import BaseReplacement
 from slideflow.utilities.exceptions import ReplacementError
-from slideflow.data.connectors.connect import DataSourceConfig
 
 
 class AITextReplacement(BaseReplacement):
@@ -357,7 +358,7 @@ class AITextReplacement(BaseReplacement):
                 if df is not None:
                     try:
                         df = self.apply_data_transforms(df)
-                    except Exception as e:
+                    except Exception:
                         return f'Summary unable to be generated as data source "{name}" was not available'
                     data = df.to_dict(orient="records")
                     prompt += f"\n\nData from {name}:\n{data}"
