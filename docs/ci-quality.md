@@ -28,7 +28,7 @@
 ```bash
 source .venv/bin/activate
 pytest -q
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=70
+pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=75
 pytest -q -m integration
 pytest -q -m e2e
 mkdocs build --strict
@@ -36,7 +36,7 @@ mkdocs build --strict
 
 ## Coverage policy
 
-- CI enforces a minimum coverage floor (`--cov-fail-under=70`)
+- CI enforces a minimum coverage floor (`--cov-fail-under=75`)
 - Raise this threshold over time; do not lower it without explicit approval
 
 ## Branching policy

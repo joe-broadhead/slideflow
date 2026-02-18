@@ -35,7 +35,7 @@ pytest -q -m e2e
 Mirror CI marker split locally:
 
 ```bash
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-report=xml --cov-fail-under=70
+pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-report=xml --cov-fail-under=75
 pytest -q -m integration
 pytest -q -m e2e
 ```
@@ -44,7 +44,7 @@ pytest -q -m e2e
 
 - CI enforces version consistency checks.
 - CI enforces dependency consistency via `pip check`.
-- CI enforces coverage floor (`--cov-fail-under=70`) on unit tests (`not integration and not e2e`).
+- CI enforces coverage floor (`--cov-fail-under=75`) on unit tests (`not integration and not e2e`).
 - CI runs dedicated integration and e2e marker suites in separate steps.
 - Distribution artifacts are built for every CI run.
 

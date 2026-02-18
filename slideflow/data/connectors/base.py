@@ -244,7 +244,7 @@ class BaseSourceConfig(BaseModel):
         """
         # collect only the fields the connector __init__ expects
         kwargs = self.model_dump(
-            include = {f for f in self.model_fields if f not in ("type", "name")}
+            include = {f for f in type(self).model_fields if f not in ("type", "name")}
         )
         return self.connector_class(**kwargs)
 
@@ -275,7 +275,7 @@ class BaseSourceConfig(BaseModel):
         cache = get_data_cache()
         
         cache_kwargs = self.model_dump(
-            include = {f for f in self.model_fields if f not in ("name",)}
+            include = {f for f in type(self).model_fields if f not in ("name",)}
         )
         
         cached_data = cache.get(source_type = self.type, **cache_kwargs)
