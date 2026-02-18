@@ -14,14 +14,14 @@ handling, progress reporting, and user-friendly output formatting.
 
 Example:
     Commands are accessed through the main CLI:
-    
+
     $ slideflow validate config.yaml
     $ slideflow build config.yaml --params-path data.csv
     $ slideflow build config.yaml --dry-run
-    
+
 Usage:
     Commands can also be imported and used programmatically:
-    
+
     >>> from slideflow.cli.commands import build_command, validate_command
     >>> # Use in custom scripts or applications
 """
@@ -29,4 +29,4 @@ Usage:
 from slideflow.cli.commands.build import build_command
 from slideflow.cli.commands.validate import validate_command
 
-__all__ = ['validate_command', 'build_command']
+__all__ = ["validate_command", "build_command"]

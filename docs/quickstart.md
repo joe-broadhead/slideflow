@@ -19,6 +19,8 @@ What this verifies:
 - parameter fan-out from CSV (`params.csv`)
 - chart/replacement wiring for a local CSV data source
 
+This exact smoke path is used by CI wheel-install validation (`scripts/ci/run_quickstart_smoke.sh`).
+
 ## 2. Switch to a real Google Slides build
 
 Use `docs/quickstart/config.yml` for a real build and set:
@@ -83,3 +85,14 @@ If anything fails:
 - verify template and slide IDs
 - verify credentials source
 - check [Troubleshooting](troubleshooting.md)
+
+## 6. CI-parity local gate (recommended before PR)
+
+```bash
+source .venv/bin/activate
+python -m black --check slideflow tests scripts
+python -m ruff check slideflow tests scripts
+python -m mypy slideflow
+pytest -q
+bash scripts/ci/run_quickstart_smoke.sh
+```

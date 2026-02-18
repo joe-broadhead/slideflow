@@ -29,9 +29,9 @@ Authentication:
 
 Example:
     Using DBT models in presentations:
-    
+
     >>> from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig
-    >>> 
+    >>>
     >>> # Create configuration for a DBT model
     >>> config = DBTDatabricksSourceConfig(
     ...     name="monthly_metrics",
@@ -42,7 +42,7 @@ Example:
     ...     branch="main",
     ...     target="prod"
     ... )
-    >>> 
+    >>>
     >>> # Fetch data using compiled DBT SQL
     >>> data = config.fetch_data()
     >>> print(f"Retrieved {len(data)} rows from DBT model")
@@ -54,6 +54,7 @@ import json
 import re
 import shutil
 import threading
+import hashlib
 import pandas as pd
 from git import Repo
 from pathlib import Path
@@ -73,28 +74,30 @@ logger = get_logger(__name__)
 _compiled_projects_cache: dict[tuple, Path] = {}
 _cache_lock = threading.Lock()
 
+
 def _sanitize_git_url(git_url: str) -> str:
     """Redact embedded basic-auth credentials from Git URLs."""
     return re.sub(r"(https?://)([^/@]+)@", r"\1***@", git_url)
 
+
 def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
     """Clone a Git repository for DBT project access.
-    
+
     Clones the specified Git repository to a local directory, optionally
     checking out a specific branch. Removes any existing directory at the
     target location before cloning.
-    
+
     It supports expanding an environment variable for authentication tokens
     in the format: https://$TOKEN_NAME@...
-    
+
     Args:
         git_url: Git repository URL to clone.
         clone_dir: Local directory path where the repository will be cloned.
         branch: Optional branch name to checkout. If None, uses default branch.
-        
+
     Raises:
         DataSourceError: If the Git operation fails or the token variable is not set.
-        
+
     Example:
         >>> _clone_repo(
         ...     "https://github.com/company/dbt-project.git",
@@ -110,27 +113,88 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         token_name = match.group(1)
         token = os.getenv(token_name)
         if not token:
-            raise DataSourceError(f"Environment variable {token_name} not set for Git authentication.")
+            raise DataSourceError(
+                f"Environment variable {token_name} not set for Git authentication."
+            )
         git_url = git_url.replace(f"${token_name}", token)
     safe_git_url = _sanitize_git_url(git_url)
 
     if clone_dir.exists():
+        managed_root = clone_dir.parent
+        if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
+            clone_dir, managed_root
+        ):
+            raise DataSourceError(
+                "Refusing to delete unmanaged DBT clone directory. "
+                f"clone_dir={clone_dir}"
+            )
         shutil.rmtree(clone_dir)
-    kwargs = {"branch": branch} if branch else {}
     try:
-        Repo.clone_from(git_url, clone_dir, **kwargs)
+        if branch:
+            Repo.clone_from(git_url, clone_dir, branch=branch)
+        else:
+            Repo.clone_from(git_url, clone_dir)
         duration = time.time() - start_time
-        log_data_operation("clone", "dbt_project", context = {
-            "git_url": safe_git_url, "branch": branch or "default", 
-            "target_dir": str(clone_dir), "duration_seconds": duration
-        })
+        log_data_operation(
+            "clone",
+            "dbt_project",
+            context={
+                "git_url": safe_git_url,
+                "branch": branch or "default",
+                "target_dir": str(clone_dir),
+                "duration_seconds": duration,
+            },
+        )
     except Exception as e:
         duration = time.time() - start_time
         safe_error = _sanitize_git_url(str(e))
-        log_data_operation("clone", "dbt_project", context = {
-            "git_url": safe_git_url, "error": safe_error, "duration_seconds": duration
-        })
+        log_data_operation(
+            "clone",
+            "dbt_project",
+            context={
+                "git_url": safe_git_url,
+                "error": safe_error,
+                "duration_seconds": duration,
+            },
+        )
         raise DataSourceError(f"Error cloning {safe_git_url}: {safe_error}")
+
+
+def _is_path_within(path: Path, parent: Path) -> bool:
+    """Return True when path is inside parent (or equal to parent)."""
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_managed_clone_dir(
+    project_dir: str,
+    package_url: str,
+    branch: Optional[str],
+) -> Path:
+    """Resolve a safe managed clone directory under project_dir.
+
+    The user-provided project_dir is treated as a workspace root only.
+    Slideflow clones into project_dir/.slideflow_dbt_clones/<key>/ to avoid
+    destructive operations against arbitrary user directories.
+    """
+    workspace_root = Path(project_dir).expanduser().resolve()
+    protected_roots = {Path("/"), Path.home().resolve(), Path.cwd().resolve()}
+    if workspace_root in protected_roots:
+        raise DataSourceError(
+            "Refusing to use a protected project_dir for DBT clones: "
+            f"{workspace_root}. Use a dedicated workspace directory."
+        )
+
+    managed_root = workspace_root / ".slideflow_dbt_clones"
+    managed_root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(
+        f"{package_url}|{branch or 'default'}".encode("utf-8")
+    ).hexdigest()[:16]
+    return managed_root / key
+
 
 def _get_compiled_project(
     package_url: str,
@@ -142,16 +206,16 @@ def _get_compiled_project(
     profile_name: Optional[str] = None,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
-    
+
     Retrieves a compiled DBT project from cache if available, or compiles
     a new project by cloning the repository and running DBT compilation.
     Projects are cached by their unique parameter combination to avoid
     redundant compilation operations.
-    
+
     The function is thread-safe and handles concurrent access to the
     compilation cache. It logs performance metrics for both dependency
     installation and compilation phases.
-    
+
     Args:
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for the cloned project.
@@ -160,13 +224,13 @@ def _get_compiled_project(
         vars: Optional DBT variables dictionary.
         profiles_dir: Optional path to a dbt profiles directory or profiles.yml.
         profile_name: Optional dbt profile name to override the one in dbt_project.yml.
-        
+
     Returns:
         Path to the compiled DBT project directory.
-        
+
     Raises:
         DataSourceError: If Git cloning or DBT compilation fails.
-        
+
     Example:
         >>> project_path = _get_compiled_project(
         ...     "https://github.com/company/dbt-project.git",
@@ -181,19 +245,19 @@ def _get_compiled_project(
         project_dir,
         branch,
         target,
-        json.dumps(vars or {}, sort_keys = True),
+        json.dumps(vars or {}, sort_keys=True),
         str(Path(profiles_dir).resolve()) if profiles_dir else None,
         profile_name,
     )
-    
+
     with _cache_lock:
         if cache_key in _compiled_projects_cache:
             cached_dir = _compiled_projects_cache[cache_key]
             if cached_dir.exists():
                 return cached_dir
-        
+
         # Compile the project
-        clone_dir = Path(project_dir)
+        clone_dir = _resolve_managed_clone_dir(project_dir, package_url, branch)
         _clone_repo(package_url, clone_dir, branch)
         # If provided, copy profiles directory or file into cloned project root
         if profiles_dir:
@@ -210,19 +274,23 @@ def _get_compiled_project(
                             shutil.copy2(p, clone_dir / p.name)
                 elif src.is_file():
                     # If a file is passed, copy to profiles.yml in clone_dir
-                    dest = clone_dir / ("profiles.yml" if src.name != "profiles.yml" else src.name)
+                    dest = clone_dir / (
+                        "profiles.yml" if src.name != "profiles.yml" else src.name
+                    )
                     shutil.copy2(src, dest)
                 else:
                     logger.warning(f"profiles_dir path not found: {profiles_dir}")
             except Exception as e:
-                logger.warning(f"Failed to prepare dbt profiles from {profiles_dir}: {e}")
+                logger.warning(
+                    f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
+                )
 
         cwd = Path.cwd()
         os.chdir(clone_dir)
-        
+
         try:
             runner = dbtRunner()
-            
+
             # Log dependencies install
             deps_start = time.time()
             deps_args = ["deps"]
@@ -232,8 +300,10 @@ def _get_compiled_project(
                 deps_args.extend(["--profiles-dir", str(clone_dir)])
             runner.invoke(deps_args)
             deps_duration = time.time() - deps_start
-            log_performance("dbt_deps", deps_duration, project = package_url, target = target)
-            
+            log_performance(
+                "dbt_deps", deps_duration, project=package_url, target=target
+            )
+
             # Log compilation
             compile_start = time.time()
             args = ["compile", "--target", target]
@@ -248,30 +318,31 @@ def _get_compiled_project(
             log_performance(
                 "dbt_compile",
                 compile_duration,
-                project = package_url,
-                target = target, 
-                vars_count = len(vars) if vars else 0
+                project=package_url,
+                target=target,
+                vars_count=len(vars) if vars else 0,
             )
         finally:
             os.chdir(cwd)
-        
+
         _compiled_projects_cache[cache_key] = clone_dir
         return clone_dir
 
+
 class DBTManifestConnector(BaseModel, DataConnector):
     """Connector for parsing DBT manifest files and extracting compiled SQL.
-    
+
     This connector handles the compilation of DBT projects and parsing of
     manifest.json files to extract compiled SQL queries for specific models.
     It does not execute queries directly but provides the compiled SQL for
     use by other connectors.
-    
+
     The connector manages the full DBT workflow:
     1. Clone the Git repository
     2. Install DBT dependencies
     3. Compile the project
     4. Parse the manifest to find model SQL
-    
+
     Attributes:
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
@@ -280,7 +351,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
         target: DBT target environment for compilation.
         vars: Optional variables to pass to DBT compilation.
         compile: Whether to compile the project (usually True).
-        
+
     Example:
         >>> connector = DBTManifestConnector(
         ...     package_url="https://github.com/company/dbt-project.git",
@@ -289,37 +360,42 @@ class DBTManifestConnector(BaseModel, DataConnector):
         ... )
         >>> sql = connector.get_compiled_query("revenue_model")
     """
-    package_url: str = Field(..., description = "Git URL of dbt project")
-    project_dir: str = Field(..., description = "Local path to dbt project")
-    profile_name: Optional[str] = Field(None, description="dbt profile name to override the one in dbt_project.yml")
-    branch: Optional[str] = Field(None, description = "Git branch to checkout")
-    target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
-    vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
+
+    package_url: str = Field(..., description="Git URL of dbt project")
+    project_dir: str = Field(..., description="Local path to dbt project")
+    profile_name: Optional[str] = Field(
+        None, description="dbt profile name to override the one in dbt_project.yml"
+    )
+    branch: Optional[str] = Field(None, description="Git branch to checkout")
+    target: str = Field(Defaults.DBT_TARGET, description="dbt target")
+    vars: Optional[dict[str, Any]] = Field(None, description="dbt vars")
     profiles_dir: Optional[str] = Field(
         None,
-        description = "Optional path to a dbt profiles directory or profiles.yml to use. If provided, it will be copied into the cloned project directory before running dbt.",
+        description="Optional path to a dbt profiles directory or profiles.yml to use. If provided, it will be copied into the cloned project directory before running dbt.",
     )
-    compile: bool = Field(Defaults.DBT_COMPILE, description = "Whether to compile project")
+    compile: bool = Field(
+        Defaults.DBT_COMPILE, description="Whether to compile project"
+    )
 
-    model_config = ConfigDict(arbitrary_types_allowed = True, extra = "forbid")
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     def get_compiled_query(self, model_name: str) -> Optional[str]:
         """Extract compiled SQL query for a specific DBT model.
-        
+
         Compiles the DBT project if needed and parses the manifest.json file
         to find the compiled SQL for the specified model alias. Returns the
         SQL content as a string for execution by other connectors.
-        
+
         Args:
             model_name: The alias of the DBT model to retrieve SQL for.
                 This should match the alias defined in the model's configuration.
-                
+
         Returns:
             The compiled SQL query as a string, or None if the model is not found.
-            
+
         Raises:
             DataSourceError: If the manifest.json file is not found or invalid.
-            
+
         Example:
             >>> connector = DBTManifestConnector(
             ...     package_url="https://github.com/company/dbt-project.git",
@@ -330,20 +406,20 @@ class DBTManifestConnector(BaseModel, DataConnector):
             >>> print(f"Found SQL query with {len(sql)} characters")
         """
         clone_dir = _get_compiled_project(
-            self.package_url, 
-            self.project_dir, 
-            self.branch, 
-            self.target, 
+            self.package_url,
+            self.project_dir,
+            self.branch,
+            self.target,
             self.vars,
             self.profiles_dir,
             self.profile_name,
         )
-        
+
         # Load manifest.json
         manifest_path = clone_dir / "target" / "manifest.json"
         if not manifest_path.exists():
             raise DataSourceError(f"manifest.json not found at {manifest_path}")
-        
+
         with open(manifest_path) as f:
             manifest = json.load(f)
 
@@ -359,34 +435,37 @@ class DBTManifestConnector(BaseModel, DataConnector):
                     return full.read_text()
                 else:
                     logger.warning(f"Missing compiled file for {alias}: {path}")
-        
+
         return None
 
     def fetch_data(self) -> pd.DataFrame:
         """Not implemented for manifest connector.
-        
+
         DBTManifestConnector is designed for extracting compiled SQL queries,
         not for executing them and fetching data. Use get_compiled_query()
         to retrieve SQL, then pass it to a query execution connector.
-        
+
         Raises:
             NotImplementedError: Always, as this method is not applicable.
-            
+
         Example:
             >>> # Correct usage
             >>> sql = connector.get_compiled_query("model_name")
             >>> db_connector = DatabricksConnector(sql)
             >>> data = db_connector.fetch_data()
         """
-        raise NotImplementedError("DBTManifestConnector is for manifest parsing, not data fetching. Use get_compiled_query() instead.")
+        raise NotImplementedError(
+            "DBTManifestConnector is for manifest parsing, not data fetching. Use get_compiled_query() instead."
+        )
+
 
 class DBTDatabricksConnector(BaseModel, DataConnector):
     """Connector that combines DBT model compilation with Databricks execution.
-    
+
     This connector bridges DBT transformations with Databricks SQL execution.
     It compiles DBT models to SQL and executes them against Databricks SQL
     warehouses, providing a complete data transformation and retrieval pipeline.
-    
+
     The connector handles the full workflow:
     1. Compile the DBT project and extract model SQL
     2. Execute the compiled SQL against Databricks
@@ -402,7 +481,7 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
         vars: Optional variables to pass to DBT compilation.
         compile: Whether to compile the project.
         profiles_dir: Optional path to dbt profiles directory/file.
-    
+
     Example:
         >>> connector = DBTDatabricksConnector(
         ...     model_alias="monthly_revenue",
@@ -413,6 +492,7 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
         >>> data = connector.fetch_data()
         >>> print(f"Retrieved {len(data)} rows from DBT model")
     """
+
     model_alias: str
     package_url: str
     project_dir: str
@@ -422,7 +502,7 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
     vars: Optional[dict[str, Any]] = None
     compile: bool = Defaults.DBT_COMPILE
     profiles_dir: Optional[str] = None
-    _manifest_connector: DBTManifestConnector = None
+    _manifest_connector: Optional[DBTManifestConnector] = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -441,19 +521,19 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
 
     def fetch_data(self) -> pd.DataFrame:
         """Compile DBT model and execute against Databricks.
-        
+
         Extracts the compiled SQL from the DBT model and executes it
         against the configured Databricks SQL warehouse. Returns the
         query results as a pandas DataFrame.
-        
+
         Returns:
             DataFrame containing the results of the compiled DBT model query.
-            
+
         Raises:
             DataSourceError: If the specified model is not found or compilation fails.
             ConnectionError: If unable to connect to Databricks.
             sql.Error: If the compiled SQL query execution fails.
-            
+
         Example:
             >>> connector = DBTDatabricksConnector(
             ...     model_alias="revenue_summary",
@@ -463,23 +543,26 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
             >>> df = connector.fetch_data()
             >>> print(f"Model returned {len(df)} rows, {len(df.columns)} columns")
         """
+        if self._manifest_connector is None:
+            raise DataSourceError("DBT manifest connector is not initialized.")
         sql_text = self._manifest_connector.get_compiled_query(self.model_alias)
         if not sql_text:
             raise DataSourceError(f"No compiled model '{self.model_alias}'")
         return DatabricksConnector(sql_text).fetch_data()
 
+
 class DBTDatabricksSourceConfig(BaseSourceConfig):
     """Configuration model for DBT models executed on Databricks.
-    
+
     This configuration class defines the parameters needed to compile DBT
     models and execute them against Databricks SQL warehouses. It combines
     DBT's transformation capabilities with Databricks' execution power.
-    
+
     The configuration handles the complete DBT-to-Databricks pipeline,
     including Git repository management, project compilation, and query
     execution. It integrates with the discriminated union system for
     polymorphic data source configurations.
-    
+
     Attributes:
         type: Always "databricks_dbt" for DBT-Databricks data sources.
         model_alias: The alias of the DBT model to execute.
@@ -491,10 +574,10 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
         vars: Optional variables to pass to DBT compilation.
         compile: Whether to compile the project before execution.
         connector_class: References DBTDatabricksConnector for instantiation.
-    
+
     Example:
         Creating a DBT-Databricks data source configuration:
-        
+
         >>> config = DBTDatabricksSourceConfig(
         ...     name="revenue_analytics",
         ...     type="databricks_dbt",
@@ -505,13 +588,13 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
         ...     target="prod",
         ...     vars={"start_date": "2024-01-01", "end_date": "2024-12-31"}
         ... )
-        >>> 
+        >>>
         >>> # Use configuration to fetch transformed data
         >>> data = config.fetch_data()
         >>> print(f"Retrieved {len(data)} rows from DBT model")
-        
+
         From dictionary/JSON:
-        
+
         >>> config_dict = {
         ...     "name": "user_metrics",
         ...     "type": "databricks_dbt",
@@ -531,23 +614,25 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
         ... )
         >>> config = DBTDatabricksSourceConfig(**config_dict)
     """
-    type: Literal["databricks_dbt"] = Field("databricks_dbt", description = "dbt + Databricks data source")
-    model_alias: str = Field(..., description = "dbt model alias")
-    package_url: str = Field(..., description = "Git URL of dbt project")
-    project_dir: str = Field(..., description = "Local project path")
-    profile_name: Optional[str] = Field(None, description="dbt profile name to override the one in dbt_project.yml")
-    branch: Optional[str] = Field(None, description = "Git branch")
-    target: str = Field(Defaults.DBT_TARGET, description = "dbt target")
-    vars: Optional[dict[str, Any]] = Field(None, description = "dbt vars")
-    compile: bool = Field(Defaults.DBT_COMPILE, description = "Whether to compile")
+
+    type: Literal["databricks_dbt"] = Field(
+        "databricks_dbt", description="dbt + Databricks data source"
+    )
+    model_alias: str = Field(..., description="dbt model alias")
+    package_url: str = Field(..., description="Git URL of dbt project")
+    project_dir: str = Field(..., description="Local project path")
+    profile_name: Optional[str] = Field(
+        None, description="dbt profile name to override the one in dbt_project.yml"
+    )
+    branch: Optional[str] = Field(None, description="Git branch")
+    target: str = Field(Defaults.DBT_TARGET, description="dbt target")
+    vars: Optional[dict[str, Any]] = Field(None, description="dbt vars")
+    compile: bool = Field(Defaults.DBT_COMPILE, description="Whether to compile")
     profiles_dir: Optional[str] = Field(
         None,
-        description = "Optional path to a dbt profiles directory or profiles.yml. Copied into the cloned project root before running dbt.",
+        description="Optional path to a dbt profiles directory or profiles.yml. Copied into the cloned project root before running dbt.",
     )
 
     connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
 
-    model_config = ConfigDict(
-        extra = "forbid",
-        discriminator = "type"
-    )
+    model_config = ConfigDict(extra="forbid")

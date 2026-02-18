@@ -21,6 +21,10 @@
 
 ```bash
 source .venv/bin/activate
+python -m pip check
+python -m black --check slideflow tests scripts
+python -m ruff check slideflow tests scripts
+python -m mypy slideflow
 pytest -q
 pytest -q --cov=slideflow --cov-report=term --cov-report=xml
 ```
@@ -47,6 +51,16 @@ pytest -q -m e2e
 - CI enforces coverage floor (`--cov-fail-under=75`) on unit tests (`not integration and not e2e`).
 - CI runs dedicated integration and e2e marker suites in separate steps.
 - Distribution artifacts are built for every CI run.
+
+## Compatibility matrix
+
+Compatibility tests assert support remains in place for:
+
+- CLI commands/options (`slideflow build`, `slideflow validate`)
+- connectors (`csv`, `json`, `databricks`, `databricks_dbt`)
+- replacements (`text`, `table`, `ai_text`)
+- charts (`plotly_go`, `custom`, `template`)
+- template/registry loading paths
 
 ## Contribution expectations
 

@@ -38,17 +38,34 @@ def test_safe_eval_expression_accepts_arithmetic_and_rejects_unsafe_nodes():
 
 
 def test_convert_dimensions_supports_pt_emu_relative_and_errors():
-    assert convert_dimensions("50 + 25", "100", "400", "300", "pt") == (75, 100, 400, 300)
-    assert convert_dimensions(635000, 1270000, 5080000, 3810000, "emu") == (50, 100, 400, 300)
-    assert convert_dimensions("5 * 10", "4 * 10", "20 * 10", "15 * 10", "expression") == (50, 40, 200, 150)
+    assert convert_dimensions("50 + 25", "100", "400", "300", "pt") == (
+        75,
+        100,
+        400,
+        300,
+    )
+    assert convert_dimensions(635000, 1270000, 5080000, 3810000, "emu") == (
+        50,
+        100,
+        400,
+        300,
+    )
+    assert convert_dimensions(
+        "5 * 10", "4 * 10", "20 * 10", "15 * 10", "expression"
+    ) == (50, 40, 200, 150)
 
     slides_app = {
         "pageSize": {
-            "width": {"magnitude": 9144000, "unit": "EMU"},   # 720 pt
+            "width": {"magnitude": 9144000, "unit": "EMU"},  # 720 pt
             "height": {"magnitude": 6858000, "unit": "EMU"},  # 540 pt
         }
     }
-    assert convert_dimensions(0.1, 0.2, 0.5, 0.4, "relative", slides_app) == (72, 108, 360, 216)
+    assert convert_dimensions(0.1, 0.2, 0.5, 0.4, "relative", slides_app) == (
+        72,
+        108,
+        360,
+        216,
+    )
 
     with pytest.raises(ChartGenerationError, match="slides_app must be provided"):
         convert_dimensions(0.1, 0.2, 0.5, 0.4, "relative", None)
@@ -84,7 +101,9 @@ def test_alignment_and_dimension_computation_validation_paths():
     with pytest.raises(ChartGenerationError, match="too large"):
         compute_chart_dimensions(0, 0, 2000, 100)
     with pytest.raises(ChartGenerationError, match="too far from slide"):
-        compute_chart_dimensions(3000, 0, 100, 100, page_width_pt=720, page_height_pt=540)
+        compute_chart_dimensions(
+            3000, 0, 100, 100, page_width_pt=720, page_height_pt=540
+        )
 
 
 def test_function_registry_supports_registration_call_module_loading_and_errors():
@@ -119,7 +138,9 @@ def test_function_registry_supports_registration_call_module_loading_and_errors(
         registry.get("m__private_fn")
 
     # Trigger call error path.
-    registry.register_function("explode", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    registry.register_function(
+        "explode", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
     with pytest.raises(RuntimeError, match="boom"):
         registry.call("explode")
 

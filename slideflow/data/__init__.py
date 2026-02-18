@@ -1,4 +1,3 @@
-
 """Data management and connectivity system for Slideflow.
 
 This module provides the complete data infrastructure for Slideflow presentations,
@@ -34,37 +33,37 @@ Performance Optimizations:
 
 Example:
     Basic data source usage:
-    
+
     >>> from slideflow.data import CSVSourceConfig, get_data_cache
-    >>> 
+    >>>
     >>> # Configure a CSV data source
     >>> config = CSVSourceConfig(
     ...     name="sales_data",
     ...     type="csv",
     ...     file_path="/data/sales.csv"
     ... )
-    >>> 
+    >>>
     >>> # Fetch data (automatically cached)
     >>> data = config.fetch_data()
     >>> print(f"Loaded {len(data)} rows")
-    
+
     Working with multiple data sources:
-    
+
     >>> from slideflow.data import DataSourceConfig
-    >>> 
+    >>>
     >>> # Polymorphic configuration
     >>> sources = [
     ...     {"type": "csv", "name": "sales", "file_path": "/data/sales.csv"},
     ...     {"type": "databricks", "name": "users", "query": "SELECT * FROM users"}
     ... ]
-    >>> 
+    >>>
     >>> for source_config in sources:
     ...     config = DataSourceConfig(**source_config)
     ...     data = config.fetch_data()
     ...     print(f"{config.name}: {len(data)} rows")
-    
+
     Cache management:
-    
+
     >>> cache = get_data_cache()
     >>> print(f"Cache contains {cache.size} datasets")
     >>> cache.clear()  # Clear cache when needed
@@ -94,22 +93,22 @@ from slideflow.data.connectors import (
     DatabricksConnector,
     DatabricksSourceConfig,
     DBTDatabricksConnector,
-    DBTDatabricksSourceConfig
+    DBTDatabricksSourceConfig,
 )
 
 __all__ = [
-    'DataSourceCache',
-    'get_data_cache',
-    'DataSourceConfig',
+    "DataSourceCache",
+    "get_data_cache",
+    "DataSourceConfig",
     # Plus all connector exports from connectors/__init__.py
-    'DataConnector',
-    'BaseSourceConfig',
-    'CSVConnector',
-    'CSVSourceConfig',
-    'JSONConnector',
-    'JSONSourceConfig',
-    'DatabricksConnector',
-    'DatabricksSourceConfig',
-    'DBTDatabricksConnector',
-    'DBTDatabricksSourceConfig',
+    "DataConnector",
+    "BaseSourceConfig",
+    "CSVConnector",
+    "CSVSourceConfig",
+    "JSONConnector",
+    "JSONSourceConfig",
+    "DatabricksConnector",
+    "DatabricksSourceConfig",
+    "DBTDatabricksConnector",
+    "DBTDatabricksSourceConfig",
 ]

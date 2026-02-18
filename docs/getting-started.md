@@ -10,10 +10,10 @@
 
 ## Install
 
-Current stable path (until PyPI naming migration is finalized):
+Install from PyPI:
 
 ```bash
-pip install git+https://github.com/joe-broadhead/slideflow.git
+pip install slideflow-presentations
 ```
 
 For editable local development:

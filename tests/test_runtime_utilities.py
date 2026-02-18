@@ -88,8 +88,12 @@ def test_rate_limiter_wait_sleeps_only_when_needed(monkeypatch):
     monotonic_values = iter([0.0, 0.6, 2.0])
     sleep_calls = []
 
-    monkeypatch.setattr(rate_limiter_module.time, "monotonic", lambda: next(monotonic_values))
-    monkeypatch.setattr(rate_limiter_module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+    monkeypatch.setattr(
+        rate_limiter_module.time, "monotonic", lambda: next(monotonic_values)
+    )
+    monkeypatch.setattr(
+        rate_limiter_module.time, "sleep", lambda seconds: sleep_calls.append(seconds)
+    )
 
     limiter = RateLimiter(2.0)  # 0.5 seconds/request
     limiter.wait()  # sleeps 0.5

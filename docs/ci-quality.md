@@ -5,10 +5,11 @@
 - `CI` (`.github/workflows/ci.yml`)
   - installs project + dev deps
   - runs `pip check`
+  - runs `black --check`, `ruff check`, and `mypy`
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
   - runs integration marker tests (`-m integration`)
   - runs e2e marker tests (`-m e2e`)
-  - builds wheel/sdist artifacts
+  - builds wheel/sdist artifacts and verifies distribution identity (`slideflow-presentations`)
   - installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
 - `Docs` (`.github/workflows/docs.yml`)
   - runs `mkdocs build --strict`
@@ -16,11 +17,14 @@
 - `Release` (`.github/workflows/release.yml`)
   - runs on `release/vX.Y.Z`
   - validates branch/version consistency
-  - runs tests + build
-  - creates tag + GitHub release
-  - publishes to PyPI
+  - runs format/lint/type/test/build checks
+  - verifies distribution identity (`slideflow-presentations`)
+  - publishes to PyPI first
+  - creates tag + GitHub release only after publish succeeds
 - `TestPyPI Dry Run` (`.github/workflows/testpypi-dry-run.yml`)
   - runs on `release/vX.Y.Z` pushes and manual dispatch
+  - runs format/lint/type/build checks
+  - verifies distribution identity (`slideflow-presentations`)
   - builds artifacts + smoke tests installed wheel
   - publishes to TestPyPI using OIDC (`skip-existing`)
 - `Audit` (`.github/workflows/audit.yml`)
@@ -32,6 +36,10 @@
 
 ```bash
 source .venv/bin/activate
+python -m pip check
+python -m black --check slideflow tests scripts
+python -m ruff check slideflow tests scripts
+python -m mypy slideflow
 pytest -q
 pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=75
 pytest -q -m integration

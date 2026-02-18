@@ -19,9 +19,9 @@ On push to a `release/vX.Y.Z` branch, the `Release` workflow:
 3. runs release test suite + coverage gate
 4. builds wheel and source distributions
 5. installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
-6. creates and pushes Git tag `vX.Y.Z`
-7. creates GitHub release with artifacts
-8. publishes package to PyPI (OIDC trusted publishing)
+6. publishes package to PyPI (OIDC trusted publishing)
+7. creates and pushes Git tag `vX.Y.Z`
+8. creates GitHub release with artifacts
 
 In parallel, `TestPyPI Dry Run` can publish the same artifacts to TestPyPI (with `skip-existing`) for pre-production validation.
 
@@ -33,6 +33,12 @@ These must match:
 - `slideflow/__init__.py` -> `__version__`
 - release branch suffix -> `release/vX.Y.Z`
 
+PyPI package identity:
+
+- distribution name: `slideflow-presentations`
+- import namespace: `slideflow`
+- CLI command: `slideflow`
+
 ## Pre-release checklist
 
 1. Ensure tests pass locally.
@@ -40,6 +46,10 @@ These must match:
 
 ```bash
 source .venv/bin/activate
+python -m pip check
+python -m black --check slideflow tests scripts
+python -m ruff check slideflow tests scripts
+python -m mypy slideflow
 pytest -q
 mkdocs build --strict
 ```

@@ -16,15 +16,25 @@ def _minimal_loader_config():
 
 
 def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(build_command_module, "print_build_header", lambda *a, **k: None)
-    monkeypatch.setattr(build_command_module, "print_build_progress", lambda *a, **k: None)
-    monkeypatch.setattr(build_command_module, "print_build_success", lambda *a, **k: None)
+    monkeypatch.setattr(
+        build_command_module, "print_build_header", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        build_command_module, "print_build_progress", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        build_command_module, "print_build_success", lambda *a, **k: None
+    )
     monkeypatch.setattr(build_command_module, "print_build_error", lambda *a, **k: None)
     monkeypatch.setattr(build_command_module.time, "sleep", lambda *_: None)
 
-    monkeypatch.setattr(validate_command_module, "print_validation_header", lambda *a, **k: None)
+    monkeypatch.setattr(
+        validate_command_module, "print_validation_header", lambda *a, **k: None
+    )
     monkeypatch.setattr(validate_command_module, "print_success", lambda *a, **k: None)
-    monkeypatch.setattr(validate_command_module, "print_config_summary", lambda *a, **k: None)
+    monkeypatch.setattr(
+        validate_command_module, "print_config_summary", lambda *a, **k: None
+    )
     monkeypatch.setattr(validate_command_module, "print_error", lambda *a, **k: None)
 
 
@@ -53,7 +63,9 @@ def _stub_presentation_validation(monkeypatch):
     )
 
 
-def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(tmp_path, monkeypatch):
+def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
+    tmp_path, monkeypatch
+):
     _stub_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
 
@@ -160,10 +172,12 @@ def test_build_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
         dry_run=True,
     )
 
-    assert loader_calls == [[Path("custom_registry.py")]]
+    assert loader_calls == [[(tmp_path / "custom_registry.py").resolve()]]
 
 
-def test_validate_uses_empty_registry_default_when_registry_file_is_missing(tmp_path, monkeypatch):
+def test_validate_uses_empty_registry_default_when_registry_file_is_missing(
+    tmp_path, monkeypatch
+):
     _stub_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
 
@@ -188,7 +202,9 @@ def test_validate_uses_empty_registry_default_when_registry_file_is_missing(tmp_
 
     monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
 
-    validate_command_module.validate_command(config_file=config_file, registry_paths=None)
+    validate_command_module.validate_command(
+        config_file=config_file, registry_paths=None
+    )
 
     assert loader_calls == [[]]
 
@@ -219,9 +235,11 @@ def test_validate_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
 
     monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
 
-    validate_command_module.validate_command(config_file=config_file, registry_paths=None)
+    validate_command_module.validate_command(
+        config_file=config_file, registry_paths=None
+    )
 
-    assert loader_calls == [[Path("custom_registry.py")]]
+    assert loader_calls == [[(tmp_path / "custom_registry.py").resolve()]]
 
 
 def test_validate_calls_deep_slide_validation(tmp_path, monkeypatch):
@@ -255,9 +273,13 @@ def test_validate_calls_deep_slide_validation(tmp_path, monkeypatch):
     )
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text("presentation: {name: Demo, slides: []}\nprovider: {type: google_slides, config: {}}\n")
+    config_file.write_text(
+        "presentation: {name: Demo, slides: []}\nprovider: {type: google_slides, config: {}}\n"
+    )
 
-    validate_command_module.validate_command(config_file=config_file, registry_paths=None)
+    validate_command_module.validate_command(
+        config_file=config_file, registry_paths=None
+    )
 
     assert build_calls == [slide_spec]
 
@@ -295,10 +317,14 @@ def test_validate_fails_when_deep_slide_validation_fails(tmp_path, monkeypatch):
     )
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text("presentation: {name: Demo, slides: []}\nprovider: {type: google_slides, config: {}}\n")
+    config_file.write_text(
+        "presentation: {name: Demo, slides: []}\nprovider: {type: google_slides, config: {}}\n"
+    )
 
     with pytest.raises(validate_command_module.typer.Exit) as exc_info:
-        validate_command_module.validate_command(config_file=config_file, registry_paths=None)
+        validate_command_module.validate_command(
+            config_file=config_file, registry_paths=None
+        )
 
     assert exc_info.value.code == 1
 
@@ -336,7 +362,9 @@ def test_build_dry_run_fails_when_deep_slide_validation_fails(tmp_path, monkeypa
     )
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text("presentation: {name: Demo, slides: []}\nprovider: {type: google_slides, config: {}}\n")
+    config_file.write_text(
+        "presentation: {name: Demo, slides: []}\nprovider: {type: google_slides, config: {}}\n"
+    )
 
     with pytest.raises(build_command_module.typer.Exit) as exc_info:
         build_command_module.build_command(

@@ -33,16 +33,23 @@ def _install_pandas_stub_compat(monkeypatch):
         monkeypatch.setattr(df_type, "copy", lambda self: df_type(self), raising=False)
 
     if not hasattr(series_type, "round"):
+
         def _series_round(self, decimal_places=0):
             return series_type(
-                round(float(value), decimal_places) if isinstance(value, (int, float)) else value
+                (
+                    round(float(value), decimal_places)
+                    if isinstance(value, (int, float))
+                    else value
+                )
                 for value in self
             )
 
         monkeypatch.setattr(series_type, "round", _series_round, raising=False)
 
     if not hasattr(series_type, "tolist"):
-        monkeypatch.setattr(series_type, "tolist", lambda self: list(self), raising=False)
+        monkeypatch.setattr(
+            series_type, "tolist", lambda self: list(self), raising=False
+        )
 
 
 def test_formatting_functions_cover_numeric_and_edge_cases(monkeypatch):
@@ -73,7 +80,9 @@ def test_formatting_functions_cover_numeric_and_edge_cases(monkeypatch):
 
     assert format_module.abbreviate_currency(1_250_000, currency_symbol="$") == "$1.2M"
     assert (
-        format_module.abbreviate_currency(-900, currency_symbol="$", negative_parens=True)
+        format_module.abbreviate_currency(
+            -900, currency_symbol="$", negative_parens=True
+        )
         == "($900.00)"
     )
     assert format_module.abbreviate_currency("n/a") == "n/a"
@@ -95,8 +104,14 @@ def test_formatting_functions_cover_numeric_and_edge_cases(monkeypatch):
         format_module.format_currency(BadFloat())
 
     # Force hard-failure path for percentage.
-    monkeypatch.setattr(format_module.math, "isnan", lambda _v: (_ for _ in ()).throw(RuntimeError("err")))
-    with pytest.raises(DataTransformError, match="Critical percentage formatting error"):
+    monkeypatch.setattr(
+        format_module.math,
+        "isnan",
+        lambda _v: (_ for _ in ()).throw(RuntimeError("err")),
+    )
+    with pytest.raises(
+        DataTransformError, match="Critical percentage formatting error"
+    ):
         format_module.percentage(1.23)
 
 
@@ -117,10 +132,22 @@ def test_color_and_table_helpers_generate_expected_color_maps(monkeypatch):
     assert performance_color_function(79.9, threshold=80) == "#dc3545"
     assert performance_color_function(None, threshold=80) == "black"
 
-    assert create_traffic_light_colors(90, good_threshold=80, warning_threshold=60) == "#28a745"
-    assert create_traffic_light_colors(70, good_threshold=80, warning_threshold=60) == "#ffc107"
-    assert create_traffic_light_colors(50, good_threshold=80, warning_threshold=60) == "#dc3545"
-    assert create_traffic_light_colors("x", good_threshold=80, warning_threshold=60) == "black"
+    assert (
+        create_traffic_light_colors(90, good_threshold=80, warning_threshold=60)
+        == "#28a745"
+    )
+    assert (
+        create_traffic_light_colors(70, good_threshold=80, warning_threshold=60)
+        == "#ffc107"
+    )
+    assert (
+        create_traffic_light_colors(50, good_threshold=80, warning_threshold=60)
+        == "#dc3545"
+    )
+    assert (
+        create_traffic_light_colors("x", good_threshold=80, warning_threshold=60)
+        == "black"
+    )
 
     df = pd.DataFrame({"name": ["A", "B"], "growth": [0.2, -0.1], "score": [82, 75]})
     colored = create_dynamic_colors(
@@ -138,7 +165,9 @@ def test_color_and_table_helpers_generate_expected_color_maps(monkeypatch):
     growth_wrapped = create_growth_colors(df, ["name", "growth"], ["growth"])
     assert growth_wrapped["_color_col_1"].tolist() == ["#28a745", "#dc3545"]
 
-    perf_wrapped = create_performance_colors(df, ["name", "score"], ["score"], threshold=80)
+    perf_wrapped = create_performance_colors(
+        df, ["name", "score"], ["score"], threshold=80
+    )
     assert perf_wrapped["_color_col_1"].tolist() == ["#28a745", "#dc3545"]
 
 
@@ -168,7 +197,9 @@ def test_column_transforms_apply_only_to_target_columns(monkeypatch):
     )
     assert currency["cost"].tolist() == ["400.0K €", "200.0 €"]
 
-    percentages = format_percentages(original, ["ratio", "text"], decimal_places=1, from_ratio=True)
+    percentages = format_percentages(
+        original, ["ratio", "text"], decimal_places=1, from_ratio=True
+    )
     assert percentages["ratio"].tolist() == ["12.3%", "-50.0%"]
     assert percentages["text"].tolist() == ["A", "B"]
 

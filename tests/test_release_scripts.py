@@ -11,10 +11,10 @@ VERSION_SCRIPT = ROOT / "scripts" / "ci" / "check_version_consistency.py"
 def _run(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(script), *args],
-        cwd = ROOT,
-        text = True,
-        capture_output = True,
-        check = False,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
     )
 
 

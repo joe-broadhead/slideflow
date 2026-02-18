@@ -21,14 +21,14 @@ Key Features:
 Usage:
     The CLI can be invoked directly as a Python module or through installed
     command-line tools. Common usage patterns include:
-    
+
     Direct module execution:
     ```bash
     python -m slideflow.cli --help
     python -m slideflow.cli generate presentation.yaml
     python -m slideflow.cli test-data csv_source.json
     ```
-    
+
     Installed command (if setuptools entry point is configured):
     ```bash
     slideflow --help
@@ -46,11 +46,11 @@ Architecture:
 
 Example:
     Running the CLI programmatically:
-    
+
     >>> from slideflow.cli import app
     >>> # Note: This would typically be called from command line
     >>> # app(['generate', 'config.yaml'])  # Example command
-    
+
     The actual CLI commands and their implementations are defined in
     the slideflow.cli.main module and related submodules.
 """

@@ -15,13 +15,13 @@ The CLI includes:
 
 Example:
     The CLI can be used directly from the command line:
-    
+
     $ slideflow --help
     $ slideflow build config.yaml
     $ slideflow validate config.yaml --registry custom.py
-    
+
     Or programmatically:
-    
+
     >>> from slideflow.cli import app
     >>> # Use app as Typer application in other contexts
 
@@ -31,4 +31,4 @@ Attributes:
 
 from slideflow.cli.main import app
 
-__all__ = ['app']
+__all__ = ["app"]

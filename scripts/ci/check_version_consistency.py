@@ -31,7 +31,7 @@ def _read_package_version() -> str:
     match = re.search(
         r"^__version__\s*=\s*['\"]([^'\"]+)['\"]",
         INIT_PATH.read_text(),
-        flags = re.MULTILINE,
+        flags=re.MULTILINE,
     )
     if not match:
         raise RuntimeError("slideflow/__init__.py is missing __version__")
@@ -51,7 +51,7 @@ def main() -> int:
         print(
             "Version mismatch: "
             f"pyproject.toml={pyproject_version} vs slideflow/__init__.py={package_version}",
-            file = sys.stderr,
+            file=sys.stderr,
         )
         return 1
 
@@ -62,7 +62,7 @@ def main() -> int:
         print(
             "Release branch version mismatch: "
             f"branch={release_version} vs project={pyproject_version}",
-            file = sys.stderr,
+            file=sys.stderr,
         )
         return 1
 

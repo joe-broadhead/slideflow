@@ -20,28 +20,28 @@ Key Features:
 
 Example:
     Using builtins in YAML configuration::
-    
+
         data_transforms:
           - function: abbreviate_number_columns
             columns: [revenue, costs, profit]
-            
+
         replacements:
           - type: text
             value_fn: format_currency
-            
+
     Using builtins in Python code::
-    
+
         from slideflow.builtins import (
             create_dynamic_colors,
             abbreviate_currency_columns
         )
-        
+
         # Apply dynamic colors to a DataFrame
         df_styled = create_dynamic_colors(df, 'category')
-        
+
         # Format currency columns
         df_formatted = abbreviate_currency_columns(
-            df, 
+            df,
             ['revenue', 'costs'],
             currency_symbol='$'
         )
@@ -55,16 +55,24 @@ Modules:
 """
 
 from slideflow.builtins.table_utils import create_dynamic_colors, create_growth_colors
-from slideflow.builtins.formatting import abbreviate, format_currency, percentage, green_or_red
-from slideflow.builtins.column_utils import abbreviate_number_columns, abbreviate_currency_columns
+from slideflow.builtins.formatting import (
+    abbreviate,
+    format_currency,
+    percentage,
+    green_or_red,
+)
+from slideflow.builtins.column_utils import (
+    abbreviate_number_columns,
+    abbreviate_currency_columns,
+)
 
 __all__ = [
-    'create_dynamic_colors',
-    'create_growth_colors',
-    'abbreviate_number_columns', 
-    'abbreviate_currency_columns',
-    'abbreviate',
-    'format_currency',
-    'percentage',
-    'green_or_red'
+    "create_dynamic_colors",
+    "create_growth_colors",
+    "abbreviate_number_columns",
+    "abbreviate_currency_columns",
+    "abbreviate",
+    "format_currency",
+    "percentage",
+    "green_or_red",
 ]

@@ -7,27 +7,27 @@ positioning using a declarative configuration approach.
 
 Architecture Overview:
     The presentations module follows a layered architecture:
-    
+
     1. Configuration Layer (config.py):
        - Type-safe configuration models using Pydantic
        - Hierarchical structure from presentations down to individual elements
        - Support for YAML-based configuration with template resolution
-    
+
     2. Builder Layer (builder.py):
        - Factory pattern for constructing presentations from configuration
        - Integration with ConfigLoader for template and function resolution
        - Automatic validation and type conversion
-    
+
     3. Provider Layer (providers/):
        - Platform-specific implementations (Google Slides, PowerPoint, etc.)
        - Unified interface for presentation operations
        - Authentication and API management
-    
+
     4. Content Layer (base.py, charts.py):
        - Core presentation and slide models
        - Chart generation with multiple visualization backends
        - Text replacement system with data source integration
-    
+
     5. Utilities Layer (positioning.py):
        - Coordinate system conversion and positioning calculations
        - Safe expression evaluation for dynamic positioning
@@ -45,36 +45,36 @@ Key Features:
 
 Example Usage:
     Creating a presentation from YAML configuration:
-    
+
     >>> from slideflow.presentations import PresentationBuilder
     >>> from pathlib import Path
-    >>> 
+    >>>
     >>> # Build presentation from YAML
     >>> presentation = PresentationBuilder.from_yaml(
     ...     yaml_path=Path("monthly_report.yaml"),
     ...     params={"month": "March", "year": "2024"}
     ... )
-    >>> 
+    >>>
     >>> # Render to Google Slides
     >>> result = presentation.render()
     >>> print(f"Presentation created: {result.presentation_url}")
     >>> print(f"Generated {result.charts_generated} charts")
     >>> print(f"Made {result.replacements_made} text replacements")
-    
+
     Programmatic presentation creation:
-    
+
     >>> from slideflow.presentations import (
     ...     Presentation, Slide, PlotlyGraphObjects,
     ...     GoogleSlidesProvider, GoogleSlidesProviderConfig
     ... )
-    >>> 
+    >>>
     >>> # Create provider
     >>> provider_config = GoogleSlidesProviderConfig(
     ...     provider_type="google_slides",
     ...     credentials="/path/to/creds.json"
     ... )
     >>> provider = GoogleSlidesProvider(provider_config)
-    >>> 
+    >>>
     >>> # Create chart
     >>> chart = PlotlyGraphObjects(
     ...     type="plotly_go",
@@ -88,7 +88,7 @@ Example Usage:
     ...     data_source=csv_data_source,
     ...     x=100, y=150, width=500, height=400
     ... )
-    >>> 
+    >>>
     >>> # Create slide
     >>> slide = Slide(
     ...     id="revenue_slide",
@@ -96,7 +96,7 @@ Example Usage:
     ...     charts=[chart],
     ...     replacements=[text_replacement]
     ... )
-    >>> 
+    >>>
     >>> # Create and render presentation
     >>> presentation = Presentation(
     ...     name="Q1 Financial Report",
@@ -137,9 +137,25 @@ from slideflow.presentations.config import (
 )
 from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.providers.google_slides import GoogleSlidesProvider
-from slideflow.presentations.base import Presentation, Slide, PresentationResult, SlideResult
-from slideflow.presentations.charts import BaseChart, PlotlyGraphObjects, CustomChart, TemplateChart, ChartUnion
-from slideflow.presentations.positioning import compute_chart_dimensions, safe_eval_expression, convert_dimensions, apply_alignment
+from slideflow.presentations.base import (
+    Presentation,
+    Slide,
+    PresentationResult,
+    SlideResult,
+)
+from slideflow.presentations.charts import (
+    BaseChart,
+    PlotlyGraphObjects,
+    CustomChart,
+    TemplateChart,
+    ChartUnion,
+)
+from slideflow.presentations.positioning import (
+    compute_chart_dimensions,
+    safe_eval_expression,
+    convert_dimensions,
+    apply_alignment,
+)
 
 __all__ = [
     # Base classes
@@ -165,7 +181,7 @@ __all__ = [
     "GoogleSlidesProvider",
     # Positioning utilities
     "compute_chart_dimensions",
-    "safe_eval_expression", 
+    "safe_eval_expression",
     "convert_dimensions",
     "apply_alignment",
 ]

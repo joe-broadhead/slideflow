@@ -17,8 +17,8 @@ def test_render_template_supports_block_scalar_template_section(tmp_path):
         "    required: true\n"
         "template: |\n"
         "  traces:\n"
-        "    - type: \"bar\"\n"
-        "      name: \"{{ label }}\"\n"
+        '    - type: "bar"\n'
+        '      name: "{{ label }}"\n'
     )
 
     engine = TemplateEngine([tmp_path])
@@ -38,29 +38,23 @@ def test_render_template_requires_required_parameters(tmp_path):
         "    type: string\n"
         "    required: true\n"
         "template:\n"
-        "  value: \"{{ metric }}\"\n"
+        '  value: "{{ metric }}"\n'
     )
 
     engine = TemplateEngine([tmp_path])
 
-    with pytest.raises(ChartGenerationError, match="Required parameter 'metric' missing"):
+    with pytest.raises(
+        ChartGenerationError, match="Required parameter 'metric' missing"
+    ):
         engine.render_template("required_params", {})
 
 
 def test_list_templates_returns_sorted_template_names(tmp_path):
     (tmp_path / "zeta.yml").write_text(
-        "name: Zeta\n"
-        "description: z\n"
-        "parameters: []\n"
-        "template:\n"
-        "  v: 1\n"
+        "name: Zeta\n" "description: z\n" "parameters: []\n" "template:\n" "  v: 1\n"
     )
     (tmp_path / "alpha.yml").write_text(
-        "name: Alpha\n"
-        "description: a\n"
-        "parameters: []\n"
-        "template:\n"
-        "  v: 1\n"
+        "name: Alpha\n" "description: a\n" "parameters: []\n" "template:\n" "  v: 1\n"
     )
 
     engine = TemplateEngine([tmp_path])

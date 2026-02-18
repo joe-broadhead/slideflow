@@ -12,7 +12,7 @@ The formatting functions are designed to be used in:
 Functions:
     Color formatting:
         - green_or_red: Apply color based on positive/negative values
-    
+
     Number formatting:
         - abbreviate: Shorten large numbers (1.2M, 3.4K)
         - format_currency: Format numbers as currency
@@ -20,20 +20,20 @@ Functions:
 
 Example:
     Using in YAML configuration::
-    
+
         replacements:
           - type: text
             placeholder: "{{REVENUE}}"
             value_fn: format_currency
-            
-          - type: text  
+
+          - type: text
             placeholder: "{{GROWTH}}"
             value_fn: green_or_red
-            
+
     Using in Python code::
-    
+
         from slideflow.builtins.formatting import format_currency, percentage
-        
+
         revenue = format_currency(1234567.89)  # "$1,234,568"
         growth = percentage(0.125)  # "12.5%"
 """
@@ -43,10 +43,9 @@ from slideflow.builtins.formatting.format import abbreviate, format_currency, pe
 
 __all__ = [
     # Color functions
-    'green_or_red',
-    
+    "green_or_red",
     # Format functions
-    'abbreviate',
-    'format_currency', 
-    'percentage',
+    "abbreviate",
+    "format_currency",
+    "percentage",
 ]

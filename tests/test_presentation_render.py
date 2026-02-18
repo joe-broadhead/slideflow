@@ -61,7 +61,9 @@ class FakeProvider:
 
 def _build_presentation(provider):
     chart = FakeChart()
-    slide = Slide.model_construct(id="slide-1", title="S1", replacements=[], charts=[chart])
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[chart]
+    )
     presentation = Presentation.model_construct(
         name="Demo",
         name_fn=None,

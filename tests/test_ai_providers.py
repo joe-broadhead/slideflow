@@ -4,7 +4,11 @@ import types
 import pytest
 
 import slideflow.ai.providers as providers_module
-from slideflow.utilities.exceptions import APIAuthenticationError, APIError, APIRateLimitError
+from slideflow.utilities.exceptions import (
+    APIAuthenticationError,
+    APIError,
+    APIRateLimitError,
+)
 
 
 def test_openai_rate_limit_error_maps_to_api_rate_limit_error(monkeypatch):

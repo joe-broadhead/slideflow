@@ -3,7 +3,11 @@ import pytest
 
 import slideflow.replacements.ai_text as ai_text_module
 from slideflow.replacements.ai_text import AITextReplacement
-from slideflow.replacements.table import TableColumnFormatter, TableFormattingOptions, TableReplacement
+from slideflow.replacements.table import (
+    TableColumnFormatter,
+    TableFormattingOptions,
+    TableReplacement,
+)
 from slideflow.replacements.text import TextReplacement
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import DataTransformError, ReplacementError
@@ -17,11 +21,20 @@ def _install_pandas_stub_compat(monkeypatch):
     if not hasattr(df_type, "copy"):
         monkeypatch.setattr(df_type, "copy", lambda self: df_type(self), raising=False)
     if not hasattr(df_type, "empty"):
-        monkeypatch.setattr(df_type, "empty", property(lambda self: len(self) == 0), raising=False)
+        monkeypatch.setattr(
+            df_type, "empty", property(lambda self: len(self) == 0), raising=False
+        )
     if not hasattr(df_type, "shape"):
-        monkeypatch.setattr(df_type, "shape", property(lambda self: (len(self), len(self.columns))), raising=False)
+        monkeypatch.setattr(
+            df_type,
+            "shape",
+            property(lambda self: (len(self), len(self.columns))),
+            raising=False,
+        )
     if not hasattr(series_type, "tolist"):
-        monkeypatch.setattr(series_type, "tolist", lambda self: list(self), raising=False)
+        monkeypatch.setattr(
+            series_type, "tolist", lambda self: list(self), raising=False
+        )
 
 
 def test_apply_data_transforms_noop_success_and_failure_paths(monkeypatch):
@@ -140,7 +153,9 @@ def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch)
         def generate_text(self, prompt, temperature=0.0):
             return f"{self.api_key}:{temperature}:{prompt}"
 
-    monkeypatch.setattr(ai_text_module, "get_provider_class", lambda _name: DummyProvider)
+    monkeypatch.setattr(
+        ai_text_module, "get_provider_class", lambda _name: DummyProvider
+    )
 
     string_provider = AITextReplacement(
         type="ai_text",

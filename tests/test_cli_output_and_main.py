@@ -24,7 +24,9 @@ def _sample_presentation_config():
 
 def test_theme_output_helpers_emit_expected_messages(monkeypatch):
     calls = []
-    monkeypatch.setattr(theme_module.console, "print", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(
+        theme_module.console, "print", lambda *a, **k: calls.append((a, k))
+    )
 
     theme_module.print_slideflow_banner()
     theme_module.print_validation_header("config.yml")
@@ -41,12 +43,18 @@ def test_theme_output_helpers_emit_expected_messages(monkeypatch):
     assert any("Validation Complete" in entry for entry in rendered)
     assert any("Build Complete" in entry for entry in rendered)
     assert any("line1" in entry for entry in rendered)
-    assert all("line2" not in entry for entry in rendered if "line1" in entry and "red" in entry)
+    assert all(
+        "line2" not in entry
+        for entry in rendered
+        if "line1" in entry and "red" in entry
+    )
 
 
 def test_theme_build_error_verbose_includes_full_message(monkeypatch):
     calls = []
-    monkeypatch.setattr(theme_module.console, "print", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(
+        theme_module.console, "print", lambda *a, **k: calls.append((a, k))
+    )
 
     theme_module.print_build_error("line1\nline2", verbose=True)
     rendered = [str(args[0]) for args, _ in calls if args]
@@ -56,7 +64,9 @@ def test_theme_build_error_verbose_includes_full_message(monkeypatch):
 
 def test_theme_validation_error_verbose_includes_full_message(monkeypatch):
     calls = []
-    monkeypatch.setattr(theme_module.console, "print", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(
+        theme_module.console, "print", lambda *a, **k: calls.append((a, k))
+    )
 
     theme_module.print_error("line1\nline2", verbose=True)
     rendered = [str(args[0]) for args, _ in calls if args]
@@ -66,7 +76,9 @@ def test_theme_validation_error_verbose_includes_full_message(monkeypatch):
 
 def test_cli_utils_helpers_emit_summary_and_error(monkeypatch):
     calls = []
-    monkeypatch.setattr(cli_utils_module.console, "print", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(
+        cli_utils_module.console, "print", lambda *a, **k: calls.append((a, k))
+    )
 
     cli_utils_module.print_validation_header(Path("config.yml"))
     cli_utils_module.print_config_summary(_sample_presentation_config())
@@ -91,8 +103,12 @@ def test_main_sets_log_level_and_prints_banner_only_without_subcommand(monkeypat
         "setup_logging",
         lambda level, enable_debug: setup_calls.append((level, enable_debug)),
     )
-    monkeypatch.setattr(cli_main_module, "print_slideflow_banner", lambda: banner_calls.append(True))
-    monkeypatch.setattr(cli_main_module, "print_help_footer", lambda: footer_calls.append(True))
+    monkeypatch.setattr(
+        cli_main_module, "print_slideflow_banner", lambda: banner_calls.append(True)
+    )
+    monkeypatch.setattr(
+        cli_main_module, "print_help_footer", lambda: footer_calls.append(True)
+    )
 
     ctx = SimpleNamespace(invoked_subcommand=None)
     cli_main_module.main(ctx, verbose=True, debug=False, quiet=False)

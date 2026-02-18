@@ -25,12 +25,12 @@ Key Features:
 
 Example:
     Using connectors to fetch data:
-    
+
     >>> from slideflow.data.connectors import CSVConnector, CSVSourceConfig
-    >>> 
+    >>>
     >>> # Create configuration
     >>> config = CSVSourceConfig(file_path="/data/sales.csv")
-    >>> 
+    >>>
     >>> # Create connector and fetch data
     >>> connector = CSVConnector(config)
     >>> data = connector.fetch_data()
@@ -38,7 +38,7 @@ Example:
 
 Available Connectors:
     - CSVConnector: For CSV file data sources
-    - JSONConnector: For JSON file data sources  
+    - JSONConnector: For JSON file data sources
     - DatabricksConnector: For Databricks SQL warehouse connections
     - DBTDatabricksConnector: For DBT models in Databricks
 
@@ -53,19 +53,25 @@ from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.data.connectors.csv import CSVConnector, CSVSourceConfig
 from slideflow.data.connectors.base import DataConnector, BaseSourceConfig
 from slideflow.data.connectors.json import JSONConnector, JSONSourceConfig
-from slideflow.data.connectors.dbt import DBTDatabricksConnector, DBTDatabricksSourceConfig
-from slideflow.data.connectors.databricks import DatabricksConnector, DatabricksSourceConfig
+from slideflow.data.connectors.dbt import (
+    DBTDatabricksConnector,
+    DBTDatabricksSourceConfig,
+)
+from slideflow.data.connectors.databricks import (
+    DatabricksConnector,
+    DatabricksSourceConfig,
+)
 
 __all__ = [
-    'DataConnector',
-    'BaseSourceConfig',
-    'CSVConnector',
-    'CSVSourceConfig',
-    'JSONConnector',
-    'JSONSourceConfig',
-    'DatabricksConnector',
-    'DatabricksSourceConfig',
-    'DBTDatabricksConnector',
-    'DBTDatabricksSourceConfig',
-    'DataSourceConfig'
+    "DataConnector",
+    "BaseSourceConfig",
+    "CSVConnector",
+    "CSVSourceConfig",
+    "JSONConnector",
+    "JSONSourceConfig",
+    "DatabricksConnector",
+    "DatabricksSourceConfig",
+    "DBTDatabricksConnector",
+    "DBTDatabricksSourceConfig",
+    "DataSourceConfig",
 ]
