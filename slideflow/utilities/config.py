@@ -186,16 +186,21 @@ def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
     package = path.parent.name
     full_name = f"{package}.{module_name}"
     parent_path = str(path.parent.parent)
+    package_prefix = f"{package}."
     original_sys_path = list(sys.path)
-    original_package_module = sys.modules.get(package)
-    original_target_module = sys.modules.get(full_name)
+    original_package_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == package or name.startswith(package_prefix)
+    }
 
     # Ensure the registry's parent path has highest precedence while loading.
     sys.path[:] = [parent_path] + [entry for entry in sys.path if entry != parent_path]
 
     # Remove potentially conflicting cached modules and restore them after load.
-    sys.modules.pop(package, None)
-    sys.modules.pop(full_name, None)
+    for name in list(sys.modules):
+        if name == package or name.startswith(package_prefix):
+            sys.modules.pop(name, None)
 
     try:
         spec = importlib.util.spec_from_file_location(full_name, path)
@@ -212,15 +217,11 @@ def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
     finally:
         sys.path[:] = original_sys_path
 
-        if original_package_module is not None:
-            sys.modules[package] = original_package_module
-        else:
-            sys.modules.pop(package, None)
-
-        if original_target_module is not None:
-            sys.modules[full_name] = original_target_module
-        else:
-            sys.modules.pop(full_name, None)
+        # Purge transient imports from registry loading, then restore prior state.
+        for name in list(sys.modules):
+            if name == package or name.startswith(package_prefix):
+                sys.modules.pop(name, None)
+        sys.modules.update(original_package_modules)
 
     registry = getattr(module, "function_registry", None)
     if not isinstance(registry, dict):

@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -72,12 +73,33 @@ def test_load_registry_from_path_forces_target_parent_path_precedence(tmp_path):
         "function_registry = {'source_marker': source_marker}\n"
     )
 
+    package_prefix = f"{package_name}."
+    original_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == package_name or name.startswith(package_prefix)
+    }
     original_sys_path = list(sys.path)
     sys.path[:] = [str(bad_parent), str(good_parent)] + [
         entry for entry in original_sys_path if entry not in {str(bad_parent), str(good_parent)}
     ]
     try:
+        for name in list(sys.modules):
+            if name == package_name or name.startswith(package_prefix):
+                sys.modules.pop(name, None)
+
+        bad_helpers = importlib.import_module(f"{package_name}.helpers")
+        assert bad_helpers.source_marker() == "bad"
+
         registry = load_registry_from_path(registry_file)
         assert registry["source_marker"]() == "good"
+
+        restored_helpers = importlib.import_module(f"{package_name}.helpers")
+        assert restored_helpers is bad_helpers
+        assert restored_helpers.source_marker() == "bad"
     finally:
         sys.path[:] = original_sys_path
+        for name in list(sys.modules):
+            if name == package_name or name.startswith(package_prefix):
+                sys.modules.pop(name, None)
+        sys.modules.update(original_modules)
