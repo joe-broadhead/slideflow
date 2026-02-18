@@ -22,4 +22,3 @@ SlideFlow generates Google Slides decks from structured YAML, data sources, and 
 
 - All release-bound changes should include tests.
 - Validation must pass before build in local and CI workflows.
-- Audit findings are tracked and prioritized in [Phase 2 Audit](phase2-audit.md).
