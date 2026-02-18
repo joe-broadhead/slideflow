@@ -1,13 +1,13 @@
 # Quickstart
 
-This quickstart runs the checked-in sample in `docs/quickstart/`.
+This guide runs the checked-in sample in `docs/quickstart/` end-to-end.
 
-## 1. Update sample config
+## 1. Prepare sample config
 
 Open `docs/quickstart/config.yml` and set:
 
 - `provider.config.template_id`
-- `provider.config.credentials`
+- `provider.config.credentials` (or set `GOOGLE_SLIDEFLOW_CREDENTIALS`)
 - slide IDs under `presentation.slides[*].id`
 
 ## 2. Validate configuration
@@ -16,23 +16,31 @@ Open `docs/quickstart/config.yml` and set:
 slideflow validate docs/quickstart/config.yml --registry docs/quickstart/registry.py
 ```
 
-If validation passes, your config, template references, and provider config are structurally valid.
+Validation checks YAML structure, provider config, chart/replacement wiring, and registry resolution.
 
-## 3. Build presentation
+## 3. Build a presentation
 
 ```bash
 slideflow build docs/quickstart/config.yml --registry docs/quickstart/registry.py
 ```
 
-Expected result:
+Expected outcome:
 
-- A new presentation is created from your template.
-- Slide 1 gets `{{MONTH}}` replacement plus bar chart from CSV.
-- Slide 2 gets a template chart from `docs/quickstart/bar_chart.yml`.
+- A new presentation is copied from your template
+- Slide 1 gets `{{MONTH}}` replacement and a bar chart from `docs/quickstart/data.csv`
+- Slide 2 gets a template chart from `docs/quickstart/bar_chart.yml`
 
-## 4. Batch mode (optional)
+## 4. Batch mode (multi-deck)
 
-Use `--params-path` to generate multiple variants from one config:
+Create `variants.csv`:
+
+```csv
+MONTH,REGION
+January,NA
+January,EMEA
+```
+
+Run batch build:
 
 ```bash
 slideflow build docs/quickstart/config.yml \
@@ -40,8 +48,28 @@ slideflow build docs/quickstart/config.yml \
   --params-path variants.csv
 ```
 
-`variants.csv` headers map to `{param}` placeholders used in config.
+Rules:
 
-## 5. Troubleshooting
+- CSV headers map to `{param}` placeholders in YAML
+- Empty CSV rows are rejected at runtime
+- Use `--dry-run` to validate all variants without building
 
-If build fails, check [Troubleshooting](troubleshooting.md).
+## 5. Control concurrency and rate limits
+
+```bash
+slideflow build docs/quickstart/config.yml \
+  --registry docs/quickstart/registry.py \
+  --threads 2 \
+  --rps 1.0
+```
+
+Use conservative `--threads` and `--rps` when Google API quotas are tight.
+
+## 6. Troubleshoot fast
+
+If anything fails:
+
+- `slideflow validate ...` first
+- verify template and slide IDs
+- verify credentials source
+- check [Troubleshooting](troubleshooting.md)

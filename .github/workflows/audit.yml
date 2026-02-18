@@ -1,0 +1,92 @@
+name: Audit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+      - "release/**"
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies for audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,ai]"
+          python -m pip install pip-audit
+
+      - name: Run pip-audit
+        id: pip_audit
+        continue-on-error: true
+        run: |
+          pip-audit --format=json --output pip-audit.json
+
+      - name: Warn on vulnerabilities
+        if: steps.pip_audit.outcome == 'failure'
+        run: |
+          echo "::warning::pip-audit detected vulnerable dependencies. See artifact pip-audit-report."
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit.json
+          if-no-files-found: ignore
+
+  static-security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Bandit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install bandit
+
+      - name: Run Bandit
+        id: bandit
+        continue-on-error: true
+        run: |
+          bandit -r slideflow -f json -o bandit-report.json -ll
+
+      - name: Warn on Bandit findings
+        if: steps.bandit.outcome == 'failure'
+        run: |
+          echo "::warning::Bandit found medium/high severity issues. See artifact bandit-report."
+
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          if-no-files-found: ignore

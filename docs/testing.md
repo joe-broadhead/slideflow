@@ -1,39 +1,46 @@
-# Testing Strategy
+# Testing
 
-## Goals
+## Objectives
 
-- Protect existing users from regressions.
-- Validate new behavior before release.
-- Keep fast feedback loops for contributors.
+- Prevent regressions for existing users.
+- Validate new behavior before merge/release.
+- Keep local feedback loops fast.
 
 ## Test layers
 
 1. Unit tests (`tests/`)
-- Validate isolated behavior in CLI, replacements, rendering, connectors, and providers.
-
+   - CLI command behavior
+   - config/registry utilities
+   - chart/template/replacement behavior
 2. Integration tests (`@pytest.mark.integration`)
-- Validate cross-module behavior and external integrations using controlled fixtures/mocks.
-
+   - cross-module workflows with controlled fixtures/mocks
 3. End-to-end tests (`@pytest.mark.e2e`)
-- Validate full `validate -> build` workflows with representative configs.
+   - full `validate -> build` paths on representative configs
 
 ## Local commands
 
 ```bash
-python -m pytest -q
-python -m pytest -q --cov=slideflow --cov-report=term
+source .venv/bin/activate
+pytest -q
+pytest -q --cov=slideflow --cov-report=term --cov-report=xml
 ```
 
-## CI policy
+Run only integration or e2e groups:
 
-- CI must pass on pull requests and protected branches.
-- Coverage floor is currently set to a baseline gate and should be ratcheted up over time.
-- New features should ship with tests covering expected behavior and edge cases.
+```bash
+pytest -q -m integration
+pytest -q -m e2e
+```
 
-## Compatibility focus
+## CI quality gates
 
-Backward compatibility tests should lock in:
+- CI enforces version consistency checks.
+- CI enforces dependency consistency via `pip check`.
+- CI enforces coverage floor (`--cov-fail-under=45`).
+- Distribution artifacts are built for every CI run.
 
-- CLI command behavior (`build`, `validate`)
-- Config loading and schema validation
-- Release-critical provider flows
+## Contribution expectations
+
+- Every bug fix should include a regression test.
+- Every behavior change should update docs and tests in the same PR.
+- Release branches should not introduce untested logic.

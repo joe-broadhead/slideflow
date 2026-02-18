@@ -34,6 +34,7 @@ Example:
 """
 
 import typer
+import yaml
 from pathlib import Path
 from typing import Optional, List
 
@@ -122,8 +123,25 @@ def validate_command(
     print_validation_header(config_file)
     
     try:
+        raw_config = yaml.safe_load(config_file.read_text()) or {}
+        config_registry = raw_config.get("registry")
+
+        config_registry_paths: List[Path] = []
+        if config_registry is not None:
+            if isinstance(config_registry, (str, Path)):
+                config_registry_paths = [Path(config_registry)]
+            elif isinstance(config_registry, list):
+                config_registry_paths = [Path(p) for p in config_registry]
+            else:
+                raise ValueError("`registry` in config must be a path or list of paths")
+
         default_registry = Path("registry.py")
-        resolved_registry_paths = list(registry_paths) if registry_paths else ([default_registry] if default_registry.exists() else [])
+        default_registry_paths = [default_registry] if default_registry.exists() else []
+        resolved_registry_paths = (
+            list(registry_paths)
+            if registry_paths is not None
+            else (config_registry_paths or default_registry_paths)
+        )
 
         loader = ConfigLoader(
             yaml_path = config_file,

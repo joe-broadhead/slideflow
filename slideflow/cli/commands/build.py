@@ -240,7 +240,7 @@ def build_command(
         print_build_progress(1, 6, "Loading configuration...")
         time.sleep(0.5)
 
-        raw_config = yaml.safe_load(config_file.read_text())
+        raw_config = yaml.safe_load(config_file.read_text()) or {}
         config_registry = raw_config.get("registry")
 
         config_registry_paths: List[Path] = []
@@ -258,6 +258,10 @@ def build_command(
 
         param_configs = pd.read_csv(params_path).to_dict(orient = 'records') if params_path else [{}]
         total_presentations = len(param_configs)
+        if total_presentations == 0:
+            raise ValueError(
+                "Parameter CSV is empty. Provide at least one row or omit --params-path."
+            )
         
         if dry_run:
             print_build_progress(2, 6, f"Validating {total_presentations} configuration variant(s)...")
