@@ -396,7 +396,7 @@ class TemplateEngine:
             # Find where the template section starts
             template_start = None
             for i, line in enumerate(lines):
-                if line.strip() == 'template:':
+                if line.lstrip() == line and line.strip().startswith('template:'):
                     template_start = i
                     break
             

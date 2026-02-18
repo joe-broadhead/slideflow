@@ -54,6 +54,7 @@ Example:
 import re
 import sys
 import yaml
+import importlib
 import pkgutil
 import importlib.util
 from pathlib import Path
@@ -184,12 +185,34 @@ def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
     module_name = path.stem
     package = path.parent.name
     full_name = f"{package}.{module_name}"
-    sys.path.insert(0, str(path.parent.parent))
+    parent_path = str(path.parent.parent)
+    inserted_path = False
 
-    spec = importlib.util.spec_from_file_location(full_name, path)
-    module = importlib.util.module_from_spec(spec)
-    module.__package__ = package
-    spec.loader.exec_module(module)  # type: ignore
+    if parent_path not in sys.path:
+        sys.path.insert(0, parent_path)
+        inserted_path = True
+
+    try:
+        spec = importlib.util.spec_from_file_location(full_name, path)
+        if spec is None or spec.loader is None:
+            raise ConfigurationError(f"Unable to load module specification from {path}")
+
+        module = importlib.util.module_from_spec(spec)
+        module.__package__ = package
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+    except ConfigurationError:
+        raise
+    except Exception as e:
+        raise ConfigurationError(f"Failed to load registry module from {path}: {e}") from e
+    finally:
+        if inserted_path:
+            try:
+                if sys.path and sys.path[0] == parent_path:
+                    sys.path.pop(0)
+                else:
+                    sys.path.remove(parent_path)
+            except ValueError:
+                pass
 
     registry = getattr(module, "function_registry", None)
     if not isinstance(registry, dict):
