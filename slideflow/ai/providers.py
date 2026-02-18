@@ -290,6 +290,8 @@ class GeminiProvider:
 
         except ImportError as e:
             raise APIError(f"Missing Gemini dependencies: {e}") from e
+        except (APIAuthenticationError, APIRateLimitError, APIError):
+            raise
         except Exception as e:
             error_msg = str(e).lower()
             if 'authentication' in error_msg or 'credential' in error_msg or 'unauthorized' in error_msg:
