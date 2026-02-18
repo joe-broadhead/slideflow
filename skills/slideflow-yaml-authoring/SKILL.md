@@ -48,6 +48,9 @@ configs while preserving compatibility guarantees.
 6. Run:
    - `slideflow validate config.yml`
    - `slideflow build config.yml --dry-run`
+7. Run gotchas pass:
+   - check `references/gotchas.md` before final output
+   - confirm no unresolved `{param}` tokens unless explicitly intended
 
 ## Guardrails
 
@@ -55,6 +58,7 @@ configs while preserving compatibility guarantees.
 - Favor additive changes and deterministic behavior.
 - Prefer built-in templates before generating custom one-off templates.
 - Keep local template overrides explicit and intentional.
+- Always choose explicit template IDs and registry paths when ambiguity exists.
 
 ## Output contract
 
@@ -70,6 +74,7 @@ When producing config output, always include:
 - `references/config-schema-cheatsheet.md`
 - `references/template-authoring-contract.md`
 - `references/plotly-parameter-lookup.md`
+- `references/gotchas.md`
 - `assets/snippets/connectors.yml`
 - `assets/snippets/replacements.yml`
 - `assets/snippets/charts.yml`

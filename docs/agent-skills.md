@@ -12,6 +12,7 @@ This skill teaches agents to:
 - generate valid SlideFlow YAML contracts
 - choose chart strategy (`template` vs `plotly_go` vs `custom`)
 - map Plotly graph object parameters safely
+- apply a deterministic gotchas checklist before final output
 - preserve compatibility policy constraints
 - validate generated configs before build
 
@@ -24,6 +25,7 @@ skills/slideflow-yaml-authoring/
     config-schema-cheatsheet.md
     template-authoring-contract.md
     plotly-parameter-lookup.md
+    gotchas.md
   assets/
     snippets/
       connectors.yml
