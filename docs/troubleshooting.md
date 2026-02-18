@@ -2,7 +2,7 @@
 
 ## Validation fails
 
-Run with explicit registries:
+Command:
 
 ```bash
 slideflow validate config.yml --registry registry.py
@@ -10,46 +10,62 @@ slideflow validate config.yml --registry registry.py
 
 Common causes:
 
-- Missing/invalid provider config
-- Invalid replacement or chart schema
-- Missing function in `function_registry`
+- provider config missing required fields
+- unresolved function names in registry
+- invalid replacement/chart schema shape
 
 ## Build fails before rendering
 
 Common causes:
 
-- Credentials not present (`GOOGLE_SLIDEFLOW_CREDENTIALS` or provider credentials)
-- Template or slide IDs are invalid
-- Data source query/file path is invalid
+- missing Google credentials (`provider.config.credentials` or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
+- invalid template ID or slide IDs
+- unreadable CSV/JSON input path
+- query/auth issues for Databricks connectors
+
+## Batch mode fails early
+
+If using `--params-path`:
+
+- ensure file exists and has headers
+- ensure it has at least one data row
+- ensure placeholders like `{region}` match header names exactly
 
 ## Charts fail to render
 
 Common causes:
 
-- Data source returns empty/invalid schema for chart traces
-- Chart config references unknown columns
-- Plotly/kaleido environment issues
+- trace config references unknown columns
+- transformed data is empty after filters
+- runtime image backend issues (`kaleido`)
 
-## dbt source fails
+Helpful check:
 
-Common causes:
+```bash
+slideflow build config.yml --dry-run
+```
 
-- Missing DBT/Databricks dependencies
-- Git auth token not configured in environment variable
-- DBT profile/target mismatch
-
-## AI replacement fails
+## dbt connector issues
 
 Common causes:
 
-- Missing API key or service account auth
-- Provider/model mismatch
-- Rate limiting from upstream APIs
+- missing Databricks auth env vars
+- invalid `package_url` or missing token env var used in URL
+- profile/target mismatch during dbt compile
+
+## AI replacement issues
+
+Common causes:
+
+- missing provider credentials/API keys
+- invalid provider name/model combination
+- upstream rate-limit or provider outage
 
 ## CI failures
 
-- `scripts/ci/check_version_consistency.py` failed:
-  - Ensure `pyproject.toml` version equals `slideflow/__init__.py`.
-- Release branch failed:
-  - Branch must match `release/vX.Y.Z`.
-  - Version in branch must match project version.
+- version mismatch:
+  - align `pyproject.toml` and `slideflow/__init__.py`
+- release branch mismatch:
+  - branch must match `release/vX.Y.Z`
+- docs strict build failure:
+  - fix broken links or invalid markdown references

@@ -121,13 +121,16 @@ def render_params(obj: Any, params: Mapping[str, str]) -> Any:
     if isinstance(obj, Sequence) and not isinstance(obj, str):
         return [render_params(v, params) for v in obj]
     if isinstance(obj, str):
-        _DOUBLE_BRACE_RE = re.compile(r"{{.*?}}")
-        if _DOUBLE_BRACE_RE.search(obj):
-            return obj
+        # Preserve double-brace template placeholders while still rendering
+        # single-brace runtime params in the same string.
+        double_l = "__SLIDEFLOW_DOUBLE_LBRACE__"
+        double_r = "__SLIDEFLOW_DOUBLE_RBRACE__"
+        escaped = obj.replace("{{", double_l).replace("}}", double_r)
         try:
-            return obj.format(**params)
-        except KeyError:
-            return obj
+            rendered = escaped.format(**params)
+        except (KeyError, IndexError, ValueError):
+            rendered = escaped
+        return rendered.replace(double_l, "{{").replace(double_r, "}}")
     return obj
 
 def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:

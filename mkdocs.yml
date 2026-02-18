@@ -101,12 +101,17 @@ nav:
   - Getting Started:
       - Installation: getting-started.md
       - Quickstart: quickstart.md
+      - Cookbooks: cookbooks.md
       - Troubleshooting: troubleshooting.md
-  - User Guide:
+  - Reference:
+      - CLI Reference: cli-reference.md
+      - Configuration Reference: config-reference.md
       - Replacements: replacements.md
       - Charts: charts.md
       - Templating: templating.md
   - Operations:
       - Testing: testing.md
-  - Development:
+      - Security: security.md
       - Release: release-process.md
+  - Development:
+      - CI & Quality: ci-quality.md

@@ -1,47 +1,58 @@
 # Getting Started
 
-## 1. Install SlideFlow
+## Prerequisites
 
-Install from PyPI:
+- Python `3.12+`
+- Google Cloud project with:
+  - Google Slides API enabled
+  - Google Drive API enabled
+- A service account with access to your target template deck and Drive folders
 
-```bash
-pip install slideflow
-```
+## Install
 
-If you need the latest unreleased version:
+Current stable path (until PyPI naming migration is finalized):
 
 ```bash
 pip install git+https://github.com/joe-broadhead/slideflow.git
 ```
 
-## 2. Prepare Google credentials
+For editable local development:
 
-SlideFlow requires a Google service account with access to:
+```bash
+git clone https://github.com/joe-broadhead/slideflow.git
+cd slideflow
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,ai,docs]"
+```
 
-- Google Slides API
-- Google Drive API
+## Configure Google credentials
 
-You can provide credentials either:
+SlideFlow accepts credentials via:
 
-- In provider config: `provider.config.credentials`
-- Via environment variable: `GOOGLE_SLIDEFLOW_CREDENTIALS`
+1. `provider.config.credentials` in YAML
+2. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable
 
-`GOOGLE_SLIDEFLOW_CREDENTIALS` may be either:
+`GOOGLE_SLIDEFLOW_CREDENTIALS` supports either:
 
-- Path to credentials JSON file
-- Raw JSON credentials string
+- Path to service-account JSON file
+- Raw JSON string content
 
-## 3. Create a template slide deck
+Example:
 
-Create a Google Slides deck that contains your layout/placeholders.
+```bash
+export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/service-account.json
+```
+
+## Create a template deck
+
+Create a Google Slides template deck with placeholders and target slide layouts.
 You will need:
 
-- Template presentation ID
-- Slide IDs for each slide you plan to update
+- `template_id` (presentation ID from URL)
+- slide IDs for each slide you modify
 
-## 4. Create a config file
-
-Minimal example:
+## Minimal config
 
 ```yaml
 provider:
@@ -61,11 +72,17 @@ presentation:
             replacement: "Hello SlideFlow"
 ```
 
-## 5. Validate then build
+## Validate before build
 
 ```bash
 slideflow validate config.yml
 slideflow build config.yml
 ```
 
-Validation should be part of your normal workflow before `build`, especially for batch runs.
+Validation should be treated as mandatory in CI and release workflows.
+
+## Next steps
+
+- Run the sample pipeline in [Quickstart](quickstart.md)
+- Review [Configuration Reference](config-reference.md)
+- Use [Cookbooks](cookbooks.md) for production patterns

@@ -101,6 +101,32 @@ def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
     assert [call["params"]["region"] for call in loader_calls] == ["us", "eu"]
 
 
+def test_build_fails_when_params_csv_has_no_rows(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path = tmp_path / "params.csv"
+    params_path.write_text("region\n")
+
+    with pytest.raises(build_command_module.typer.Exit) as exc_info:
+        build_command_module.build_command(
+            config_file=config_file,
+            registry_files=None,
+            params_path=params_path,
+            dry_run=True,
+        )
+
+    assert exc_info.value.code == 1
+
+
 def test_build_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
     _stub_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
@@ -165,6 +191,37 @@ def test_validate_uses_empty_registry_default_when_registry_file_is_missing(tmp_
     validate_command_module.validate_command(config_file=config_file, registry_paths=None)
 
     assert loader_calls == [[]]
+
+
+def test_validate_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+    _stub_presentation_validation(monkeypatch)
+
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "registry: custom_registry.py\n"
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    loader_calls = []
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            loader_calls.append(list(registry_paths))
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+
+    validate_command_module.validate_command(config_file=config_file, registry_paths=None)
+
+    assert loader_calls == [[Path("custom_registry.py")]]
 
 
 def test_validate_calls_deep_slide_validation(tmp_path, monkeypatch):

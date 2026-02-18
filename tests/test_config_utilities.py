@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from slideflow.utilities.config import load_registry_from_path
+from slideflow.utilities.config import load_registry_from_path, render_params
 from slideflow.utilities.exceptions import ConfigurationError
 
 
@@ -103,3 +103,27 @@ def test_load_registry_from_path_forces_target_parent_path_precedence(tmp_path):
             if name == package_name or name.startswith(package_prefix):
                 sys.modules.pop(name, None)
         sys.modules.update(original_modules)
+
+
+def test_render_params_substitutes_single_braces_while_preserving_double_braces():
+    payload = {
+        "title": "Report {quarter} {{STATIC_TOKEN}}",
+        "nested": ["{region}", "{{KEEP_ME}}"],
+    }
+
+    rendered = render_params(payload, {"quarter": "Q1", "region": "US"})
+
+    assert rendered["title"] == "Report Q1 {{STATIC_TOKEN}}"
+    assert rendered["nested"] == ["US", "{{KEEP_ME}}"]
+
+
+def test_render_params_tolerates_invalid_format_syntax():
+    payload = {
+        "broken_left": "prefix {broken",
+        "broken_right": "suffix broken}",
+        "positional": "value {0}",
+    }
+
+    rendered = render_params(payload, {"quarter": "Q1"})
+
+    assert rendered == payload

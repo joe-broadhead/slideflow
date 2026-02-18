@@ -33,6 +33,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,ai]"
 
+      - name: Validate dependency resolution
+        run: |
+          python -m pip check
+
       - name: Version consistency checks
         run: |
           python scripts/ci/check_version_consistency.py
