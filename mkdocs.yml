@@ -12,14 +12,14 @@ theme:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: blue
-      accent: light blue
+      accent: blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: blue
-      accent: light blue
+      accent: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -90,7 +90,7 @@ extra:
   generator: false
 
 extra_css:
-  - stylesheets/extra.css
+  - stylesheets/theme.css
 
 extra_javascript:
   - https://unpkg.com/mermaid@10.9.0/dist/mermaid.min.js
