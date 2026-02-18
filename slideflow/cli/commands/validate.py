@@ -49,7 +49,7 @@ from slideflow.presentations.config import PresentationConfig
 def validate_command(
     config_file: Path = typer.Argument(..., help = "Path to YAML configuration file"),
     registry_paths: Optional[List[Path]] = typer.Option(
-        ["registry.py"], "--registry", "-r", 
+        None, "--registry", "-r", 
         help = "Path to Python registry files (can be used multiple times)"
     )
 ) -> None:
@@ -121,9 +121,12 @@ def validate_command(
     print_validation_header(config_file)
     
     try:
+        default_registry = Path("registry.py")
+        resolved_registry_paths = list(registry_paths) if registry_paths else ([default_registry] if default_registry.exists() else [])
+
         loader = ConfigLoader(
             yaml_path = config_file,
-            registry_paths = list(registry_paths) if registry_paths else []
+            registry_paths = resolved_registry_paths
         )
     
         presentation_config = PresentationConfig(**loader.config)

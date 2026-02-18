@@ -1,70 +1,71 @@
-# 🧑‍💻 Getting Started
+# Getting Started
 
-This guide will walk you through the process of creating your first presentation with SlideFlow.
+## 1. Install SlideFlow
 
-## 1. Installation
+Install from PyPI:
 
-First, install SlideFlow using pip:
+```bash
+pip install slideflow
+```
+
+If you need the latest unreleased version:
 
 ```bash
 pip install git+https://github.com/joe-broadhead/slideflow.git
 ```
 
-## 2. Prerequisites
+## 2. Prepare Google credentials
 
-Before you can generate a presentation, you'll need a few things:
+SlideFlow requires a Google service account with access to:
 
--   **A Google Slides Template:** Create a Google Slides presentation that will serve as your template. This should have the layout, branding, and placeholder text that you want to use. For each slide that you want to populate, you'll need to know its ID. You can find the slide ID in the URL of the Google Slides editor. For example, in the URL `https://docs.google.com/presentation/d/1-I-fJUtl1zNOOw_r9pJ9J0WqyZIqZ2eznIw3Og__Kew/edit#slide=id.g1_0_0`, the slide ID is `g1_0_0`.
--   **Your Data:** Have your data ready. This can be a local CSV or JSON file, or you can connect directly to a Databricks SQL warehouse or a dbt project.
--   **Google Cloud Credentials:** You'll need a Google Cloud service account with the following APIs enabled:
-    -   Google Slides API
-    -   Google Drive API
+- Google Slides API
+- Google Drive API
 
-    Create a service account and download the JSON credentials. You can provide the credentials as a path to the JSON file or as a JSON string.
+You can provide credentials either:
 
-## 3. Create Your Configuration File
+- In provider config: `provider.config.credentials`
+- Via environment variable: `GOOGLE_SLIDEFLOW_CREDENTIALS`
 
-Create a YAML file (e.g., `config.yml`) to define your presentation. This file is the heart of your SlideFlow project. Here's a simple example:
+`GOOGLE_SLIDEFLOW_CREDENTIALS` may be either:
+
+- Path to credentials JSON file
+- Raw JSON credentials string
+
+## 3. Create a template slide deck
+
+Create a Google Slides deck that contains your layout/placeholders.
+You will need:
+
+- Template presentation ID
+- Slide IDs for each slide you plan to update
+
+## 4. Create a config file
+
+Minimal example:
 
 ```yaml
+provider:
+  type: "google_slides"
+  config:
+    credentials: "/path/to/credentials.json"
+    template_id: "your_template_presentation_id"
+
 presentation:
-  name: "My First SlideFlow Presentation"
+  name: "My First SlideFlow Deck"
   slides:
-    - id: "g1_0_0"
-      title: "Title Slide"
+    - id: "your_slide_id"
       replacements:
         - type: "text"
           config:
             placeholder: "{{TITLE}}"
-            replacement: "Hello, SlideFlow!"
-
-provider:
-  type: "google_slides"
-  config:
-    credentials: "/path/to/your/credentials.json"
-    template_id: "your_google_slides_template_id"
+            replacement: "Hello SlideFlow"
 ```
 
-## 4. Validate Your Configuration
-
-Before building your presentation, it's a good practice to validate your configuration file. This will check for any errors in your YAML structure or data source connections.
+## 5. Validate then build
 
 ```bash
 slideflow validate config.yml
-```
-
-If the validation is successful, you're ready to build your presentation.
-
-## 5. Build Your Presentation
-
-Now, you can build your presentation using the SlideFlow CLI:
-
-```bash
 slideflow build config.yml
 ```
 
-SlideFlow will connect to your data sources, generate your charts, and create a new presentation in your Google Drive.
-
-## 6. Next Steps
-
-Checkout the [Quickstart](quickstart.md)
+Validation should be part of your normal workflow before `build`, especially for batch runs.

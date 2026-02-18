@@ -141,6 +141,10 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     share_with: List[str] = Field(default_factory = list, description = "Email addresses to share presentation with")
     share_role: str = Field(GoogleSlides.PERMISSION_WRITER, description = "Permission role: reader, writer, or commenter")
     requests_per_second: float = Field(1.0, gt=0, description = "Maximum number of API requests per second")
+    strict_cleanup: bool = Field(
+        False,
+        description = "If true, fail rendering when uploaded chart images cannot be cleaned up."
+    )
 
 class GoogleSlidesProvider(PresentationProvider):
     """Google Slides presentation provider implementation.

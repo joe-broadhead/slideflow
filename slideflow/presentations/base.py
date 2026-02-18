@@ -54,6 +54,7 @@ Example:
     >>> print(f"Made {result.replacements_made} text replacements")
 """
 import time
+import pandas as pd
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -428,138 +429,151 @@ class Presentation(BaseModel):
         start_time = time.time()
 
         presentation_id = self.provider.create_presentation(self.name)
-        
-        # Pre-fetch all data sources (uses caching)
-        self._prefetch_data_sources()
-
         total_charts = 0
         total_replacements = 0
         uploaded_file_ids = []
-        
-        for slide in self.slides:
-            # Generate charts for this slide
-            for chart in slide.charts:
-                max_retries = 3
-                delay_seconds = 3
-                for attempt in range(max_retries):
-                    try:
-                        if chart.data_source:
-                            df = chart.data_source.fetch_data()
-
-                        image_data = chart.generate_chart_image(df)
-
-                        image_url, file_id = self.provider.upload_chart_image(
-                            presentation_id, image_data, f"chart_{chart.title or 'untitled'}.png"
-                        )
-                        if file_id:
-                            uploaded_file_ids.append(file_id)
-
-                        x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
-                            x=chart.x,
-                            y=chart.y,
-                            width=chart.width,
-                            height=chart.height,
-                            dimensions_format=chart.dimensions_format,
-                            alignment_format=chart.alignment_format,
-                        )
-
-                        self.provider.insert_chart_to_slide(
-                            presentation_id, slide.id, image_url,
-                            x_pt, y_pt, width_pt, height_pt
-                        )
-                        total_charts += 1
-                        break # Break out of retry loop on success
-                    except Exception as e:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' (attempt {attempt + 1}/{max_retries}). Retrying in {delay_seconds} seconds. Error: {e}")
-                            time.sleep(delay_seconds)
-                        else:
-                            logger.error(f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' after {max_retries} attempts. Inserting error placeholder. Error: {e}")
-                            # Insert error placeholder on final failure
-                            try:
-                                x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
-                                    x=chart.x,
-                                    y=chart.y,
-                                    width=chart.width,
-                                    height=chart.height,
-                                    dimensions_format=chart.dimensions_format,
-                                    alignment_format=chart.alignment_format,
-                                )
-                                
-                                error_image_url = "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
-                                self.provider.insert_chart_to_slide(
-                                    presentation_id,
-                                    slide.id,
-                                    error_image_url,
-                                    x=x_pt,
-                                    y=y_pt,
-                                    width=width_pt,
-                                    height=height_pt,
-                                )
-                                logger.info(f"Inserted error placeholder for chart on slide '{slide.id}'")
-                            except Exception as img_e:
-                                logger.error(f"Failed to insert error placeholder for chart on slide '{slide.id}': {img_e}")
-                            continue # Continue to next chart/replacement
-            
-            # Process replacements for this slide
-            for replacement in slide.replacements:
-                try:
-                    replacement_result = replacement.get_replacement()
-                    
-                    # Handle different replacement types
-                    if hasattr(replacement, 'placeholder'):
-                        # Text and AI text replacements
-                        replacements_made = self.provider.replace_text_in_slide(
-                            presentation_id, slide.id, 
-                            replacement.placeholder, str(replacement_result)
-                        )
-                        total_replacements += replacements_made
-                        logger.debug(f"Processed replacement for {replacement.placeholder}: {replacements_made} occurrences")
-                    elif hasattr(replacement, 'prefix'):
-                        # Table replacements return a dictionary of placeholder->value
-                        if isinstance(replacement_result, dict):
-                            for placeholder, value in replacement_result.items():
-                                time.sleep(1)
-                                replacements_made = self.provider.replace_text_in_slide(
-                                    presentation_id, slide.id, 
-                                    placeholder, str(value)
-                                )
-                                total_replacements += replacements_made
-                                logger.debug(f"Processed table replacement for {placeholder}: {replacements_made} occurrences")
-                except Exception as e:
-                    replacement_type = getattr(replacement, 'type', type(replacement).__name__)
-                    placeholder = getattr(replacement, 'placeholder', 'unknown')
-                    logger.error(f"Failed to process {replacement_type} replacement '{placeholder}': {e}")
-                    # Continue with other replacements rather than failing entirely
-                    continue
-        
-        # Share presentation if configured
-        if hasattr(self.provider, 'config') and hasattr(self.provider.config, 'share_with'):
-            if self.provider.config.share_with:
-                self.provider.share_presentation(
-                    presentation_id, 
-                    self.provider.config.share_with,
-                    getattr(self.provider.config, 'share_role', 'writer')
-                )
-
-        # Clean up uploaded chart images
-        if uploaded_file_ids:
-            logger.info(f"Cleaning up {len(uploaded_file_ids)} uploaded chart images.")
-            for file_id in uploaded_file_ids:
-                try:
-                    self.provider.delete_chart_image(file_id)
-                except Exception as e:
-                    logger.warning(f"Failed to delete chart image {file_id}: {e}")
-
-        render_time = time.time() - start_time
-        
-        return PresentationResult(
-            presentation_id = presentation_id,
-            presentation_url = self.provider.get_presentation_url(presentation_id),
-            charts_generated = total_charts,
-            replacements_made = total_replacements,
-            render_time = render_time
+        original_error: Optional[Exception] = None
+        strict_cleanup = bool(
+            getattr(getattr(self.provider, "config", None), "strict_cleanup", False)
         )
+        failed_cleanup_ids: List[str] = []
+        
+        try:
+            # Pre-fetch all data sources (uses caching)
+            self._prefetch_data_sources()
+
+            for slide in self.slides:
+                # Generate charts for this slide
+                for chart in slide.charts:
+                    max_retries = 3
+                    delay_seconds = 3
+                    for attempt in range(max_retries):
+                        try:
+                            df = chart.data_source.fetch_data() if chart.data_source else pd.DataFrame()
+
+                            image_data = chart.generate_chart_image(df)
+
+                            image_url, file_id = self.provider.upload_chart_image(
+                                presentation_id, image_data, f"chart_{chart.title or 'untitled'}.png"
+                            )
+                            if file_id:
+                                uploaded_file_ids.append(file_id)
+
+                            x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
+                                x=chart.x,
+                                y=chart.y,
+                                width=chart.width,
+                                height=chart.height,
+                                dimensions_format=chart.dimensions_format,
+                                alignment_format=chart.alignment_format,
+                            )
+
+                            self.provider.insert_chart_to_slide(
+                                presentation_id, slide.id, image_url,
+                                x_pt, y_pt, width_pt, height_pt
+                            )
+                            total_charts += 1
+                            break # Break out of retry loop on success
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' (attempt {attempt + 1}/{max_retries}). Retrying in {delay_seconds} seconds. Error: {e}")
+                                time.sleep(delay_seconds)
+                            else:
+                                logger.error(f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' after {max_retries} attempts. Inserting error placeholder. Error: {e}")
+                                # Insert error placeholder on final failure
+                                try:
+                                    x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
+                                        x=chart.x,
+                                        y=chart.y,
+                                        width=chart.width,
+                                        height=chart.height,
+                                        dimensions_format=chart.dimensions_format,
+                                        alignment_format=chart.alignment_format,
+                                    )
+                                    
+                                    error_image_url = "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
+                                    self.provider.insert_chart_to_slide(
+                                        presentation_id,
+                                        slide.id,
+                                        error_image_url,
+                                        x=x_pt,
+                                        y=y_pt,
+                                        width=width_pt,
+                                        height=height_pt,
+                                    )
+                                    logger.info(f"Inserted error placeholder for chart on slide '{slide.id}'")
+                                except Exception as img_e:
+                                    logger.error(f"Failed to insert error placeholder for chart on slide '{slide.id}': {img_e}")
+                                continue # Continue to next chart/replacement
+                
+                # Process replacements for this slide
+                for replacement in slide.replacements:
+                    try:
+                        replacement_result = replacement.get_replacement()
+                        
+                        # Handle different replacement types
+                        if hasattr(replacement, 'placeholder'):
+                            # Text and AI text replacements
+                            replacements_made = self.provider.replace_text_in_slide(
+                                presentation_id, slide.id, 
+                                replacement.placeholder, str(replacement_result)
+                            )
+                            total_replacements += replacements_made
+                            logger.debug(f"Processed replacement for {replacement.placeholder}: {replacements_made} occurrences")
+                        elif hasattr(replacement, 'prefix'):
+                            # Table replacements return a dictionary of placeholder->value
+                            if isinstance(replacement_result, dict):
+                                for placeholder, value in replacement_result.items():
+                                    time.sleep(1)
+                                    replacements_made = self.provider.replace_text_in_slide(
+                                        presentation_id, slide.id, 
+                                        placeholder, str(value)
+                                    )
+                                    total_replacements += replacements_made
+                                    logger.debug(f"Processed table replacement for {placeholder}: {replacements_made} occurrences")
+                    except Exception as e:
+                        replacement_type = getattr(replacement, 'type', type(replacement).__name__)
+                        placeholder = getattr(replacement, 'placeholder', 'unknown')
+                        logger.error(f"Failed to process {replacement_type} replacement '{placeholder}': {e}")
+                        # Continue with other replacements rather than failing entirely
+                        continue
+            
+            # Share presentation if configured
+            if hasattr(self.provider, 'config') and hasattr(self.provider.config, 'share_with'):
+                if self.provider.config.share_with:
+                    self.provider.share_presentation(
+                        presentation_id, 
+                        self.provider.config.share_with,
+                        getattr(self.provider.config, 'share_role', 'writer')
+                    )
+
+            render_time = time.time() - start_time
+            
+            return PresentationResult(
+                presentation_id = presentation_id,
+                presentation_url = self.provider.get_presentation_url(presentation_id),
+                charts_generated = total_charts,
+                replacements_made = total_replacements,
+                render_time = render_time
+            )
+        except Exception as e:
+            original_error = e
+            raise
+        finally:
+            if uploaded_file_ids:
+                logger.info(f"Cleaning up {len(uploaded_file_ids)} uploaded chart images.")
+                for file_id in uploaded_file_ids:
+                    try:
+                        self.provider.delete_chart_image(file_id)
+                    except Exception as cleanup_error:
+                        failed_cleanup_ids.append(file_id)
+                        logger.warning(f"Failed to delete chart image {file_id}: {cleanup_error}")
+            
+            if strict_cleanup and failed_cleanup_ids and original_error is None:
+                raise RenderingError(
+                    f"Strict cleanup enabled and {len(failed_cleanup_ids)} chart image(s) "
+                    f"could not be deleted: {failed_cleanup_ids}"
+                )
     
     def get_slide(self, slide_id: str) -> Optional[Slide]:
         """Retrieve a slide by its unique identifier.

@@ -39,6 +39,9 @@ from typing import Optional, List, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from slideflow.presentations import PresentationBuilder
+from slideflow.utilities import ConfigLoader
+from slideflow.presentations.config import PresentationConfig
+from slideflow.presentations.providers.factory import ProviderFactory
 from slideflow.cli.theme import (
     print_build_error,
     print_build_header,
@@ -240,21 +243,38 @@ def build_command(
         raw_config = yaml.safe_load(config_file.read_text())
         config_registry = raw_config.get("registry")
 
-        if isinstance(config_registry, (str, Path, list)):
-            config_registry = [Path(p) for p in ([config_registry] if isinstance(config_registry, (str, Path)) else config_registry)]
+        config_registry_paths: List[Path] = []
+        if config_registry is not None:
+            if isinstance(config_registry, (str, Path)):
+                config_registry_paths = [Path(config_registry)]
+            elif isinstance(config_registry, list):
+                config_registry_paths = [Path(p) for p in config_registry]
+            else:
+                raise ValueError("`registry` in config must be a path or list of paths")
 
-        registry_files = registry_files or config_registry or [Path("registry.py")]
+        default_registry = Path("registry.py")
+        default_registry_paths = [default_registry] if default_registry.exists() else []
+        registry_files = list(registry_files) if registry_files is not None else (config_registry_paths or default_registry_paths)
+
+        param_configs = pd.read_csv(params_path).to_dict(orient = 'records') if params_path else [{}]
+        total_presentations = len(param_configs)
         
         if dry_run:
+            print_build_progress(2, 6, f"Validating {total_presentations} configuration variant(s)...")
+            for params in param_configs:
+                loader = ConfigLoader(
+                    yaml_path = config_file,
+                    registry_paths = registry_files,
+                    params = params
+                )
+                presentation_config = PresentationConfig(**loader.config)
+                ProviderFactory.get_config_class(presentation_config.provider.type)(**presentation_config.provider.config)
             print_build_progress(6, 6, "Dry run complete - configuration is valid!")
             print_build_success()
             return []
 
         print_build_progress(2, 6, "Initializing presentation builder...")
         time.sleep(0.3)
-
-        param_configs = pd.read_csv(params_path).to_dict(orient = 'records') if params_path else [{}]
-        total_presentations = len(param_configs)
         
         print_build_progress(3, 6, f"Processing {total_presentations} presentation(s) concurrently...")
         time.sleep(0.5)
