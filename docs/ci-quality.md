@@ -31,7 +31,7 @@ mkdocs build --strict
 
 ## Coverage policy
 
-- CI enforces a minimum coverage floor (`--cov-fail-under=55`)
+- CI enforces a minimum coverage floor (`--cov-fail-under=65`)
 - Raise this threshold over time; do not lower it without explicit approval
 
 ## Branching policy
