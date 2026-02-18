@@ -39,7 +39,7 @@ from typing import Optional, Any
 console = Console(force_terminal = True, color_system = "truecolor")
 
 def print_slideflow_banner() -> None:
-    """Display the Slideflow ASCII art banner with brand colors.
+    r"""Display the Slideflow ASCII art banner with brand colors.
     
     Prints a stylized ASCII art logo with the Slideflow branding and tagline.
     Uses Rich markup for color styling with blue primary color and magenta

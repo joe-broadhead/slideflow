@@ -36,7 +36,7 @@ pytest -q -m e2e
 
 - CI enforces version consistency checks.
 - CI enforces dependency consistency via `pip check`.
-- CI enforces coverage floor (`--cov-fail-under=45`).
+- CI enforces coverage floor (`--cov-fail-under=55`).
 - Distribution artifacts are built for every CI run.
 
 ## Contribution expectations
