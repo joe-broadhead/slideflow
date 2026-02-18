@@ -633,7 +633,7 @@ class PlotlyGraphObjects(BaseChart):
         """
         processed = {}
         for key, value in config.items():
-            if isinstance(value, str) and value.startswith("$") and not "%{" in value:
+            if isinstance(value, str) and value.startswith("$") and "%{" not in value:
                 # Column reference: "$column_name" -> df['column_name']
                 # But not Plotly template strings like "$%{y:,.0f}"
                 column_name = value[1:]
