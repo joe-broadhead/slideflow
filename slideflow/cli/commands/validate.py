@@ -123,7 +123,7 @@ def validate_command(
     print_validation_header(config_file)
     
     try:
-        raw_config = yaml.safe_load(config_file.read_text()) or {}
+        raw_config = yaml.safe_load(config_file.read_text(encoding = "utf-8")) or {}
         config_registry = raw_config.get("registry")
 
         config_registry_paths: List[Path] = []

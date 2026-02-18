@@ -240,7 +240,7 @@ def build_command(
         print_build_progress(1, 6, "Loading configuration...")
         time.sleep(0.5)
 
-        raw_config = yaml.safe_load(config_file.read_text()) or {}
+        raw_config = yaml.safe_load(config_file.read_text(encoding = "utf-8")) or {}
         config_registry = raw_config.get("registry")
 
         config_registry_paths: List[Path] = []
