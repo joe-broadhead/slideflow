@@ -632,39 +632,89 @@ class PlotlyGraphObjects(BaseChart):
             >>> # processed = {"x": ["Jan", "Feb"], "y": [100, 150], "name": "Revenue"}
         """
         processed: Dict[str, Any] = {}
+        list_column_ref_pattern = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
+        has_rows = len(df) > 0
         for key, value in config.items():
             if isinstance(value, str) and value.startswith("$") and "%{" not in value:
                 # Column reference: "$column_name" -> df['column_name']
                 # But not Plotly template strings like "$%{y:,.0f}"
-                column_name = value[1:]
-                if not df.empty and column_name in df.columns:
-                    processed[key] = df[column_name].tolist()
-                elif df.empty:
+                raw_reference = value[1:]
+                column_name = raw_reference
+                index_token: Optional[int] = None
+                if raw_reference.endswith("]") and "[" in raw_reference:
+                    potential_column, potential_index = raw_reference.rsplit("[", 1)
+                    potential_index = potential_index[:-1]
+                    if potential_column:
+                        try:
+                            parsed_index = int(potential_index)
+                        except ValueError:
+                            parsed_index = None
+                        if parsed_index is not None:
+                            column_name = potential_column
+                            index_token = parsed_index
+
+                if has_rows and column_name in df.columns:
+                    series_values = df[column_name]
+                    values = (
+                        series_values.tolist()
+                        if hasattr(series_values, "tolist")
+                        else list(series_values)
+                    )
+                    if index_token is None:
+                        processed[key] = values
+                    else:
+                        try:
+                            processed[key] = values[index_token]
+                        except IndexError as exc:
+                            raise ChartGenerationError(
+                                f"Index {index_token} out of range for column '{column_name}' "
+                                f"with {len(values)} row(s)."
+                            ) from exc
+                elif not has_rows:
                     # For static charts without data, skip column references
                     # They should provide static data directly in the config
                     continue
                 else:
-                    available_columns = list(df.columns) if not df.empty else []
+                    available_columns = list(df.columns) if has_rows else []
+                    df_shape = getattr(df, "shape", (len(df), len(df.columns)))
                     raise ChartGenerationError(
                         f"Column '{column_name}' not found in PlotlyGraphObjects trace config. "
                         f"Available columns: {available_columns}. "
-                        f"DataFrame shape: {df.shape}"
+                        f"DataFrame shape: {df_shape}"
                     )
             elif isinstance(value, dict):
                 # Recursively process nested dictionaries
                 processed[key] = self._process_trace_config(value, df)
             elif isinstance(value, list):
                 # Process lists that might contain column references
-                # Column references are $word (alphanumeric/underscore), including complex names like $_color_col_0
-                column_ref_pattern = re.compile(r"^\$([a-zA-Z_]\w*)$")
+                # Column references are $word (alphanumeric/underscore),
+                # including complex names like $_color_col_0 and optional
+                # scalar index extraction like $metric[-1].
                 processed_list: List[Any] = []
 
                 for item in value:
                     if isinstance(item, str):
-                        match = column_ref_pattern.match(item)
-                        if match and not df.empty and match.group(1) in df.columns:
+                        match = list_column_ref_pattern.match(item)
+                        if match and has_rows and match.group(1) in df.columns:
                             # Valid column reference
-                            processed_list.append(df[match.group(1)].tolist())
+                            series_values = df[match.group(1)]
+                            values = (
+                                series_values.tolist()
+                                if hasattr(series_values, "tolist")
+                                else list(series_values)
+                            )
+                            list_index_token = match.group(2)
+                            if list_index_token is None:
+                                processed_list.append(values)
+                            else:
+                                index_value = int(list_index_token)
+                                try:
+                                    processed_list.append(values[index_value])
+                                except IndexError as exc:
+                                    raise ChartGenerationError(
+                                        f"Index {index_value} out of range for column '{match.group(1)}' "
+                                        f"with {len(values)} row(s)."
+                                    ) from exc
                         else:
                             # Not a column reference or column doesn't exist
                             processed_list.append(item)

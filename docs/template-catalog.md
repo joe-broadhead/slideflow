@@ -41,8 +41,8 @@ configuration.
 
 | Template | Purpose | Key parameters |
 | --- | --- | --- |
-| `kpi_cards/kpi_card_single` | Single KPI indicator | `title`, `value_column` |
-| `kpi_cards/kpi_card_delta` | KPI indicator with delta | `title`, `value_column`, `reference_column` |
+| `kpi_cards/kpi_card_single` | Single KPI indicator | `title`, `value_column`, `value_row_index` (default `0`) |
+| `kpi_cards/kpi_card_delta` | KPI indicator with delta | `title`, `value_column`, `reference_column`, `value_row_index` (default `0`), `reference_row_index` (default `0`) |
 
 ## Tables and Combo
 

@@ -98,3 +98,28 @@ def test_local_template_precedence_overrides_packaged_builtin(tmp_path):
     template = engine.load_template("bar_basic")
 
     assert template.name == "Local Override"
+
+
+def test_kpi_single_template_renders_scalar_column_reference_by_default():
+    engine = TemplateEngine()
+
+    rendered = engine.render_template(
+        "kpi_cards/kpi_card_single",
+        {"title": "ARR", "value_column": "arr"},
+    )
+
+    assert rendered["traces"][0]["type"] == "indicator"
+    assert rendered["traces"][0]["value"] == "$arr[0]"
+
+
+def test_kpi_delta_template_renders_scalar_column_references_by_default():
+    engine = TemplateEngine()
+
+    rendered = engine.render_template(
+        "kpi_cards/kpi_card_delta",
+        {"title": "ARR", "value_column": "arr", "reference_column": "arr_prev"},
+    )
+
+    assert rendered["traces"][0]["type"] == "indicator"
+    assert rendered["traces"][0]["value"] == "$arr[0]"
+    assert rendered["traces"][0]["delta"]["reference"] == "$arr_prev[0]"

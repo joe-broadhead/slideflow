@@ -10,11 +10,16 @@ parameters:
     type: "string"
     required: true
     description: "Current KPI value"
+  - name: "value_row_index"
+    type: "int"
+    required: false
+    default: 0
+    description: "Row index used for indicator value (0 = first, -1 = last)"
 template: |
   traces:
     - type: "indicator"
       mode: "number"
-      value: "${{ value_column }}"
+      value: "${{ value_column }}[{{ value_row_index }}]"
       title:
         text: "{{ title }}"
   layout_config:

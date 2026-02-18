@@ -42,6 +42,8 @@ This is the most powerful and flexible way to create charts. It gives you access
 ```
 
 In this example, `$month` and `$revenue` are column references that will be replaced with the actual data from the `sales_data` source.
+When a scalar is required (for example Plotly `indicator.value`), use indexed
+references like `$revenue[0]` or `$revenue[-1]`.
 
 ### 2. Template Chart (`template`)
 

@@ -31,6 +31,7 @@
 ## 4) Plotly column references
 
 - In `plotly_go`, scalar strings starting with `$` are treated as column refs, except Plotly template strings like `$%{y:,.0f}`.
+- Use `$column[index]` when a scalar value is required (`indicator.value`, `delta.reference`), e.g. `$kpi[0]` or `$kpi[-1]`.
 - In list values, column refs must match `^\$([a-zA-Z_]\w*)$`; names with spaces/hyphens will not resolve.
 - For static charts (no `data_source`), do not rely on `$column` values; provide literal arrays.
 
