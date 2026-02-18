@@ -115,3 +115,15 @@ def test_render_params_substitutes_single_braces_while_preserving_double_braces(
 
     assert rendered["title"] == "Report Q1 {{STATIC_TOKEN}}"
     assert rendered["nested"] == ["US", "{{KEEP_ME}}"]
+
+
+def test_render_params_tolerates_invalid_format_syntax():
+    payload = {
+        "broken_left": "prefix {broken",
+        "broken_right": "suffix broken}",
+        "positional": "value {0}",
+    }
+
+    rendered = render_params(payload, {"quarter": "Q1"})
+
+    assert rendered == payload

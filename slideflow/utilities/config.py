@@ -128,7 +128,7 @@ def render_params(obj: Any, params: Mapping[str, str]) -> Any:
         escaped = obj.replace("{{", double_l).replace("}}", double_r)
         try:
             rendered = escaped.format(**params)
-        except KeyError:
+        except (KeyError, IndexError, ValueError):
             rendered = escaped
         return rendered.replace(double_l, "{{").replace(double_r, "}}")
     return obj

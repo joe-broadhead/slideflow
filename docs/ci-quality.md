@@ -36,7 +36,7 @@ mkdocs build --strict
 
 ## Branching policy
 
-- Feature/fix work should ship via PR branches (`codex/*`)
+- Feature/fix work should ship via PR branches (for example `feature/*`, `fix/*`, `hotfix/*`)
 - Release automation only runs from `release/vX.Y.Z`
 
 ## Release readiness checklist
