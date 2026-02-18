@@ -53,6 +53,14 @@ jobs:
         run: |
           python -m build
 
+      - name: Smoke test built wheel
+        run: |
+          python -m venv .venv-smoke
+          . .venv-smoke/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          bash scripts/ci/run_quickstart_smoke.sh
+
       - name: Create and push release tag
         env:
           VERSION: ${{ steps.branch.outputs.version }}

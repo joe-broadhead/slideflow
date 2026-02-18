@@ -81,6 +81,16 @@ slideflow build config.yml
 
 Validation should be treated as mandatory in CI and release workflows.
 
+## Quick smoke check (recommended after install)
+
+Run the checked-in smoke sample with no external credentials:
+
+```bash
+cd docs/quickstart/smoke
+slideflow validate config.yml
+slideflow build config.yml --params-path params.csv --dry-run
+```
+
 ## Next steps
 
 - Run the sample pipeline in [Quickstart](quickstart.md)

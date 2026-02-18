@@ -18,9 +18,12 @@ On push to a `release/vX.Y.Z` branch, the `Release` workflow:
 2. validates project version consistency
 3. runs release test suite + coverage gate
 4. builds wheel and source distributions
-5. creates and pushes Git tag `vX.Y.Z`
-6. creates GitHub release with artifacts
-7. publishes package to PyPI (OIDC trusted publishing)
+5. installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
+6. creates and pushes Git tag `vX.Y.Z`
+7. creates GitHub release with artifacts
+8. publishes package to PyPI (OIDC trusted publishing)
+
+In parallel, `TestPyPI Dry Run` can publish the same artifacts to TestPyPI (with `skip-existing`) for pre-production validation.
 
 ## Version consistency contract
 
@@ -51,6 +54,13 @@ mkdocs build --strict
 2. Add trusted publisher for this GitHub repo/workflow.
 3. Configure GitHub environment `pypi` with any required reviewers.
 4. Keep `id-token: write` enabled in release workflow permissions.
+
+## TestPyPI setup (recommended)
+
+1. Create a TestPyPI project matching your package name.
+2. Add a trusted publisher for `.github/workflows/testpypi-dry-run.yml`.
+3. Configure GitHub environment `testpypi` with any required reviewers.
+4. Trigger the workflow manually first to verify OIDC publishing works.
 
 ## Rollback guidance
 

@@ -8,7 +8,8 @@
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
   - runs integration marker tests (`-m integration`)
   - runs e2e marker tests (`-m e2e`)
-  - builds distribution artifacts
+  - builds wheel/sdist artifacts
+  - installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
 - `Docs` (`.github/workflows/docs.yml`)
   - runs `mkdocs build --strict`
   - deploys to GitHub Pages on `master`/`main`
@@ -18,6 +19,10 @@
   - runs tests + build
   - creates tag + GitHub release
   - publishes to PyPI
+- `TestPyPI Dry Run` (`.github/workflows/testpypi-dry-run.yml`)
+  - runs on `release/vX.Y.Z` pushes and manual dispatch
+  - builds artifacts + smoke tests installed wheel
+  - publishes to TestPyPI using OIDC (`skip-existing`)
 - `Audit` (`.github/workflows/audit.yml`)
   - runs `pip-audit`
   - runs `bandit`
@@ -32,6 +37,12 @@ pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --c
 pytest -q -m integration
 pytest -q -m e2e
 mkdocs build --strict
+```
+
+To run the same smoke validation CI uses:
+
+```bash
+bash scripts/ci/run_quickstart_smoke.sh
 ```
 
 ## Coverage policy

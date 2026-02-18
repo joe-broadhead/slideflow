@@ -1,0 +1,37 @@
+registry: registry.py
+
+provider:
+  type: google_slides
+  config: {}
+
+presentation:
+  name: "SlideFlow Smoke Deck ({region})"
+  slides:
+    - id: smoke_slide_1
+      title: Smoke Slide
+      replacements:
+        - type: text
+          config:
+            placeholder: "{{REGION_LABEL}}"
+            value_fn: region_label
+            value_fn_args:
+              region: "{region}"
+      charts:
+        - type: plotly_go
+          config:
+            title: Revenue Trend
+            data_source:
+              type: csv
+              name: smoke_metrics
+              file_path: data.csv
+            traces:
+              - type: scatter
+                x: "$month"
+                y: "$revenue"
+                mode: "lines+markers"
+                name: Revenue
+            layout_config:
+              xaxis:
+                title: Month
+              yaxis:
+                title: Revenue
