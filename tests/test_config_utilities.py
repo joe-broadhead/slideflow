@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -42,3 +43,63 @@ def test_load_registry_from_path_fails_when_module_spec_is_unavailable(tmp_path,
 
     with pytest.raises(ConfigurationError, match="Unable to load module specification"):
         load_registry_from_path(registry_file)
+
+
+def test_load_registry_from_path_forces_target_parent_path_precedence(tmp_path):
+    package_name = "shadowpkg"
+
+    bad_parent = tmp_path / "bad_parent"
+    good_parent = tmp_path / "good_parent"
+    bad_pkg = bad_parent / package_name
+    good_pkg = good_parent / package_name
+    bad_pkg.mkdir(parents=True)
+    good_pkg.mkdir(parents=True)
+
+    (bad_pkg / "__init__.py").write_text("")
+    (good_pkg / "__init__.py").write_text("")
+
+    (bad_pkg / "helpers.py").write_text(
+        "def source_marker():\n"
+        "    return 'bad'\n"
+    )
+    (good_pkg / "helpers.py").write_text(
+        "def source_marker():\n"
+        "    return 'good'\n"
+    )
+    registry_file = good_pkg / "registry.py"
+    registry_file.write_text(
+        "from .helpers import source_marker\n"
+        "\n"
+        "function_registry = {'source_marker': source_marker}\n"
+    )
+
+    package_prefix = f"{package_name}."
+    original_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == package_name or name.startswith(package_prefix)
+    }
+    original_sys_path = list(sys.path)
+    sys.path[:] = [str(bad_parent), str(good_parent)] + [
+        entry for entry in original_sys_path if entry not in {str(bad_parent), str(good_parent)}
+    ]
+    try:
+        for name in list(sys.modules):
+            if name == package_name or name.startswith(package_prefix):
+                sys.modules.pop(name, None)
+
+        bad_helpers = importlib.import_module(f"{package_name}.helpers")
+        assert bad_helpers.source_marker() == "bad"
+
+        registry = load_registry_from_path(registry_file)
+        assert registry["source_marker"]() == "good"
+
+        restored_helpers = importlib.import_module(f"{package_name}.helpers")
+        assert restored_helpers is bad_helpers
+        assert restored_helpers.source_marker() == "bad"
+    finally:
+        sys.path[:] = original_sys_path
+        for name in list(sys.modules):
+            if name == package_name or name.startswith(package_prefix):
+                sys.modules.pop(name, None)
+        sys.modules.update(original_modules)
