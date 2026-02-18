@@ -15,7 +15,8 @@ def resolve_registry_paths(
     Resolution order:
     1. Explicit CLI --registry values (kept as provided).
     2. `registry` values inside YAML config (resolved relative to config file).
-    3. Defaults: `<config_dir>/registry.py`, then `./registry.py` if present.
+    3. Defaults: `<config_dir>/registry.py` if present; otherwise fallback to
+       `./registry.py` if present.
     """
     if cli_registry_paths is not None:
         return list(cli_registry_paths)
@@ -24,15 +25,15 @@ def resolve_registry_paths(
     if config_registry_paths:
         return config_registry_paths
 
-    default_candidates = [
-        (config_file.parent / "registry.py").resolve(),
-        Path("registry.py").resolve(),
-    ]
-    resolved_defaults: List[Path] = []
-    for candidate in default_candidates:
-        if candidate.exists() and candidate not in resolved_defaults:
-            resolved_defaults.append(candidate)
-    return resolved_defaults
+    config_default = (config_file.parent / "registry.py").resolve()
+    if config_default.exists():
+        return [config_default]
+
+    cwd_default = Path("registry.py").resolve()
+    if cwd_default.exists():
+        return [cwd_default]
+
+    return []
 
 
 def _parse_config_registry(config_registry: object, config_dir: Path) -> List[Path]:

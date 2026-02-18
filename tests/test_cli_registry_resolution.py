@@ -36,7 +36,28 @@ def test_resolve_registry_paths_prefers_config_dir_default_registry(
         config_registry=None,
     )
 
-    assert resolved == [config_registry_file, cwd_registry_file]
+    assert resolved == [config_registry_file]
+
+
+def test_resolve_registry_paths_falls_back_to_cwd_default_registry(
+    tmp_path, monkeypatch
+):
+    config_dir = tmp_path / "configs"
+    other_dir = tmp_path / "other"
+    config_dir.mkdir()
+    other_dir.mkdir()
+    monkeypatch.chdir(other_dir)
+
+    cwd_registry_file = other_dir / "registry.py"
+    cwd_registry_file.write_text("function_registry = {}\n")
+
+    resolved = resolve_registry_paths(
+        config_file=config_dir / "config.yml",
+        cli_registry_paths=None,
+        config_registry=None,
+    )
+
+    assert resolved == [cwd_registry_file]
 
 
 def test_resolve_registry_paths_prefers_cli_over_config(tmp_path):
