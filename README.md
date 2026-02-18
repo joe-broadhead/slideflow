@@ -4,6 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![Docs](https://img.shields.io/badge/docs-mkdocs%20material-blue.svg?logo=materialformkdocs&logoColor=white)](https://joe-broadhead.github.io/slideflow/)
+[![Release](https://img.shields.io/github/v/release/joe-broadhead/slideflow?label=release&logo=github)](https://github.com/joe-broadhead/slideflow/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/joe-broadhead/slideflow/ci.yml?branch=master&label=CI)](https://github.com/joe-broadhead/slideflow/actions/workflows/ci.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 ```
@@ -198,4 +201,3 @@ You can then reference `format_as_usd` in your YAML configuration.
 ## 📜 License
 
 MIT License © [Joe Broadhead](https://github.com/joe-broadhead)
-
