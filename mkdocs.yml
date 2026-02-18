@@ -22,5 +22,4 @@ nav:
           - Templating: templating.md
     - Engineering:
           - Testing Strategy: testing.md
-          - Audit Plan: engineering/audit-plan.md
           - Release Process: release-process.md
