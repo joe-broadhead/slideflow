@@ -1,26 +1,36 @@
 # Quickstart
 
-This guide runs the checked-in sample in `docs/quickstart/` end-to-end.
+This guide gives you a copy-paste runnable sample first, then shows how to switch to real Google Slides deployment.
 
-## 1. Prepare sample config
+## 1. Run the smoke sample (no credentials required)
 
-Open `docs/quickstart/config.yml` and set:
+The smoke sample lives in `docs/quickstart/smoke/` and is designed for `--dry-run` validation.
+
+```bash
+cd docs/quickstart/smoke
+slideflow validate config.yml
+slideflow build config.yml --params-path params.csv --dry-run
+```
+
+What this verifies:
+
+- YAML schema validity
+- registry function resolution (`registry.py`)
+- parameter fan-out from CSV (`params.csv`)
+- chart/replacement wiring for a local CSV data source
+
+## 2. Switch to a real Google Slides build
+
+Use `docs/quickstart/config.yml` for a real build and set:
 
 - `provider.config.template_id`
 - `provider.config.credentials` (or set `GOOGLE_SLIDEFLOW_CREDENTIALS`)
 - slide IDs under `presentation.slides[*].id`
 
-## 2. Validate configuration
+Then run:
 
 ```bash
 slideflow validate docs/quickstart/config.yml --registry docs/quickstart/registry.py
-```
-
-Validation checks YAML structure, provider config, chart/replacement wiring, and registry resolution.
-
-## 3. Build a presentation
-
-```bash
 slideflow build docs/quickstart/config.yml --registry docs/quickstart/registry.py
 ```
 
@@ -30,7 +40,7 @@ Expected outcome:
 - Slide 1 gets `{{MONTH}}` replacement and a bar chart from `docs/quickstart/data.csv`
 - Slide 2 gets a template chart from `docs/quickstart/bar_chart.yml`
 
-## 4. Batch mode (multi-deck)
+## 3. Batch mode (multi-deck)
 
 Create `variants.csv`:
 
@@ -54,7 +64,7 @@ Rules:
 - Empty CSV rows are rejected at runtime
 - Use `--dry-run` to validate all variants without building
 
-## 5. Control concurrency and rate limits
+## 4. Control concurrency and rate limits
 
 ```bash
 slideflow build docs/quickstart/config.yml \
@@ -65,7 +75,7 @@ slideflow build docs/quickstart/config.yml \
 
 Use conservative `--threads` and `--rps` when Google API quotas are tight.
 
-## 6. Troubleshoot fast
+## 5. Troubleshoot fast
 
 If anything fails:
 
