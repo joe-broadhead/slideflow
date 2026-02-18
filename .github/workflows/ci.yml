@@ -44,10 +44,19 @@ jobs:
       - name: Run unit tests with coverage
         run: |
           python -m pytest -q \
+            -m "not integration and not e2e" \
             --cov=slideflow \
             --cov-report=term \
             --cov-report=xml \
             --cov-fail-under=70
+
+      - name: Run integration tests
+        run: |
+          python -m pytest -q -m integration
+
+      - name: Run e2e tests
+        run: |
+          python -m pytest -q -m e2e
 
       - name: Upload coverage report
         if: always()

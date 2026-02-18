@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities.config import load_registry_from_path, render_params
 from slideflow.utilities.exceptions import ConfigurationError
 
@@ -127,3 +128,15 @@ def test_render_params_tolerates_invalid_format_syntax():
     rendered = render_params(payload, {"quarter": "Q1"})
 
     assert rendered == payload
+
+
+def test_presentation_config_accepts_registry_as_string():
+    config = PresentationConfig.model_validate(
+        {
+            "registry": "registry.py",
+            "provider": {"type": "google_slides", "config": {}},
+            "presentation": {"name": "Demo", "slides": []},
+        }
+    )
+
+    assert config.registry == ["registry.py"]
