@@ -10,6 +10,7 @@ Commands:
 
 - `build`: validate + generate one or many presentations
 - `validate`: validate configuration and registries without rendering
+- `doctor`: run preflight diagnostics for runtime dependencies
 - `templates`: inspect available chart templates and contracts
 
 ## Global options
@@ -31,6 +32,7 @@ Options:
 | Option | Description |
 | --- | --- |
 | `-r`, `--registry` | One or more Python registry files |
+| `--output-json` | Write machine-readable validation summary JSON |
 
 Registry resolution order:
 
@@ -45,6 +47,7 @@ Examples:
 slideflow validate config.yml
 slideflow validate config.yml --registry registry.py
 slideflow validate config.yml -r base_registry.py -r team_registry.py
+slideflow validate config.yml --output-json validate-result.json
 ```
 
 ## `slideflow build`
@@ -62,6 +65,7 @@ Options:
 | `--dry-run` | Validate all variants without rendering |
 | `-t`, `--threads` | Number of concurrent presentation workers |
 | `--rps` | Override provider requests/second |
+| `--output-json` | Write machine-readable build summary JSON |
 
 Registry resolution order:
 
@@ -90,6 +94,33 @@ slideflow build config.yml \
 slideflow build config.yml \
   --threads 3 \
   --rps 0.8
+
+slideflow build config.yml \
+  --params-path variants.csv \
+  --output-json build-result.json
+```
+
+## `slideflow doctor`
+
+```bash
+slideflow doctor [OPTIONS]
+```
+
+Options:
+
+| Option | Description |
+| --- | --- |
+| `-c`, `--config-file` | Optional config file for provider-level checks |
+| `-r`, `--registry` | Optional registry paths used with `--config-file` |
+| `--strict` | Exit non-zero when error-severity checks fail |
+| `--output-json` | Write machine-readable doctor summary JSON |
+
+Examples:
+
+```bash
+slideflow doctor
+slideflow doctor --config-file config.yml --registry registry.py
+slideflow doctor --config-file config.yml --strict --output-json doctor-result.json
 ```
 
 ## `slideflow templates list`
@@ -127,4 +158,6 @@ slideflow templates info bar_basic
 ## Exit behavior
 
 - Returns non-zero exit status on validation/build failures
+- `doctor --strict` returns non-zero when error checks fail
+- CLI failures include stable error codes in stderr output for automation parsing
 - CI should treat any non-zero status as a failed job

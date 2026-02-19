@@ -23,7 +23,7 @@ Example:
 
 import typer
 
-from slideflow.cli.commands import build_command, validate_command
+from slideflow.cli.commands import build_command, doctor_command, validate_command
 from slideflow.cli.commands.templates import (
     templates_app,
     templates_info,
@@ -107,6 +107,7 @@ def main(
 
 app.command("validate")(validate_command)
 app.command("build")(build_command)
+app.command("doctor")(doctor_command)
 if hasattr(app, "add_typer"):
     app.add_typer(templates_app, name="templates")
 else:

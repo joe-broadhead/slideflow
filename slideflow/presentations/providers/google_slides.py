@@ -66,6 +66,7 @@ Example:
 """
 
 import io
+import os
 import threading
 import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
@@ -76,7 +77,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from pydantic import Field
 
-from slideflow.constants import GoogleSlides
+from slideflow.constants import Environment, GoogleSlides
 from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
@@ -255,6 +256,75 @@ class GoogleSlidesProvider(PresentationProvider):
         self.rate_limiter.wait()
         return request.execute(num_retries=3)
 
+    @staticmethod
+    def _dimension_to_points(dimension: Optional[Dict[str, Any]]) -> Optional[int]:
+        """Convert Google Slides dimension objects to points."""
+        if not isinstance(dimension, dict):
+            return None
+
+        magnitude = dimension.get("magnitude")
+        unit = str(dimension.get("unit", "PT")).upper()
+
+        if magnitude is None:
+            return None
+        try:
+            magnitude_value = float(str(magnitude))
+        except (TypeError, ValueError):
+            return None
+
+        if unit == "EMU":
+            return int(magnitude_value / 12700)
+        if unit == "PT":
+            return int(magnitude_value)
+        return None
+
+    def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
+        """Run Google provider preflight checks used by CLI doctor/build."""
+        has_credentials = bool(self.config.credentials) or bool(
+            os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
+        )
+
+        checks: List[Tuple[str, bool, str]] = [
+            (
+                "google_credentials_present",
+                has_credentials,
+                (
+                    "Credentials found in config or GOOGLE_SLIDEFLOW_CREDENTIALS"
+                    if has_credentials
+                    else "Missing credentials in config and environment"
+                ),
+            ),
+            (
+                "slides_service_initialized",
+                self.slides_service is not None,
+                (
+                    "Google Slides API client initialized"
+                    if self.slides_service is not None
+                    else "Google Slides API client is not initialized"
+                ),
+            ),
+            (
+                "drive_service_initialized",
+                self.drive_service is not None,
+                (
+                    "Google Drive API client initialized"
+                    if self.drive_service is not None
+                    else "Google Drive API client is not initialized"
+                ),
+            ),
+            (
+                "rate_limiter_initialized",
+                self.rate_limiter is not None,
+                (
+                    f"Rate limiter configured at {self.config.requests_per_second} rps"
+                    if self.rate_limiter is not None
+                    else "Rate limiter is not initialized"
+                ),
+            ),
+        ]
+
+        return checks
+
     def create_presentation(self, name: str, template_id: Optional[str] = None) -> str:
         """Create a new Google Slides presentation.
 
@@ -405,6 +475,50 @@ class GoogleSlidesProvider(PresentationProvider):
             Public URL to access the presentation
         """
         return f"https://docs.google.com/presentation/d/{presentation_id}"
+
+    def get_presentation_page_size(
+        self, presentation_id: str
+    ) -> Optional[Tuple[int, int]]:
+        """Get presentation page size in points when available."""
+        start = time.time()
+        success = False
+
+        try:
+            response = self._execute_request(
+                self.slides_service.presentations().get(
+                    presentationId=presentation_id, fields="pageSize"
+                )
+            )
+
+            page_size = response.get("pageSize", {})
+            width_pt = self._dimension_to_points(page_size.get("width"))
+            height_pt = self._dimension_to_points(page_size.get("height"))
+
+            if width_pt is None or height_pt is None:
+                logger.warning(
+                    "Unable to determine page size for presentation '%s'; "
+                    "using fallback dimensions",
+                    presentation_id,
+                )
+                return None
+
+            success = True
+            return width_pt, height_pt
+        except Exception as error:
+            logger.warning(
+                "Failed to fetch page size for presentation '%s': %s",
+                presentation_id,
+                error,
+            )
+            return None
+        finally:
+            log_api_operation(
+                "google_slides",
+                "get_page_size",
+                success=success,
+                duration=time.time() - start,
+                presentation_id=presentation_id,
+            )
 
     def _get_or_create_destination_folder(self) -> Optional[str]:
         """Find or create a dynamic subfolder for the presentation."""

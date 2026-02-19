@@ -367,3 +367,45 @@ def test_google_rate_limiter_singleton_update(monkeypatch):
 
     assert rl1 is rl2 is rl3
     assert rl3.rate == 5.0
+
+
+def test_google_provider_page_size_and_preflight(monkeypatch):
+    provider = object.__new__(google_provider_module.GoogleSlidesProvider)
+    provider.config = SimpleNamespace(credentials=None, requests_per_second=3.0)
+    provider.slides_service = SimpleNamespace(
+        presentations=lambda: SimpleNamespace(
+            get=lambda **_kwargs: "request",
+        )
+    )
+    provider.drive_service = object()
+    provider.rate_limiter = object()
+
+    monkeypatch.setattr(
+        provider,
+        "_execute_request",
+        lambda _request: {
+            "pageSize": {
+                "width": {"magnitude": 9144000, "unit": "EMU"},
+                "height": {"magnitude": 6858000, "unit": "EMU"},
+            }
+        },
+    )
+    monkeypatch.setenv("GOOGLE_SLIDEFLOW_CREDENTIALS", '{"type":"service_account"}')
+
+    assert provider.get_presentation_page_size("p1") == (720, 540)
+
+    checks = provider.run_preflight_checks()
+    assert checks
+    assert all(ok for _name, ok, _detail in checks)
+
+
+def test_google_provider_page_size_returns_none_on_invalid_shape(monkeypatch):
+    provider = object.__new__(google_provider_module.GoogleSlidesProvider)
+    provider.slides_service = SimpleNamespace(
+        presentations=lambda: SimpleNamespace(get=lambda **_kwargs: "request")
+    )
+    provider.rate_limiter = SimpleNamespace(wait=lambda: None)
+
+    monkeypatch.setattr(provider, "_execute_request", lambda _request: {"pageSize": {}})
+
+    assert provider.get_presentation_page_size("p1") is None
