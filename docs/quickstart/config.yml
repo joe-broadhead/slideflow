@@ -40,7 +40,7 @@ presentation:
         - type: "template"
           config:
             title: "Monthly Active Users"
-            template_name: "bar_basic"
+            template_name: "bars/bar_basic"
             data_source:
               type: "csv"
               name: "quickstart_data"

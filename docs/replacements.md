@@ -91,3 +91,12 @@ When this replacement is processed, SlideFlow will append the data from `sales.c
 ## Data Sources and Transformations
 
 All replacement types can have a `data_source` and a list of `data_transforms`. This allows you to fetch data from any supported source and to clean, reshape, or aggregate it before it's used in your replacement.
+
+For detailed connector setup and transform contracts, see:
+
+- [Data Connectors](data-connectors.md)
+- [Data Transforms](data-transforms.md)
+
+For provider-specific AI setup and credentials, see:
+
+- [AI Providers](ai-providers.md)

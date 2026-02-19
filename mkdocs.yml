@@ -103,6 +103,12 @@ nav:
       - Quickstart: quickstart.md
       - Cookbooks: cookbooks.md
       - Troubleshooting: troubleshooting.md
+  - How-To:
+      - Google Slides Provider: providers/google-slides.md
+      - Data Connectors: data-connectors.md
+      - Data Transforms: data-transforms.md
+      - AI Providers: ai-providers.md
+      - Deployments: deployments.md
   - Reference:
       - CLI Reference: cli-reference.md
       - Configuration Reference: config-reference.md

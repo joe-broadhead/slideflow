@@ -58,6 +58,8 @@ Supported values:
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
+For provider setup and operational behavior, see [Google Slides Provider](providers/google-slides.md).
+
 ## Replacements
 
 All replacements follow:
@@ -104,6 +106,8 @@ All replacements follow:
     data_source: {...}            # optional (single or list)
 ```
 
+For provider credentials and runtime options, see [AI Providers](ai-providers.md).
+
 ## Charts
 
 All charts follow:
@@ -119,6 +123,7 @@ Common positioning fields in chart config:
 - `dimensions_format`: `pt`, `emu`, `relative`, `expression`
 - `alignment_format`: `left|center|right` + `top|center|bottom` (for example `center-top`)
 - `scale`: image scaling factor
+- `data_transforms`: optional ordered transform pipeline
 
 ### `plotly_go`
 
@@ -207,6 +212,8 @@ vars:
   as_of_date: "2026-02-18"
 ```
 
+For full connector behavior and runtime requirements, see [Data Connectors](data-connectors.md).
+
 ## Parameter substitution semantics
 
 - `{param}` tokens are replaced from CLI batch params or loader params
@@ -218,3 +225,5 @@ vars:
 - `template_paths`: additional chart-template search paths (highest precedence)
   - default fallbacks still apply: `./templates`, `~/.slideflow/templates`, packaged built-ins
 - `registry`: one or many Python files exposing `function_registry`
+
+For transform function contracts and examples, see [Data Transforms](data-transforms.md).

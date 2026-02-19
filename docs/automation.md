@@ -11,7 +11,7 @@ Workflow path:
 You can call it from another repo with:
 
 ```yaml
-uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@master
+uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
 ```
 
 ## Scheduled Caller Example
@@ -26,7 +26,7 @@ on:
 
 jobs:
   weekly-slides:
-    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@master
+    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
     secrets: inherit
     with:
       config-file: config/weekly_exec_report.yml
@@ -67,3 +67,6 @@ jobs:
 - Use `secrets: inherit` in the caller job to pass required secrets to providers.
 - Your Slideflow config can continue to reference environment variables as usual.
 - For Google Slides builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
+- Prefer pinning reusable workflow references to a commit SHA in production.
+
+For deployment patterns beyond GitHub Actions, see [Deployments](deployments.md).

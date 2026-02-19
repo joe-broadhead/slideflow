@@ -101,5 +101,10 @@ slideflow build config.yml --params-path params.csv --dry-run
 ## Next steps
 
 - Run the sample pipeline in [Quickstart](quickstart.md)
+- Configure real template/folder/sharing behavior in [Google Slides Provider](providers/google-slides.md)
+- Choose and harden source systems in [Data Connectors](data-connectors.md)
+- Add reusable preprocessing in [Data Transforms](data-transforms.md)
+- Configure LLM output in [AI Providers](ai-providers.md)
+- Plan production scheduling in [Deployments](deployments.md)
 - Review [Configuration Reference](config-reference.md)
 - Use [Cookbooks](cookbooks.md) for production patterns

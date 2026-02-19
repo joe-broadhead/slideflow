@@ -43,7 +43,7 @@ template: |
 ```yaml
 - type: "template"
   config:
-    template_name: "bar_basic"
+    template_name: "bars/bar_basic"
     data_source:
       type: "csv"
       name: "sales"
@@ -86,7 +86,7 @@ slideflow templates list --details
 Inspect one template:
 
 ```bash
-slideflow templates info bar_basic
+slideflow templates info bars/bar_basic
 ```
 
 ## Available Jinja filters
