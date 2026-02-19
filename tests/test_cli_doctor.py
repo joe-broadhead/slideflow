@@ -153,6 +153,21 @@ def test_detect_chrome_binary_prefers_env_path(monkeypatch, tmp_path):
     assert doctor_module._detect_chrome_binary() == str(chrome_path)
 
 
+def test_detect_chrome_binary_resolves_env_executable_name(monkeypatch, tmp_path):
+    chrome_path = tmp_path / "custom-chrome"
+    chrome_path.write_text("binary", encoding="utf-8")
+
+    monkeypatch.setenv("CHROME_PATH", "custom-chrome")
+    monkeypatch.delenv("GOOGLE_CHROME_BIN", raising=False)
+    monkeypatch.setattr(
+        doctor_module.shutil,
+        "which",
+        lambda name: str(chrome_path) if name == "custom-chrome" else None,
+    )
+
+    assert doctor_module._detect_chrome_binary() == str(chrome_path)
+
+
 def test_local_environment_checks_handles_import_failures(monkeypatch):
     real_import = __import__
 
@@ -259,6 +274,23 @@ def test_provider_checks_converts_exceptions_to_failed_check(monkeypatch, tmp_pa
     assert "provider boom" in checks[0]["detail"]
 
 
+def test_provider_checks_handles_empty_exception_message(monkeypatch, tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("provider: {type: google_slides, config: {}}\n")
+    monkeypatch.setattr(
+        doctor_module,
+        "ConfigLoader",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError()),
+    )
+
+    checks = doctor_module._provider_checks(config_file, registry_paths=None)
+
+    assert len(checks) == 1
+    assert checks[0]["name"] == "provider_init"
+    assert checks[0]["ok"] is False
+    assert checks[0]["detail"] == "RuntimeError"
+
+
 def test_doctor_returns_warning_status_when_only_warnings_fail(monkeypatch):
     monkeypatch.setattr(
         doctor_module,
@@ -283,3 +315,25 @@ def test_doctor_returns_warning_status_when_only_warnings_fail(monkeypatch):
     assert result["status"] == "warning"
     assert result["summary"]["failed_errors"] == 0
     assert result["summary"]["failed_warnings"] == 1
+
+
+def test_doctor_error_path_handles_empty_exception_message(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        doctor_module,
+        "_local_environment_checks",
+        lambda: (_ for _ in ()).throw(RuntimeError()),
+    )
+
+    output_file = tmp_path / "doctor-error-empty-message.json"
+    with pytest.raises(doctor_module.typer.Exit):
+        doctor_module.doctor_command(
+            config_file=None,
+            registry_paths=None,
+            output_json=output_file,
+            strict=False,
+        )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "SLIDEFLOW_DOCTOR_FAILED"
+    assert payload["error"]["message"] == "RuntimeError"

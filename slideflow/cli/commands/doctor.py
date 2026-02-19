@@ -26,6 +26,36 @@ def _check(
     return {"name": name, "ok": ok, "detail": detail, "severity": severity}
 
 
+def _first_error_line(error: Exception) -> str:
+    """Return a safe single-line error description."""
+    text = str(error)
+    if text:
+        first_line = text.splitlines()[0]
+        if first_line:
+            return first_line
+    return type(error).__name__
+
+
+def _resolve_binary_candidate(candidate: Optional[str]) -> Optional[str]:
+    """Resolve a browser candidate as an absolute path when possible."""
+    if not candidate:
+        return None
+
+    candidate = candidate.strip()
+    if not candidate:
+        return None
+
+    candidate_path = Path(candidate)
+    if candidate_path.exists():
+        return str(candidate_path)
+
+    resolved = shutil.which(candidate)
+    if resolved and Path(resolved).exists():
+        return resolved
+
+    return None
+
+
 def _detect_chrome_binary() -> Optional[str]:
     candidates = [
         os.getenv("CHROME_PATH"),
@@ -37,8 +67,9 @@ def _detect_chrome_binary() -> Optional[str]:
     ]
 
     for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return candidate
+        resolved = _resolve_binary_candidate(candidate)
+        if resolved:
+            return resolved
     return None
 
 
@@ -145,7 +176,7 @@ def _provider_checks(
             _check(
                 "provider_init",
                 False,
-                str(error).splitlines()[0],
+                _first_error_line(error),
                 "error",
             )
         )
@@ -235,14 +266,15 @@ def doctor_command(
         raise
     except Exception as error:
         error_code = resolve_cli_error_code(error, CliErrorCode.DOCTOR_FAILED)
+        error_message = _first_error_line(error)
         payload = {
             "command": "doctor",
             "status": "error",
             "started_at": started_at,
             "completed_at": now_iso8601_utc(),
-            "error": {"code": error_code, "message": str(error).split("\n")[0]},
+            "error": {"code": error_code, "message": error_message},
             "checks": checks,
         }
         write_output_json(output_json, payload)
-        typer.echo(f"❌ [ERROR] doctor: {error_code} {str(error).splitlines()[0]}")
+        typer.echo(f"❌ [ERROR] doctor: {error_code} {error_message}")
         raise typer.Exit(1)
