@@ -285,9 +285,7 @@ def _build_template_charts(data_path: Path) -> List[Dict[str, Any]]:
     engine = TemplateEngine([builtins_path])
     template_names = engine.list_templates()
     if not template_names:
-        raise AssertionError(
-            f"No built-in templates discovered from: {builtins_path}"
-        )
+        raise AssertionError(f"No built-in templates discovered from: {builtins_path}")
 
     charts: List[Dict[str, Any]] = []
     for template_name in template_names:
