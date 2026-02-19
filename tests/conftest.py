@@ -6,6 +6,21 @@ import types
 from pathlib import Path
 
 
+def _is_live_google_run(config) -> bool:
+    """Detect runs that target live Google tests.
+
+    Live tests must use real third-party clients and should not receive unit-test
+    dependency stubs from this conftest.
+    """
+
+    markexpr = str(getattr(config.option, "markexpr", "") or "").lower()
+    if "live_google" in markexpr:
+        return True
+
+    args = [str(arg).lower() for arg in getattr(config, "args", [])]
+    return any("live_tests" in arg for arg in args)
+
+
 def _ensure_module(name: str) -> types.ModuleType:
     module = sys.modules.get(name)
     if module is not None:
@@ -426,6 +441,9 @@ def _install_databricks_stub() -> None:
 
 
 def pytest_configure(config):
+    if _is_live_google_run(config):
+        return
+
     _install_numpy_stub()
     _install_pandas_stub()
     _install_typer_stub()
