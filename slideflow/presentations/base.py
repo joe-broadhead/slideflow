@@ -62,6 +62,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from slideflow.constants import GoogleSlides
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
@@ -221,7 +222,12 @@ class Slide(BaseModel):
         Field(default_factory=list, description="Charts to generate for this slide"),
     ]
 
-    def build_update_requests(self, chart_urls: Dict[str, str]) -> List[Dict[str, Any]]:
+    def build_update_requests(
+        self,
+        chart_urls: Dict[str, str],
+        page_width_pt: int = GoogleSlides.STANDARD_WIDTH_POINTS,
+        page_height_pt: int = GoogleSlides.STANDARD_HEIGHT_POINTS,
+    ) -> List[Dict[str, Any]]:
         """Build platform-specific API requests for updating this slide.
 
         Generates a list of API request objects that can be executed to update
@@ -291,6 +297,13 @@ class Slide(BaseModel):
                             }
                         )
 
+        slides_app = {
+            "pageSize": {
+                "width": {"magnitude": page_width_pt, "unit": "PT"},
+                "height": {"magnitude": page_height_pt, "unit": "PT"},
+            }
+        }
+
         # Build chart insertion requests
         for i, chart in enumerate(self.charts):
             chart_id = f"chart_{i}_{id(chart)}"
@@ -304,9 +317,9 @@ class Slide(BaseModel):
                     height=chart.height,
                     dimensions_format=chart.dimensions_format,
                     alignment_format=chart.alignment_format,
-                    slides_app=None,  # TODO: Get slide dimensions from template
-                    page_width_pt=720,  # Standard Google Slides width in points
-                    page_height_pt=540,  # Standard Google Slides height in points
+                    slides_app=slides_app,
+                    page_width_pt=page_width_pt,
+                    page_height_pt=page_height_pt,
                 )
 
                 # Create chart image with computed positioning and sizing
@@ -435,6 +448,43 @@ class Presentation(BaseModel):
             self.name = self.name_fn(self.name)
         return self
 
+    @staticmethod
+    def _to_slides_app_dimensions(
+        page_width_pt: int, page_height_pt: int
+    ) -> Dict[str, Any]:
+        return {
+            "pageSize": {
+                "width": {"magnitude": page_width_pt, "unit": "PT"},
+                "height": {"magnitude": page_height_pt, "unit": "PT"},
+            }
+        }
+
+    def _resolve_page_dimensions(self, presentation_id: str) -> Tuple[int, int]:
+        page_width_pt = GoogleSlides.STANDARD_WIDTH_POINTS
+        page_height_pt = GoogleSlides.STANDARD_HEIGHT_POINTS
+
+        get_page_size = getattr(self.provider, "get_presentation_page_size", None)
+        provider_dimensions = (
+            get_page_size(presentation_id) if callable(get_page_size) else None
+        )
+        if provider_dimensions:
+            page_width_pt, page_height_pt = provider_dimensions
+
+        return page_width_pt, page_height_pt
+
+    def _run_provider_preflight(self) -> None:
+        failed_checks = []
+        run_preflight = getattr(self.provider, "run_preflight_checks", None)
+        preflight_checks = run_preflight() if callable(run_preflight) else []
+        for check_name, ok, detail in preflight_checks:
+            if not ok:
+                failed_checks.append(f"{check_name}: {detail}")
+
+        if failed_checks:
+            raise RenderingError(
+                "Provider preflight checks failed: " + "; ".join(failed_checks)
+            )
+
     def render(self) -> PresentationResult:
         """Render the complete presentation with all content and styling.
 
@@ -479,7 +529,10 @@ class Presentation(BaseModel):
         """
         start_time = time.time()
 
+        self._run_provider_preflight()
         presentation_id = self.provider.create_presentation(self.name)
+        page_width_pt, page_height_pt = self._resolve_page_dimensions(presentation_id)
+        slides_app = self._to_slides_app_dimensions(page_width_pt, page_height_pt)
         total_charts = 0
         total_replacements = 0
         uploaded_file_ids = []
@@ -523,6 +576,9 @@ class Presentation(BaseModel):
                                 height=chart.height,
                                 dimensions_format=chart.dimensions_format,
                                 alignment_format=chart.alignment_format,
+                                slides_app=slides_app,
+                                page_width_pt=page_width_pt,
+                                page_height_pt=page_height_pt,
                             )
 
                             self.provider.insert_chart_to_slide(
@@ -556,6 +612,9 @@ class Presentation(BaseModel):
                                             height=chart.height,
                                             dimensions_format=chart.dimensions_format,
                                             alignment_format=chart.alignment_format,
+                                            slides_app=slides_app,
+                                            page_width_pt=page_width_pt,
+                                            page_height_pt=page_height_pt,
                                         )
                                     )
 

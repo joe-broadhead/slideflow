@@ -1,3 +1,4 @@
+import json
 import types
 from pathlib import Path
 
@@ -375,3 +376,102 @@ def test_build_dry_run_fails_when_deep_slide_validation_fails(tmp_path, monkeypa
         )
 
     assert exc_info.value.code == 1
+
+
+def test_validate_writes_output_json(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+    _stub_presentation_validation(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "validate.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+
+    validate_command_module.validate_command(
+        config_file=config_file, registry_paths=None, output_json=output_file
+    )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["command"] == "validate"
+    assert payload["status"] == "success"
+    assert payload["summary"]["slides"] == 0
+
+
+def test_build_dry_run_writes_output_json(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+    _stub_presentation_validation(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "build.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths, params):
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(build_command_module, "ConfigLoader", FakeLoader)
+
+    build_command_module.build_command(
+        config_file=config_file,
+        registry_files=None,
+        params_path=None,
+        dry_run=True,
+        output_json=output_file,
+    )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["command"] == "build"
+    assert payload["status"] == "success"
+    assert payload["dry_run"] is True
+
+
+def test_build_error_writes_output_json_with_error_code(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+
+    config_file = tmp_path / "config.yaml"
+    params_path = tmp_path / "params.csv"
+    output_file = tmp_path / "build-error.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("region\n")
+
+    with pytest.raises(build_command_module.typer.Exit):
+        build_command_module.build_command(
+            config_file=config_file,
+            registry_files=None,
+            params_path=params_path,
+            dry_run=True,
+            output_json=output_file,
+        )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["command"] == "build"
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "SLIDEFLOW_BUILD_FAILED"

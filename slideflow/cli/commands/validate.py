@@ -40,6 +40,8 @@ import typer
 import yaml  # type: ignore[import-untyped]
 
 from slideflow.cli.commands._registry import resolve_registry_paths
+from slideflow.cli.error_codes import CliErrorCode, resolve_cli_error_code
+from slideflow.cli.json_output import now_iso8601_utc, write_output_json
 from slideflow.cli.theme import (
     print_config_summary,
     print_error,
@@ -58,6 +60,11 @@ def validate_command(
         "--registry",
         "-r",
         help="Path to Python registry files (can be used multiple times)",
+    ),
+    output_json: Optional[Path] = typer.Option(
+        None,
+        "--output-json",
+        help="Optional path to write a machine-readable validation summary JSON file",
     ),
 ) -> None:
     """Validate YAML configuration and registry files.
@@ -126,6 +133,7 @@ def validate_command(
     """
 
     print_validation_header(str(config_file))
+    run_started_at = now_iso8601_utc()
 
     try:
         raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
@@ -158,6 +166,54 @@ def validate_command(
 
         print_config_summary(presentation_config)
 
+        slide_specs = list(getattr(presentation_config.presentation, "slides", []))
+
+        def _safe_len(value: object) -> int:
+            try:
+                return len(value)  # type: ignore[arg-type]
+            except TypeError:
+                return 0
+
+        total_slides = len(slide_specs)
+        total_replacements = sum(
+            _safe_len(getattr(slide_spec, "replacements", []))
+            for slide_spec in slide_specs
+        )
+        total_charts = sum(
+            _safe_len(getattr(slide_spec, "charts", [])) for slide_spec in slide_specs
+        )
+        presentation_name = str(getattr(presentation_config.presentation, "name", ""))
+        write_output_json(
+            output_json,
+            {
+                "command": "validate",
+                "status": "success",
+                "started_at": run_started_at,
+                "completed_at": now_iso8601_utc(),
+                "config_file": str(config_file),
+                "registry_files": [str(path) for path in resolved_registry_paths],
+                "summary": {
+                    "provider_type": presentation_config.provider.type,
+                    "presentation_name": presentation_name,
+                    "slides": total_slides,
+                    "replacements": total_replacements,
+                    "charts": total_charts,
+                },
+            },
+        )
+
     except Exception as e:
-        print_error(str(e))
+        error_code = resolve_cli_error_code(e, CliErrorCode.VALIDATE_FAILED)
+        write_output_json(
+            output_json,
+            {
+                "command": "validate",
+                "status": "error",
+                "started_at": run_started_at,
+                "completed_at": now_iso8601_utc(),
+                "config_file": str(config_file),
+                "error": {"code": error_code, "message": str(e).split("\n")[0]},
+            },
+        )
+        print_error(str(e), error_code=error_code)
         raise typer.Exit(1)

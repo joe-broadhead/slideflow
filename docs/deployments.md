@@ -42,6 +42,8 @@ jobs:
       config-file: config/weekly_exec_report.yml
       registry-files: registries/base_registry.py
       params-path: config/weekly_variants.csv
+      run-doctor: true
+      strict-doctor: false
       run-validate: true
       threads: "2"
       requests-per-second: "1.0"
@@ -53,9 +55,14 @@ Security notes:
 - Treat `secrets: inherit` as privileged; only call trusted workflows.
 - Keep secrets out of YAML files.
 
-### Passing deck URLs to downstream jobs
+### Passing machine-readable outputs to downstream jobs
 
-The reusable workflow exposes `presentation-urls` output.
+The reusable workflow exposes:
+
+- `presentation-urls`: comma-separated Google Slides URLs
+- `build-result-json`: JSON summary from `slideflow build --output-json`
+- `validate-result-json`: JSON summary from `slideflow validate --output-json`
+- `doctor-result-json`: JSON summary from `slideflow doctor --output-json`
 
 ```yaml
 jobs:
@@ -70,9 +77,17 @@ jobs:
     needs: build
     steps:
       - run: echo "URLs: ${{ needs.build.outputs['presentation-urls'] }}"
+      - run: echo '${{ needs.build.outputs["build-result-json"] }}' > build-result.json
+      - run: |
+          python - <<'PY'
+          import json
+          data = json.load(open("build-result.json", "r", encoding="utf-8"))
+          urls = [row["url"] for row in data.get("results", []) if row.get("url")]
+          print("Structured URLs:", urls)
+          PY
 ```
 
-You can pass this output into email/Slack/Teams actions.
+You can pass these outputs into email/Slack/Teams actions or any parser-based automation.
 
 ## Databricks Workflows
 
@@ -83,8 +98,9 @@ Typical pattern:
 3. Run:
 
 ```bash
-slideflow validate config.yml --registry registry.py
-slideflow build config.yml --registry registry.py --threads 2 --rps 0.8
+slideflow doctor --config-file config.yml --registry registry.py
+slideflow validate config.yml --registry registry.py --output-json validate-result.json
+slideflow build config.yml --registry registry.py --threads 2 --rps 0.8 --output-json build-result.json
 ```
 
 If using Databricks connectors, set:
@@ -106,8 +122,9 @@ Use a container image that includes:
 Recommended command sequence:
 
 ```bash
-slideflow validate /app/config.yml --registry /app/registry.py
-slideflow build /app/config.yml --registry /app/registry.py --threads 2 --rps 0.8
+slideflow doctor --config-file /app/config.yml --registry /app/registry.py
+slideflow validate /app/config.yml --registry /app/registry.py --output-json /tmp/validate-result.json
+slideflow build /app/config.yml --registry /app/registry.py --threads 2 --rps 0.8 --output-json /tmp/build-result.json
 ```
 
 Operational notes:
@@ -119,7 +136,8 @@ Operational notes:
 ## Production Rollout Checklist
 
 - `slideflow validate` enforced before `slideflow build`
+- `slideflow doctor` runs before long render jobs (strict mode in CI if desired)
 - Secrets managed by platform secret manager (not committed)
 - API quotas/rate limits measured and tuned (`--rps`, `--threads`)
 - Failure notifications wired to orchestration platform
-- Build logs/artifacts retained for debugging
+- Build logs and JSON summaries retained for debugging/notifications

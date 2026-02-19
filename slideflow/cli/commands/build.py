@@ -40,6 +40,8 @@ import typer
 import yaml  # type: ignore[import-untyped]
 
 from slideflow.cli.commands._registry import resolve_registry_paths
+from slideflow.cli.error_codes import CliErrorCode, resolve_cli_error_code
+from slideflow.cli.json_output import now_iso8601_utc, write_output_json
 from slideflow.cli.theme import (
     print_build_error,
     print_build_header,
@@ -173,6 +175,11 @@ def build_command(
     requests_per_second: Optional[float] = typer.Option(
         None, "--rps", help="Override the API rate limit (requests per second)"
     ),
+    output_json: Optional[Path] = typer.Option(
+        None,
+        "--output-json",
+        help="Optional path to write a machine-readable build summary JSON file",
+    ),
 ) -> List[dict]:
     """Generate presentations from YAML configuration.
 
@@ -245,6 +252,7 @@ def build_command(
     """
 
     print_build_header(str(config_file))
+    run_started_at = now_iso8601_utc()
 
     try:
         print_build_progress(1, 6, "Loading configuration...")
@@ -287,6 +295,20 @@ def build_command(
                     PresentationBuilder._build_slide(slide_spec)
             print_build_progress(6, 6, "Dry run complete - configuration is valid!")
             print_build_success()
+            write_output_json(
+                output_json,
+                {
+                    "command": "build",
+                    "status": "success",
+                    "dry_run": True,
+                    "started_at": run_started_at,
+                    "completed_at": now_iso8601_utc(),
+                    "config_file": str(config_file),
+                    "registry_files": [str(path) for path in registry_files],
+                    "total_presentations": total_presentations,
+                    "results": [],
+                },
+            )
             return []
 
         print_build_progress(2, 6, "Initializing presentation builder...")
@@ -369,9 +391,37 @@ def build_command(
             print(f"  • {res['presentation_name']}: {res['url']}")
 
         print_build_success()
+        write_output_json(
+            output_json,
+            {
+                "command": "build",
+                "status": "success",
+                "dry_run": False,
+                "started_at": run_started_at,
+                "completed_at": now_iso8601_utc(),
+                "config_file": str(config_file),
+                "registry_files": [str(path) for path in registry_files],
+                "total_presentations": total_presentations,
+                "generated_presentations": len(results),
+                "results": results,
+            },
+        )
 
         return results
 
     except Exception as e:
-        print_build_error(str(e))
+        error_code = resolve_cli_error_code(e, CliErrorCode.BUILD_FAILED)
+        write_output_json(
+            output_json,
+            {
+                "command": "build",
+                "status": "error",
+                "dry_run": bool(dry_run),
+                "started_at": run_started_at,
+                "completed_at": now_iso8601_utc(),
+                "config_file": str(config_file),
+                "error": {"code": error_code, "message": str(e).split("\n")[0]},
+            },
+        )
+        print_build_error(str(e), error_code=error_code)
         raise typer.Exit(1)

@@ -191,6 +191,30 @@ class PresentationProvider(ABC):
         """
         self.config = config
 
+    def get_presentation_page_size(
+        self, presentation_id: str
+    ) -> Optional[Tuple[int, int]]:
+        """Return presentation page size in points when the provider supports it.
+
+        Implementations should return ``(width_pt, height_pt)``.
+
+        Args:
+            presentation_id: Unique identifier of the presentation.
+
+        Returns:
+            A tuple of width/height in points, or ``None`` if unavailable.
+        """
+        return None
+
+    def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
+        """Run provider-specific preflight checks.
+
+        Returns:
+            A list of check tuples in the form ``(check_name, ok, detail)``.
+            Providers may override this to add richer validation.
+        """
+        return []
+
     @abstractmethod
     def create_presentation(self, name: str, template_id: Optional[str] = None) -> str:
         """Create a new presentation on the platform.

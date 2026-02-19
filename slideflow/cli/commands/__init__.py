@@ -29,6 +29,7 @@ Usage:
 """
 
 from slideflow.cli.commands.build import build_command
+from slideflow.cli.commands.doctor import doctor_command
 from slideflow.cli.commands.templates import (
     templates_app,
     templates_info_command,
@@ -39,6 +40,7 @@ from slideflow.cli.commands.validate import validate_command
 __all__ = [
     "validate_command",
     "build_command",
+    "doctor_command",
     "templates_app",
     "templates_list_command",
     "templates_info_command",

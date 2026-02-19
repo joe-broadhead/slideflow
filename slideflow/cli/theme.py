@@ -210,10 +210,14 @@ def print_config_summary(presentation_config: Any) -> None:
     )
 
 
-def print_error(error_msg: Any, verbose: bool = False) -> None:
+def print_error(
+    error_msg: Any, verbose: bool = False, error_code: Optional[str] = None
+) -> None:
     console.print("[bold red]❌ Validation Faliled[/bold red]")
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")
     console.print("[bold yellow]🚨 Error Detected:[/bold yellow]")
+    if error_code:
+        console.print(f"[bold yellow]Error Code:[/bold yellow] [red]{error_code}[/red]")
 
     if verbose:
         console.print(f"[red]{error_msg}[/red]")
@@ -299,7 +303,9 @@ def print_build_success(presentation_url: Optional[str] = None) -> None:
     )
 
 
-def print_build_error(error_msg: Any, verbose: bool = False) -> None:
+def print_build_error(
+    error_msg: Any, verbose: bool = False, error_code: Optional[str] = None
+) -> None:
     """Display build failure error message.
 
     Shows a styled error message when build operations fail. Can display
@@ -311,6 +317,7 @@ def print_build_error(error_msg: Any, verbose: bool = False) -> None:
             or any object that converts to string.
         verbose: If True, displays the complete error message including
             stack traces. If False, shows only the first line for brevity.
+        error_code: Optional stable error code for automation and CI parsing.
 
     Example:
         >>> print_build_error("Configuration file not found")
@@ -322,6 +329,8 @@ def print_build_error(error_msg: Any, verbose: bool = False) -> None:
     console.print("[bold red]💥 Build Failed[/bold red]")
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")
     console.print("[bold yellow]🚨 Error Detected:[/bold yellow]")
+    if error_code:
+        console.print(f"[bold yellow]Error Code:[/bold yellow] [red]{error_code}[/red]")
 
     if verbose:
         console.print(f"[red]{error_msg}[/red]")

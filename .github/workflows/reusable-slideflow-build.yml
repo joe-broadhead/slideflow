@@ -42,6 +42,16 @@ on:
         required: false
         default: true
         type: boolean
+      run-doctor:
+        description: "Run slideflow doctor preflight checks before validate/build"
+        required: false
+        default: true
+        type: boolean
+      strict-doctor:
+        description: "Fail fast when doctor detects error-severity issues"
+        required: false
+        default: false
+        type: boolean
       run-validate:
         description: "Run slideflow validate before build"
         required: false
@@ -74,8 +84,17 @@ on:
         type: string
     outputs:
       presentation-urls:
-        description: "Comma-separated presentation URLs discovered in build logs"
+        description: "Comma-separated presentation URLs extracted from build JSON output"
         value: ${{ jobs.build.outputs.presentation_urls }}
+      doctor-result-json:
+        description: "JSON output emitted by slideflow doctor"
+        value: ${{ jobs.build.outputs.doctor_result_json }}
+      validate-result-json:
+        description: "JSON output emitted by slideflow validate"
+        value: ${{ jobs.build.outputs.validate_result_json }}
+      build-result-json:
+        description: "JSON output emitted by slideflow build"
+        value: ${{ jobs.build.outputs.build_result_json }}
 
 permissions:
   contents: read
@@ -85,6 +104,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
+      doctor_result_json: ${{ steps.extract_json.outputs.doctor_result_json }}
+      validate_result_json: ${{ steps.extract_json.outputs.validate_result_json }}
+      build_result_json: ${{ steps.extract_json.outputs.build_result_json }}
     defaults:
       run:
         shell: bash
@@ -124,10 +146,16 @@ jobs:
         env:
           LOG_FILE: ${{ runner.temp }}/slideflow-build.log
           URL_FILE: ${{ runner.temp }}/slideflow-presentation-urls.txt
+          DOCTOR_JSON_FILE: ${{ runner.temp }}/slideflow-doctor-result.json
+          VALIDATE_JSON_FILE: ${{ runner.temp }}/slideflow-validate-result.json
+          BUILD_JSON_FILE: ${{ runner.temp }}/slideflow-build-result.json
         run: |
           set -euo pipefail
           : > "$LOG_FILE"
           : > "$URL_FILE"
+          printf '{}\n' > "$DOCTOR_JSON_FILE"
+          printf '{}\n' > "$VALIDATE_JSON_FILE"
+          printf '{}\n' > "$BUILD_JSON_FILE"
 
           registry_args=()
           if [[ -n "${{ inputs.registry-files }}" ]]; then
@@ -139,8 +167,22 @@ jobs:
             done < <(printf '%s\n' "${{ inputs.registry-files }}" | tr ',' '\n')
           fi
 
+          if [[ "${{ inputs.run-doctor }}" == "true" ]]; then
+            doctor_cmd=(slideflow doctor --config-file "${{ inputs.config-file }}" --output-json "$DOCTOR_JSON_FILE")
+            if [[ ${#registry_args[@]} -gt 0 ]]; then
+              doctor_cmd+=("${registry_args[@]}")
+            fi
+            if [[ "${{ inputs.strict-doctor }}" == "true" ]]; then
+              doctor_cmd+=("--strict")
+            fi
+            {
+              echo "Running: ${doctor_cmd[*]}"
+              "${doctor_cmd[@]}"
+            } 2>&1 | tee -a "$LOG_FILE"
+          fi
+
           if [[ "${{ inputs.run-validate }}" == "true" ]]; then
-            validate_cmd=(slideflow validate "${{ inputs.config-file }}")
+            validate_cmd=(slideflow validate "${{ inputs.config-file }}" --output-json "$VALIDATE_JSON_FILE")
             if [[ ${#registry_args[@]} -gt 0 ]]; then
               validate_cmd+=("${registry_args[@]}")
             fi
@@ -150,7 +192,7 @@ jobs:
             } 2>&1 | tee -a "$LOG_FILE"
           fi
 
-          build_cmd=(slideflow build "${{ inputs.config-file }}")
+          build_cmd=(slideflow build "${{ inputs.config-file }}" --output-json "$BUILD_JSON_FILE")
           if [[ ${#registry_args[@]} -gt 0 ]]; then
             build_cmd+=("${registry_args[@]}")
           fi
@@ -172,10 +214,36 @@ jobs:
             "${build_cmd[@]}"
           } 2>&1 | tee -a "$LOG_FILE"
 
-          grep -Eo 'https://docs.google.com/presentation/d/[A-Za-z0-9_-]+' "$LOG_FILE" | sort -u > "$URL_FILE" || true
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          build_json = Path(os.environ["BUILD_JSON_FILE"])
+          url_file = Path(os.environ["URL_FILE"])
+
+          urls = []
+          if build_json.exists():
+              try:
+                  payload = json.loads(build_json.read_text(encoding="utf-8"))
+              except Exception:
+                  payload = {}
+              for row in payload.get("results", []):
+                  if isinstance(row, dict):
+                      url = row.get("url")
+                      if isinstance(url, str) and url:
+                          urls.append(url)
+
+          unique_urls = sorted(set(urls))
+          text = "\n".join(unique_urls)
+          if text:
+              text += "\n"
+          url_file.write_text(text, encoding="utf-8")
+          PY
 
       - name: Extract URL output
         id: extract_urls
+        if: ${{ always() }}
         env:
           URL_FILE: ${{ runner.temp }}/slideflow-presentation-urls.txt
         run: |
@@ -187,12 +255,41 @@ jobs:
           fi
           echo "presentation_urls=$presentation_urls" >> "$GITHUB_OUTPUT"
 
+      - name: Extract JSON outputs
+        id: extract_json
+        if: ${{ always() }}
+        env:
+          DOCTOR_JSON_FILE: ${{ runner.temp }}/slideflow-doctor-result.json
+          VALIDATE_JSON_FILE: ${{ runner.temp }}/slideflow-validate-result.json
+          BUILD_JSON_FILE: ${{ runner.temp }}/slideflow-build-result.json
+        run: |
+          set -euo pipefail
+
+          emit_json_output() {
+            local key="$1"
+            local file="$2"
+            echo "${key}<<EOF" >> "$GITHUB_OUTPUT"
+            if [[ -s "$file" ]]; then
+              cat "$file" >> "$GITHUB_OUTPUT"
+            else
+              echo "{}" >> "$GITHUB_OUTPUT"
+            fi
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          }
+
+          emit_json_output "doctor_result_json" "$DOCTOR_JSON_FILE"
+          emit_json_output "validate_result_json" "$VALIDATE_JSON_FILE"
+          emit_json_output "build_result_json" "$BUILD_JSON_FILE"
+
       - name: Upload build logs
-        if: ${{ inputs.upload-log-artifact }}
+        if: ${{ always() && inputs.upload-log-artifact }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact-name }}
           path: |
             ${{ runner.temp }}/slideflow-build.log
             ${{ runner.temp }}/slideflow-presentation-urls.txt
+            ${{ runner.temp }}/slideflow-doctor-result.json
+            ${{ runner.temp }}/slideflow-validate-result.json
+            ${{ runner.temp }}/slideflow-build-result.json
           if-no-files-found: ignore
