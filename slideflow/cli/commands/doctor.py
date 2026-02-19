@@ -111,33 +111,44 @@ def _provider_checks(
     registry_paths: Optional[List[Path]],
 ) -> List[Dict[str, Any]]:
     checks: List[Dict[str, Any]] = []
-
-    raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
-    config_registry = raw_config.get("registry")
-    resolved_registry_paths = resolve_registry_paths(
-        config_file=config_file,
-        cli_registry_paths=registry_paths,
-        config_registry=config_registry,
-    )
-
-    loader = ConfigLoader(yaml_path=config_file, registry_paths=resolved_registry_paths)
-    presentation_config = PresentationConfig(**loader.config)
-    provider_config_type = ProviderFactory.get_config_class(
-        presentation_config.provider.type
-    )
-    provider_config_type(**presentation_config.provider.config)
-
-    provider = ProviderFactory.create_provider(presentation_config.provider)
-    checks.append(
-        _check(
-            "provider_init",
-            True,
-            f"Initialized provider '{presentation_config.provider.type}'",
-            "error",
+    try:
+        raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
+        config_registry = raw_config.get("registry")
+        resolved_registry_paths = resolve_registry_paths(
+            config_file=config_file,
+            cli_registry_paths=registry_paths,
+            config_registry=config_registry,
         )
-    )
-    for check_name, ok, detail in provider.run_preflight_checks():
-        checks.append(_check(f"provider:{check_name}", ok, detail, "error"))
+
+        loader = ConfigLoader(
+            yaml_path=config_file, registry_paths=resolved_registry_paths
+        )
+        presentation_config = PresentationConfig(**loader.config)
+        provider_config_type = ProviderFactory.get_config_class(
+            presentation_config.provider.type
+        )
+        provider_config_type(**presentation_config.provider.config)
+
+        provider = ProviderFactory.create_provider(presentation_config.provider)
+        checks.append(
+            _check(
+                "provider_init",
+                True,
+                f"Initialized provider '{presentation_config.provider.type}'",
+                "error",
+            )
+        )
+        for check_name, ok, detail in provider.run_preflight_checks():
+            checks.append(_check(f"provider:{check_name}", ok, detail, "error"))
+    except Exception as error:
+        checks.append(
+            _check(
+                "provider_init",
+                False,
+                str(error).splitlines()[0],
+                "error",
+            )
+        )
 
     return checks
 

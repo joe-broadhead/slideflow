@@ -94,3 +94,47 @@ def test_doctor_writes_error_json_when_checks_raise(tmp_path, monkeypatch):
     payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "SLIDEFLOW_DOCTOR_FAILED"
+
+
+def test_doctor_non_strict_does_not_exit_when_provider_checks_fail(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        doctor_module,
+        "_local_environment_checks",
+        lambda: [
+            {
+                "name": "python_version",
+                "ok": True,
+                "detail": "Python ok",
+                "severity": "error",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        doctor_module,
+        "_provider_checks",
+        lambda _config_file, _registry_paths: [
+            {
+                "name": "provider_init",
+                "ok": False,
+                "detail": "missing credentials",
+                "severity": "error",
+            }
+        ],
+    )
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: {type: google_slides, config: {}}\n", encoding="utf-8"
+    )
+
+    result = doctor_module.doctor_command(
+        config_file=config_file,
+        registry_paths=None,
+        output_json=None,
+        strict=False,
+    )
+
+    assert result["status"] == "error"
+    assert result["summary"]["failed_errors"] == 1
