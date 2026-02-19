@@ -19,6 +19,5 @@ template: |
     - type: "waterfall"
       x: "${{ label_column }}"
       y: "${{ value_column }}"
-      measure: "relative"
   layout_config:
     title: "{{ title }}"

@@ -112,6 +112,7 @@ nav:
       - Template Catalog: template-catalog.md
       - Template Authoring: template-authoring.md
   - Operations:
+      - Automation: automation.md
       - Testing: testing.md
       - Security: security.md
       - Release: release-process.md

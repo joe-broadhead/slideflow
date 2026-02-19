@@ -1,0 +1,39 @@
+name: Live Google Slides
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live-google:
+    if: ${{ secrets.GOOGLE_SLIDEFLOW_CREDENTIALS != '' && secrets.SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,ai]"
+
+      - name: Run live Google Slides tests
+        env:
+          SLIDEFLOW_RUN_LIVE: "1"
+          GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_SLIDEFLOW_CREDENTIALS }}
+          SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID: ${{ secrets.SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID }}
+          SLIDEFLOW_LIVE_DRIVE_FOLDER_ID: ${{ secrets.SLIDEFLOW_LIVE_DRIVE_FOLDER_ID }}
+          SLIDEFLOW_LIVE_TEMPLATE_ID: ${{ secrets.SLIDEFLOW_LIVE_TEMPLATE_ID }}
+          SLIDEFLOW_LIVE_SHARE_EMAIL: ${{ secrets.SLIDEFLOW_LIVE_SHARE_EMAIL }}
+          SLIDEFLOW_LIVE_SHARE_ROLE: "reader"
+          SLIDEFLOW_LIVE_KEEP_ARTIFACTS: "0"
+          SLIDEFLOW_LIVE_RPS: "1.0"
+        run: |
+          python -m pytest -q live_tests -m live_google

@@ -51,12 +51,14 @@ Example:
     >>> url, file_id = chart.generate_public_url(drive_service)
 """
 
+import atexit
 import io
 import logging
 import re
 import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
+from threading import Lock
 from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import pandas as pd
@@ -75,6 +77,85 @@ from slideflow.utilities.exceptions import ChartGenerationError
 
 logger = logging.getLogger(__name__)
 
+_CHART_EXPORT_EXECUTOR: Optional[ProcessPoolExecutor] = None
+_CHART_EXPORT_EXECUTOR_LOCK = Lock()
+
+
+def _get_chart_export_executor() -> ProcessPoolExecutor:
+    global _CHART_EXPORT_EXECUTOR
+    with _CHART_EXPORT_EXECUTOR_LOCK:
+        if _CHART_EXPORT_EXECUTOR is None:
+            _CHART_EXPORT_EXECUTOR = ProcessPoolExecutor(max_workers=1)
+        return _CHART_EXPORT_EXECUTOR
+
+
+def _reset_chart_export_executor() -> None:
+    global _CHART_EXPORT_EXECUTOR
+    with _CHART_EXPORT_EXECUTOR_LOCK:
+        executor = _CHART_EXPORT_EXECUTOR
+        _CHART_EXPORT_EXECUTOR = None
+
+    if executor is None:
+        return
+
+    # Best effort teardown: terminate worker process to avoid hanging exports.
+    try:
+        for process in getattr(executor, "_processes", {}).values():
+            process.terminate()
+    except Exception:
+        pass
+
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
+
+
+def _shutdown_chart_export_executor() -> None:
+    _reset_chart_export_executor()
+
+
+atexit.register(_shutdown_chart_export_executor)
+
+
+def _plotly_to_image(
+    fig: go.Figure, fmt: str, width: int, height: int, scale: Optional[float]
+) -> bytes:
+    """Render a Plotly figure to bytes with explicit headless Kaleido defaults.
+
+    Falls back to Plotly's standard exporter if direct Kaleido invocation fails.
+    This keeps behavior robust across local desktops and headless orchestrators.
+    """
+    opts: Dict[str, Any] = {
+        "format": fmt,
+        "width": width,
+        "height": height,
+    }
+    if scale is not None:
+        opts["scale"] = scale
+
+    try:
+        import kaleido  # type: ignore[import-untyped]
+
+        # Reuse a single sync server per process to avoid repeatedly spawning
+        # browser processes for each chart export.
+        kaleido.start_sync_server(n=1, timeout=90, headless=True, silence_warnings=True)
+
+        # Force headless browser execution so local desktop runs avoid visible windows
+        # and orchestrated runs remain deterministic.
+        return kaleido.calc_fig_sync(fig.to_plotly_json(), opts=opts)
+    except Exception:
+        logger.debug(
+            "Direct Kaleido export failed; falling back to plotly.io.to_image."
+        )
+        return pio.to_image(
+            fig,
+            format=fmt,
+            width=width,
+            height=height,
+            scale=scale,
+        )
+
 
 def _execute_with_retry(func, *args, **kwargs):
     """
@@ -86,7 +167,7 @@ def _execute_with_retry(func, *args, **kwargs):
     execution_id = uuid.uuid4().hex[:8]
     timeouts = [30, 60, 90]
     for i, timeout in enumerate(timeouts):
-        executor = ProcessPoolExecutor(max_workers=1)
+        executor = _get_chart_export_executor()
         try:
             logger.info(
                 f"[{execution_id}] Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)"
@@ -96,15 +177,10 @@ def _execute_with_retry(func, *args, **kwargs):
             logger.info(
                 f"[{execution_id}] Execution of {func.__name__} completed successfully"
             )
-            executor.shutdown(wait=True)
             return result
         except TimeoutError:
-            # Terminate the stuck process to free resources
-            for pid, process in executor._processes.items():
-                process.terminate()
-
-            # Do not wait for the process to finish
-            executor.shutdown(wait=False)
+            # Reset the worker on timeout to clear stuck browser state.
+            _reset_chart_export_executor()
 
             logger.warning(
                 f"[{execution_id}] Function {func.__name__} timed out after {timeout} seconds. Retrying... "
@@ -112,7 +188,7 @@ def _execute_with_retry(func, *args, **kwargs):
             )
             continue
         except Exception:
-            executor.shutdown(wait=False)
+            _reset_chart_export_executor()
             raise
     raise ChartGenerationError(
         f"[{execution_id}] Function {func.__name__} failed after all retries."
@@ -586,13 +662,12 @@ class PlotlyGraphObjects(BaseChart):
         image_height = int(chart_height * POINTS_TO_PIXELS)
 
         return _execute_with_retry(
-            pio.to_image,
+            _plotly_to_image,
             fig,
-            format="png",
-            width=image_width,
-            height=image_height,
-            scale=self.scale,
-            engine="auto",
+            "png",
+            image_width,
+            image_height,
+            self.scale,
         )
 
     def _process_trace_config(

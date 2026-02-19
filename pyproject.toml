@@ -85,4 +85,5 @@ testpaths = ["tests"]
 markers = [
     "integration: integration tests that may hit external systems",
     "e2e: end-to-end workflow tests",
+    "live_google: live Google Slides API tests that create real presentations",
 ]

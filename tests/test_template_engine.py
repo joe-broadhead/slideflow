@@ -123,3 +123,22 @@ def test_kpi_delta_template_renders_scalar_column_references_by_default():
     assert rendered["traces"][0]["type"] == "indicator"
     assert rendered["traces"][0]["value"] == "$arr[0]"
     assert rendered["traces"][0]["delta"]["reference"] == "$arr_prev[0]"
+
+
+def test_waterfall_delta_template_does_not_set_invalid_scalar_measure():
+    engine = TemplateEngine()
+
+    rendered = engine.render_template(
+        "composition/waterfall_delta",
+        {
+            "title": "Contributions",
+            "label_column": "segment",
+            "value_column": "delta_value",
+        },
+    )
+
+    trace = rendered["traces"][0]
+    assert trace["type"] == "waterfall"
+    assert trace["x"] == "$segment"
+    assert trace["y"] == "$delta_value"
+    assert "measure" not in trace

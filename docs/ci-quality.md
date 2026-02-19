@@ -31,6 +31,15 @@
   - runs `pip-audit`
   - runs `bandit`
   - uploads audit reports as artifacts
+- `Live Google Slides` (`.github/workflows/live-google-slides.yml`)
+  - runs on manual dispatch (`workflow_dispatch`) only
+  - executes `pytest -q live_tests -m live_google`
+  - uses dedicated secrets/folders to create real template-based presentations
+  - validates full feature matrix behavior (all built-in chart templates, direct Plotly charts, custom chart function, AI text, dynamic function replacements)
+  - requires secrets: `GOOGLE_SLIDEFLOW_CREDENTIALS`, `SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID`
+  - optional secret: `SLIDEFLOW_LIVE_TEMPLATE_ID` (seed template to copy before test mutation)
+  - optional secret: `SLIDEFLOW_LIVE_SHARE_EMAIL` (share rendered deck for manual visual verification)
+  - workflow pins `SLIDEFLOW_LIVE_KEEP_ARTIFACTS=0` to avoid leaving artifacts in CI runs
 
 ## Required local checks before PR
 

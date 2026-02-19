@@ -1,0 +1,198 @@
+name: Reusable Slideflow Build
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: "Path to Slideflow YAML config"
+        required: true
+        type: string
+      registry-files:
+        description: "Optional comma/newline-separated registry file paths"
+        required: false
+        default: ""
+        type: string
+      params-path:
+        description: "Optional CSV params file path"
+        required: false
+        default: ""
+        type: string
+      working-directory:
+        description: "Working directory for commands"
+        required: false
+        default: "."
+        type: string
+      python-version:
+        description: "Python version"
+        required: false
+        default: "3.12"
+        type: string
+      slideflow-package-spec:
+        description: "Package spec to install (e.g. slideflow-presentations==0.0.2)"
+        required: false
+        default: "slideflow-presentations"
+        type: string
+      extra-pip-packages:
+        description: "Optional newline-separated pip packages"
+        required: false
+        default: ""
+        type: string
+      run-pip-check:
+        description: "Run python -m pip check after install"
+        required: false
+        default: true
+        type: boolean
+      run-validate:
+        description: "Run slideflow validate before build"
+        required: false
+        default: true
+        type: boolean
+      dry-run:
+        description: "Run build with --dry-run"
+        required: false
+        default: false
+        type: boolean
+      threads:
+        description: "Optional --threads value"
+        required: false
+        default: ""
+        type: string
+      requests-per-second:
+        description: "Optional --rps value"
+        required: false
+        default: ""
+        type: string
+      upload-log-artifact:
+        description: "Upload build logs and discovered URLs as an artifact"
+        required: false
+        default: true
+        type: boolean
+      artifact-name:
+        description: "Artifact name for logs/URLs"
+        required: false
+        default: "slideflow-build-logs"
+        type: string
+    outputs:
+      presentation-urls:
+        description: "Comma-separated presentation URLs discovered in build logs"
+        value: ${{ jobs.build.outputs.presentation_urls }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+
+      - name: Install Slideflow
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "${{ inputs.slideflow-package-spec }}"
+
+          if [[ -n "${{ inputs.extra-pip-packages }}" ]]; then
+            while IFS= read -r pkg; do
+              pkg="$(echo "$pkg" | xargs)"
+              if [[ -n "$pkg" ]]; then
+                python -m pip install "$pkg"
+              fi
+            done <<< "${{ inputs.extra-pip-packages }}"
+          fi
+
+      - name: Validate environment
+        if: ${{ inputs.run-pip-check }}
+        run: |
+          python -m pip check
+
+      - name: Validate and build
+        id: run_build
+        env:
+          LOG_FILE: ${{ runner.temp }}/slideflow-build.log
+          URL_FILE: ${{ runner.temp }}/slideflow-presentation-urls.txt
+        run: |
+          set -euo pipefail
+          : > "$LOG_FILE"
+          : > "$URL_FILE"
+
+          registry_args=()
+          if [[ -n "${{ inputs.registry-files }}" ]]; then
+            while IFS= read -r registry; do
+              registry="$(echo "$registry" | xargs)"
+              if [[ -n "$registry" ]]; then
+                registry_args+=("--registry" "$registry")
+              fi
+            done < <(printf '%s\n' "${{ inputs.registry-files }}" | tr ',' '\n')
+          fi
+
+          if [[ "${{ inputs.run-validate }}" == "true" ]]; then
+            validate_cmd=(slideflow validate "${{ inputs.config-file }}")
+            if [[ ${#registry_args[@]} -gt 0 ]]; then
+              validate_cmd+=("${registry_args[@]}")
+            fi
+            {
+              echo "Running: ${validate_cmd[*]}"
+              "${validate_cmd[@]}"
+            } 2>&1 | tee -a "$LOG_FILE"
+          fi
+
+          build_cmd=(slideflow build "${{ inputs.config-file }}")
+          if [[ ${#registry_args[@]} -gt 0 ]]; then
+            build_cmd+=("${registry_args[@]}")
+          fi
+          if [[ -n "${{ inputs.params-path }}" ]]; then
+            build_cmd+=("--params-path" "${{ inputs.params-path }}")
+          fi
+          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+            build_cmd+=("--dry-run")
+          fi
+          if [[ -n "${{ inputs.threads }}" ]]; then
+            build_cmd+=("--threads" "${{ inputs.threads }}")
+          fi
+          if [[ -n "${{ inputs.requests-per-second }}" ]]; then
+            build_cmd+=("--rps" "${{ inputs.requests-per-second }}")
+          fi
+
+          {
+            echo "Running: ${build_cmd[*]}"
+            "${build_cmd[@]}"
+          } 2>&1 | tee -a "$LOG_FILE"
+
+          grep -Eo 'https://docs.google.com/presentation/d/[A-Za-z0-9_-]+' "$LOG_FILE" | sort -u > "$URL_FILE" || true
+
+      - name: Extract URL output
+        id: extract_urls
+        env:
+          URL_FILE: ${{ runner.temp }}/slideflow-presentation-urls.txt
+        run: |
+          set -euo pipefail
+          if [[ -s "$URL_FILE" ]]; then
+            presentation_urls="$(paste -sd, "$URL_FILE")"
+          else
+            presentation_urls=""
+          fi
+          echo "presentation_urls=$presentation_urls" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build logs
+        if: ${{ inputs.upload-log-artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            ${{ runner.temp }}/slideflow-build.log
+            ${{ runner.temp }}/slideflow-presentation-urls.txt
+          if-no-files-found: ignore
