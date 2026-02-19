@@ -1,0 +1,25 @@
+name: "Box Distribution"
+description: "Box plot for quartile and outlier distribution checks."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "group_column"
+    type: "string"
+    required: true
+    description: "Grouping column"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Measured value column"
+template: |
+  traces:
+    - type: "box"
+      x: "${{ group_column }}"
+      y: "${{ value_column }}"
+      boxpoints: "outliers"
+      name: "{{ value_column|title_case }}"
+  layout_config:
+    title: "{{ title }}"

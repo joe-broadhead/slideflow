@@ -1,0 +1,19 @@
+name: "Histogram Distribution"
+description: "Histogram for one-variable distribution analysis."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Distribution value column"
+template: |
+  traces:
+    - type: "histogram"
+      x: "${{ value_column }}"
+      name: "{{ value_column|title_case }}"
+  layout_config:
+    title: "{{ title }}"

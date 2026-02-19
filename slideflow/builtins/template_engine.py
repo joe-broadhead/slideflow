@@ -57,7 +57,7 @@ Functions:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import yaml  # type: ignore[import-untyped]
 from jinja2 import BaseLoader, Environment, select_autoescape
@@ -159,21 +159,23 @@ class TemplateEngine:
                 If None, uses default discovery paths:
                 1. ./templates/ (current working directory)
                 2. ~/.slideflow/templates/ (user home directory)
+                3. packaged SlideFlow built-in templates
                 Only existing directories are included in the search.
         """
+        resolved_template_paths: Sequence[Union[str, Path]]
         if template_paths is None:
-            # Default template discovery paths (in priority order)
-            template_paths = [
-                Path.cwd() / "templates",  # User project templates
-                Path.home() / ".slideflow" / "templates",  # Global user templates
-            ]
+            resolved_template_paths = _default_template_paths()
+        else:
+            resolved_template_paths = template_paths
 
         # Convert all paths to Path objects and ensure they exist
         self.template_paths = []
-        for path in template_paths:
-            path_obj = Path(path)
-            if path_obj.exists() and path_obj.is_dir():
+        seen_paths = set()
+        for path in resolved_template_paths:
+            path_obj = Path(path).expanduser().resolve()
+            if path_obj.exists() and path_obj.is_dir() and path_obj not in seen_paths:
                 self.template_paths.append(path_obj)
+                seen_paths.add(path_obj)
         self._template_cache: Dict[str, ChartTemplate] = {}
         self._jinja_env = Environment(
             loader=BaseLoader(), autoescape=select_autoescape(["html", "xml"])
@@ -387,18 +389,10 @@ class TemplateEngine:
         if template_name in self._template_cache:
             return self._template_cache[template_name]
 
-        # Search for template in all template paths (in priority order)
-        template_path = None
-        for templates_dir in self.template_paths:
-            candidate_path = templates_dir / f"{template_name}.yml"
-            if candidate_path.exists():
-                template_path = candidate_path
-                break
+        template_path = self._resolve_template_path(template_name)
 
         if template_path is None:
-            searched_paths = [
-                str(path / f"{template_name}.yml") for path in self.template_paths
-            ]
+            searched_paths = [str(path) for path in self.template_paths]
             raise ChartGenerationError(
                 f"Template '{template_name}' not found in any template directory. Searched: {searched_paths}"
             )
@@ -594,11 +588,43 @@ class TemplateEngine:
 
         for templates_dir in self.template_paths:
             if templates_dir.exists():
-                for template_file in templates_dir.glob("*.yml"):
+                for template_file in templates_dir.rglob("*.yml"):
                     if template_file.is_file():
-                        template_names.add(template_file.stem)
+                        relative = template_file.relative_to(templates_dir).with_suffix(
+                            ""
+                        )
+                        template_names.add(relative.as_posix())
 
         return sorted(list(template_names))
+
+    def _resolve_template_path(self, template_name: str) -> Optional[Path]:
+        """Resolve a template name against configured search paths.
+
+        Resolution rules:
+        1. Exact relative path match (`category/name` -> `category/name.yml`)
+        2. Bare-name match by stem anywhere under the template root
+        """
+        normalized_name = template_name.strip().replace("\\", "/")
+        if not normalized_name:
+            return None
+
+        for templates_dir in self.template_paths:
+            explicit_path = templates_dir / f"{normalized_name}.yml"
+            if explicit_path.exists() and explicit_path.is_file():
+                return explicit_path
+
+            if "/" in normalized_name:
+                continue
+
+            recursive_matches = sorted(
+                candidate
+                for candidate in templates_dir.rglob(f"{normalized_name}.yml")
+                if candidate.is_file()
+            )
+            if recursive_matches:
+                return recursive_matches[0]
+
+        return None
 
     def get_template_info(self, template_name: str) -> Dict[str, Any]:
         """Get detailed information about a template.
@@ -652,6 +678,15 @@ class TemplateEngine:
 _template_engine = None
 
 
+def _default_template_paths() -> List[Path]:
+    """Default template search paths in descending precedence."""
+    return [
+        Path.cwd() / "templates",
+        Path.home() / ".slideflow" / "templates",
+        Path(__file__).resolve().parents[1] / "templates",
+    ]
+
+
 def get_template_engine() -> TemplateEngine:
     """Get the global template engine instance.
 
@@ -678,7 +713,9 @@ def get_template_engine() -> TemplateEngine:
     return _template_engine
 
 
-def set_template_paths(template_paths: List[Union[str, Path]]) -> None:
+def set_template_paths(
+    template_paths: List[Union[str, Path]], include_defaults: bool = True
+) -> None:
     """Configure custom template search paths for the global engine.
 
     Replaces the global template engine with a new instance that uses
@@ -689,6 +726,8 @@ def set_template_paths(template_paths: List[Union[str, Path]]) -> None:
         template_paths: List of directories to search for templates, in
             priority order. Earlier paths take precedence over later ones.
             Non-existent directories are automatically filtered out.
+        include_defaults: If True, append default template locations after
+            custom paths (`./templates`, `~/.slideflow/templates`, built-ins).
 
     Example:
         >>> # Set custom template paths
@@ -705,10 +744,17 @@ def set_template_paths(template_paths: List[Union[str, Path]]) -> None:
     Note:
         - Resets the global template engine, clearing any cached templates
         - Affects all subsequent calls to get_template_engine()
+        - When include_defaults=True, custom paths override defaults
         - Use reset_template_engine() to return to default paths
     """
+    paths: List[Union[str, Path]] = list(template_paths)
+    if include_defaults:
+        for default_path in _default_template_paths():
+            if default_path not in paths:
+                paths.append(default_path)
+
     global _template_engine
-    _template_engine = TemplateEngine(template_paths=template_paths)
+    _template_engine = TemplateEngine(template_paths=paths)
 
 
 def reset_template_engine() -> None:
@@ -732,7 +778,7 @@ def reset_template_engine() -> None:
     Note:
         - Clears all cached templates
         - Next call to get_template_engine() will create new instance
-        - Default paths are ./templates/ and ~/.slideflow/templates/
+        - Default paths include ./templates/, ~/.slideflow/templates/, and built-ins
     """
     global _template_engine
     _template_engine = None

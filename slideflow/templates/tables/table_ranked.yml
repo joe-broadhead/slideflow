@@ -1,0 +1,29 @@
+name: "Table Ranked"
+description: "Ranked table view for top-N style reporting."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Table title"
+  - name: "column_1"
+    type: "string"
+    required: true
+    description: "First displayed column"
+  - name: "column_2"
+    type: "string"
+    required: true
+    description: "Second displayed column"
+template: |
+  traces:
+    - type: "table"
+      header:
+        values:
+          - "{{ column_1|title_case }}"
+          - "{{ column_2|title_case }}"
+      cells:
+        values:
+          - "${{ column_1 }}"
+          - "${{ column_2 }}"
+  layout_config:
+    title: "{{ title }}"

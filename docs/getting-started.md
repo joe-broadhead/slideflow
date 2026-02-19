@@ -81,6 +81,13 @@ slideflow build config.yml
 
 Validation should be treated as mandatory in CI and release workflows.
 
+To discover built-in chart templates:
+
+```bash
+slideflow templates list --details
+slideflow templates info bars/bar_basic
+```
+
 ## Quick smoke check (recommended after install)
 
 Run the checked-in smoke sample with no external credentials:
@@ -94,5 +101,10 @@ slideflow build config.yml --params-path params.csv --dry-run
 ## Next steps
 
 - Run the sample pipeline in [Quickstart](quickstart.md)
+- Configure real template/folder/sharing behavior in [Google Slides Provider](providers/google-slides.md)
+- Choose and harden source systems in [Data Connectors](data-connectors.md)
+- Add reusable preprocessing in [Data Transforms](data-transforms.md)
+- Configure LLM output in [AI Providers](ai-providers.md)
+- Plan production scheduling in [Deployments](deployments.md)
 - Review [Configuration Reference](config-reference.md)
 - Use [Cookbooks](cookbooks.md) for production patterns

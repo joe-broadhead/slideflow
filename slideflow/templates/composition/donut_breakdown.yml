@@ -1,0 +1,24 @@
+name: "Donut Breakdown"
+description: "Donut chart for composition snapshots."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "label_column"
+    type: "string"
+    required: true
+    description: "Slice label column"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Slice value column"
+template: |
+  traces:
+    - type: "pie"
+      labels: "${{ label_column }}"
+      values: "${{ value_column }}"
+      hole: 0.5
+  layout_config:
+    title: "{{ title }}"

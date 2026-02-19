@@ -51,9 +51,6 @@ Use when your team needs consistent visuals across many decks.
 3. Keep styling in templates, business logic in config/data.
 
 ```yaml
-template_paths:
-  - "./templates"
-
 presentation:
   name: "Template Driven Deck"
   slides:
@@ -61,7 +58,7 @@ presentation:
       charts:
         - type: "template"
           config:
-            template_name: "bar_chart"
+            template_name: "bars/bar_basic"
             data_source:
               type: "csv"
               name: "sales"

@@ -1,0 +1,28 @@
+name: "Heatmap Matrix"
+description: "Heatmap for matrix-style intensity views."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "X-axis category"
+  - name: "y_column"
+    type: "string"
+    required: true
+    description: "Y-axis category"
+  - name: "z_column"
+    type: "string"
+    required: true
+    description: "Heat intensity value"
+template: |
+  traces:
+    - type: "heatmap"
+      x: "${{ x_column }}"
+      y: "${{ y_column }}"
+      z: "${{ z_column }}"
+  layout_config:
+    title: "{{ title }}"

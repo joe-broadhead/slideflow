@@ -1,0 +1,37 @@
+# Chart snippets
+plotly_go:
+  type: "plotly_go"
+  config:
+    title: "Revenue"
+    data_source:
+      type: "csv"
+      name: "sales"
+      file_path: "./data/sales.csv"
+    traces:
+      - type: "bar"
+        x: "$month"
+        y: "$revenue"
+
+template:
+  type: "template"
+  config:
+    template_name: "bars/bar_basic"
+    data_source:
+      type: "csv"
+      name: "sales"
+      file_path: "./data/sales.csv"
+    template_config:
+      title: "Revenue by Month"
+      x_column: "month"
+      y_column: "revenue"
+
+custom:
+  type: "custom"
+  config:
+    chart_fn: "build_custom_chart"
+    chart_config:
+      variant: "stacked"
+    data_source:
+      type: "csv"
+      name: "sales"
+      file_path: "./data/sales.csv"

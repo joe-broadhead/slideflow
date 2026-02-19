@@ -1,130 +1,103 @@
 # Templating
 
-SlideFlow's templating engine allows you to create reusable chart definitions using YAML. This is a powerful feature that can help you to maintain a consistent style across your presentations and to reduce the amount of boilerplate configuration in your `config.yml` files.
+SlideFlow templates let you define reusable chart configurations in YAML and apply
+parameterized values per slide.
 
-## The Concept
+## Template contract
 
-A template is a YAML file that defines a chart's structure and appearance. It can have parameters that allow you to customize the chart at build time. For example, you could have a template for a bar chart that allows you to specify the title, the x-axis column, and the y-axis column.
+Each template file must contain:
 
-When you use a template in your `config.yml`, you provide values for these parameters. SlideFlow then combines the template with your parameters to generate the final chart configuration.
+- `name`
+- `description`
+- `version`
+- `parameters[]`
+- `template`
 
-## Creating a Template
-
-Let's take a look at the `bar_chart.yml` template that we created in the quickstart directory:
+Minimal example:
 
 ```yaml
-name: "Reusable Bar Chart"
-description: "A standard bar chart with customizable title, x-axis, and y-axis."
+name: "Reusable Bar"
+description: "Simple reusable bar chart"
 version: "1.0"
-
 parameters:
   - name: "title"
     type: "string"
     required: true
-    description: "The title of the chart."
   - name: "x_column"
     type: "string"
     required: true
-    description: "The name of the column to use for the x-axis."
   - name: "y_column"
     type: "string"
     required: true
-    description: "The name of the column to use for the y-axis."
-  - name: "x_title"
-    type: "string"
-    required: false
-    default: ""
-    description: "The title for the x-axis."
-  - name: "y_title"
-    type: "string"
-    required: false
-    default: ""
-    description: "The title for the y-axis."
-
-template:
+template: |
   traces:
     - type: "bar"
       x: "${{ x_column }}"
       y: "${{ y_column }}"
   layout_config:
     title: "{{ title }}"
-    xaxis:
-      title: "{{ x_title if x_title else x_column|title_case }}"
-    yaxis:
-      title: "{{ y_title if y_title else y_column|title_case }}"
 ```
 
-This template defines a bar chart with five parameters: `title`, `x_column`, `y_column`, `x_title`, and `y_title`. The `template` section uses Jinja2 syntax to define the chart's configuration. For example, `{{ title }}` will be replaced with the value of the `title` parameter.
-
-## Using a Template
-
-To use this template in your `config.yml`, you would add a chart with the type `template` and provide the template name and the required parameters:
+## Using templates in `config.yml`
 
 ```yaml
 - type: "template"
   config:
-    template_name: "bar_chart"
+    template_name: "bars/bar_basic"
+    data_source:
+      type: "csv"
+      name: "sales"
+      file_path: "./data/sales.csv"
     template_config:
-      title: "Monthly Revenue"
+      title: "Revenue by Month"
       x_column: "month"
       y_column: "revenue"
 ```
 
-When you build your presentation, SlideFlow will find the `bar_chart.yml` template, combine it with your parameters, and generate a bar chart with the title "Monthly Revenue", the `month` column on the x-axis, and the `revenue` column on the y-axis.
+## Discovery and precedence
 
-## Template Locations
+Template resolution is deterministic and non-breaking:
 
-By default, SlideFlow looks for templates in the following locations:
+1. User-provided `template_paths` (in listed order)
+2. Project default `./templates`
+3. User default `~/.slideflow/templates`
+4. Packaged SlideFlow built-ins (`slideflow/templates`)
 
-1.  A `templates` directory in your current working directory (`./templates`)
-2.  A global SlideFlow templates directory in your home folder (`~/.slideflow/templates/`)
+If the same template name exists in multiple locations, earlier paths win. This
+means local/project templates override packaged built-ins.
 
-You can also specify a custom location for your templates by adding a `template_paths` section to your `config.yml`:
+## Names and categories
 
-```yaml
-template_paths:
-  - "/path/to/your/templates"
+Built-ins are organized in category folders (for example `bars/bar_basic`). You can
+reference templates by either:
+
+- Relative path name: `bars/bar_basic`
+- Bare template name: `bar_basic` (works when unique)
+
+## Inspect template catalog from CLI
+
+List templates:
+
+```bash
+slideflow templates list
+slideflow templates list --details
 ```
 
-## Available Jinja2 Filters
+Inspect one template:
 
-SlideFlow provides a number of built-in Jinja2 filters that you can use in your templates. These filters allow you to transform your data and to create more dynamic and flexible templates.
+```bash
+slideflow templates info bars/bar_basic
+```
 
-### String Transformations
+## Available Jinja filters
 
--   `title_case`: Converts a string from `snake_case` to `Title Case`.
--   `snake_to_kebab`: Converts a string from `snake_case` to `kebab-case`.
--   `add_prefix`: Adds a prefix to a string (defaults to `$`).
--   `add_suffix`: Adds a suffix to a string.
+Built-in filters include:
 
-### List Operations
+- string helpers: `title_case`, `snake_to_kebab`, `add_prefix`, `add_suffix`
+- list helpers: `enumerate_list`, `zip_lists`, `repeat_value`
+- conditionals: `if_else`, `default_if_none`, `contains`, `starts_with`, `ends_with`
+- formatting helpers: `chart_alignment`, `column_width`, `column_format`
+- math helpers: `multiply`, `divide`, `round_number`
 
--   `enumerate_list`: Enumerates a list, returning a list of `(index, value)` tuples.
--   `zip_lists`: Zips multiple lists together.
--   `repeat_value`: Repeats a value a specified number of times.
-
-### Color and Styling
-
--   `alternating_colors`: Generates alternating colors for a list.
--   `color_reference`: Generates a color column reference (e.g., `$_color_col_0`).
--   `hex_to_rgb`: Converts a hex color code to an RGB string.
-
-### Conditionals
-
--   `if_else`: A simple ternary operator.
--   `default_if_none`: Returns a default value if a value is `None`.
--   `contains`: Checks if a string contains a substring.
--   `starts_with`: Checks if a string starts with a prefix.
--   `ends_with`: Checks if a string ends with a suffix.
-
-### Chart Helpers
-
--   `chart_alignment`: Determines the text alignment for a column.
--   `column_width`: Determines the width of a column based on a mapping.
--   `column_format`: Determines the format string for a column based on a mapping.
-
-### Math
-
--   `multiply`: Multiplies a value by a factor.
--   `divide`: Divides a value by a divisor.
--   `round_number`: Rounds a number to a specified number of digits.
+For built-in template catalog details, see [Template Catalog](template-catalog.md).
+For creating your own templates, see [Template Authoring](template-authoring.md).

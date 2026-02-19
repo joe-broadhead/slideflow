@@ -15,8 +15,9 @@ SlideFlow generates Google Slides decks from structured YAML, data sources, and 
 
 1. Configure auth and template IDs in [Getting Started](getting-started.md).
 2. Run the full local path in [Quickstart](quickstart.md).
-3. Use [CLI Reference](cli-reference.md) and [Configuration Reference](config-reference.md) for production configs.
-4. Use [Security & Auth](security.md), [Testing](testing.md), and [Release Process](release-process.md) for operational hardening.
+3. Use [Google Slides Provider](providers/google-slides.md), [Data Connectors](data-connectors.md), [Data Transforms](data-transforms.md), and [AI Providers](ai-providers.md) to harden feature usage.
+4. Use [CLI Reference](cli-reference.md) and [Configuration Reference](config-reference.md) for production configs.
+5. Use [Deployments](deployments.md), [Security & Auth](security.md), [Testing](testing.md), and [Release Process](release-process.md) for operational hardening.
 
 ## Quality policy
 

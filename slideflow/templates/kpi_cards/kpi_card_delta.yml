@@ -1,0 +1,37 @@
+name: "KPI Card Delta"
+description: "KPI indicator with delta versus reference."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Indicator title"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Current KPI value"
+  - name: "reference_column"
+    type: "string"
+    required: true
+    description: "Reference KPI value"
+  - name: "value_row_index"
+    type: "int"
+    required: false
+    default: 0
+    description: "Row index used for current value (0 = first, -1 = last)"
+  - name: "reference_row_index"
+    type: "int"
+    required: false
+    default: 0
+    description: "Row index used for reference value (0 = first, -1 = last)"
+template: |
+  traces:
+    - type: "indicator"
+      mode: "number+delta"
+      value: "${{ value_column }}[{{ value_row_index }}]"
+      delta:
+        reference: "${{ reference_column }}[{{ reference_row_index }}]"
+      title:
+        text: "{{ title }}"
+  layout_config:
+    title: "{{ title }}"

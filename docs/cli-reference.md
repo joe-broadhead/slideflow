@@ -10,6 +10,7 @@ Commands:
 
 - `build`: validate + generate one or many presentations
 - `validate`: validate configuration and registries without rendering
+- `templates`: inspect available chart templates and contracts
 
 ## Global options
 
@@ -35,7 +36,8 @@ Registry resolution order:
 
 1. CLI `--registry` paths (if provided)
 2. `registry:` in config YAML (if provided)
-3. local `./registry.py` (if present)
+3. `<config_dir>/registry.py` (if present)
+4. local `./registry.py` only when config-dir default is missing
 
 Examples:
 
@@ -65,7 +67,8 @@ Registry resolution order:
 
 1. CLI `--registry` paths (if provided)
 2. `registry:` in config YAML (if provided)
-3. local `./registry.py` (if present)
+3. `<config_dir>/registry.py` (if present)
+4. local `./registry.py` only when config-dir default is missing
 
 Batch parameters:
 
@@ -87,6 +90,38 @@ slideflow build config.yml \
 slideflow build config.yml \
   --threads 3 \
   --rps 0.8
+```
+
+## `slideflow templates list`
+
+```bash
+slideflow templates list [OPTIONS]
+```
+
+Options:
+
+| Option | Description |
+| --- | --- |
+| `-d`, `--details` | Include template descriptions |
+
+Examples:
+
+```bash
+slideflow templates list
+slideflow templates list --details
+```
+
+## `slideflow templates info`
+
+```bash
+slideflow templates info TEMPLATE_NAME
+```
+
+Examples:
+
+```bash
+slideflow templates info bars/bar_basic
+slideflow templates info bar_basic
 ```
 
 ## Exit behavior

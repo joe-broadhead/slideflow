@@ -56,6 +56,9 @@ slideflow = "slideflow.cli.main:app"
 [tool.setuptools.packages.find]
 include = ["slideflow*"]
 
+[tool.setuptools.package-data]
+slideflow = ["templates/**/*.yml"]
+
 [tool.black]
 line-length = 88
 target-version = ['py312']
@@ -82,4 +85,5 @@ testpaths = ["tests"]
 markers = [
     "integration: integration tests that may hit external systems",
     "e2e: end-to-end workflow tests",
+    "live_google: live Google Slides API tests that create real presentations",
 ]

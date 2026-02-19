@@ -51,12 +51,14 @@ Example:
     >>> url, file_id = chart.generate_public_url(drive_service)
 """
 
+import atexit
 import io
 import logging
 import re
 import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
+from threading import Lock
 from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import pandas as pd
@@ -75,6 +77,85 @@ from slideflow.utilities.exceptions import ChartGenerationError
 
 logger = logging.getLogger(__name__)
 
+_CHART_EXPORT_EXECUTOR: Optional[ProcessPoolExecutor] = None
+_CHART_EXPORT_EXECUTOR_LOCK = Lock()
+
+
+def _get_chart_export_executor() -> ProcessPoolExecutor:
+    global _CHART_EXPORT_EXECUTOR
+    with _CHART_EXPORT_EXECUTOR_LOCK:
+        if _CHART_EXPORT_EXECUTOR is None:
+            _CHART_EXPORT_EXECUTOR = ProcessPoolExecutor(max_workers=1)
+        return _CHART_EXPORT_EXECUTOR
+
+
+def _reset_chart_export_executor() -> None:
+    global _CHART_EXPORT_EXECUTOR
+    with _CHART_EXPORT_EXECUTOR_LOCK:
+        executor = _CHART_EXPORT_EXECUTOR
+        _CHART_EXPORT_EXECUTOR = None
+
+    if executor is None:
+        return
+
+    # Best effort teardown: terminate worker process to avoid hanging exports.
+    try:
+        for process in getattr(executor, "_processes", {}).values():
+            process.terminate()
+    except Exception:
+        pass
+
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
+
+
+def _shutdown_chart_export_executor() -> None:
+    _reset_chart_export_executor()
+
+
+atexit.register(_shutdown_chart_export_executor)
+
+
+def _plotly_to_image(
+    fig: go.Figure, fmt: str, width: int, height: int, scale: Optional[float]
+) -> bytes:
+    """Render a Plotly figure to bytes with explicit headless Kaleido defaults.
+
+    Falls back to Plotly's standard exporter if direct Kaleido invocation fails.
+    This keeps behavior robust across local desktops and headless orchestrators.
+    """
+    opts: Dict[str, Any] = {
+        "format": fmt,
+        "width": width,
+        "height": height,
+    }
+    if scale is not None:
+        opts["scale"] = scale
+
+    try:
+        import kaleido  # type: ignore[import-untyped]
+
+        # Reuse a single sync server per process to avoid repeatedly spawning
+        # browser processes for each chart export.
+        kaleido.start_sync_server(n=1, timeout=90, headless=True, silence_warnings=True)
+
+        # Force headless browser execution so local desktop runs avoid visible windows
+        # and orchestrated runs remain deterministic.
+        return kaleido.calc_fig_sync(fig.to_plotly_json(), opts=opts)
+    except Exception:
+        logger.debug(
+            "Direct Kaleido export failed; falling back to plotly.io.to_image."
+        )
+        return pio.to_image(
+            fig,
+            format=fmt,
+            width=width,
+            height=height,
+            scale=scale,
+        )
+
 
 def _execute_with_retry(func, *args, **kwargs):
     """
@@ -86,7 +167,7 @@ def _execute_with_retry(func, *args, **kwargs):
     execution_id = uuid.uuid4().hex[:8]
     timeouts = [30, 60, 90]
     for i, timeout in enumerate(timeouts):
-        executor = ProcessPoolExecutor(max_workers=1)
+        executor = _get_chart_export_executor()
         try:
             logger.info(
                 f"[{execution_id}] Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)"
@@ -96,15 +177,10 @@ def _execute_with_retry(func, *args, **kwargs):
             logger.info(
                 f"[{execution_id}] Execution of {func.__name__} completed successfully"
             )
-            executor.shutdown(wait=True)
             return result
         except TimeoutError:
-            # Terminate the stuck process to free resources
-            for pid, process in executor._processes.items():
-                process.terminate()
-
-            # Do not wait for the process to finish
-            executor.shutdown(wait=False)
+            # Reset the worker on timeout to clear stuck browser state.
+            _reset_chart_export_executor()
 
             logger.warning(
                 f"[{execution_id}] Function {func.__name__} timed out after {timeout} seconds. Retrying... "
@@ -112,7 +188,7 @@ def _execute_with_retry(func, *args, **kwargs):
             )
             continue
         except Exception:
-            executor.shutdown(wait=False)
+            _reset_chart_export_executor()
             raise
     raise ChartGenerationError(
         f"[{execution_id}] Function {func.__name__} failed after all retries."
@@ -586,13 +662,12 @@ class PlotlyGraphObjects(BaseChart):
         image_height = int(chart_height * POINTS_TO_PIXELS)
 
         return _execute_with_retry(
-            pio.to_image,
+            _plotly_to_image,
             fig,
-            format="png",
-            width=image_width,
-            height=image_height,
-            scale=self.scale,
-            engine="auto",
+            "png",
+            image_width,
+            image_height,
+            self.scale,
         )
 
     def _process_trace_config(
@@ -632,39 +707,89 @@ class PlotlyGraphObjects(BaseChart):
             >>> # processed = {"x": ["Jan", "Feb"], "y": [100, 150], "name": "Revenue"}
         """
         processed: Dict[str, Any] = {}
+        list_column_ref_pattern = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
+        has_rows = len(df) > 0
         for key, value in config.items():
             if isinstance(value, str) and value.startswith("$") and "%{" not in value:
                 # Column reference: "$column_name" -> df['column_name']
                 # But not Plotly template strings like "$%{y:,.0f}"
-                column_name = value[1:]
-                if not df.empty and column_name in df.columns:
-                    processed[key] = df[column_name].tolist()
-                elif df.empty:
+                raw_reference = value[1:]
+                column_name = raw_reference
+                index_token: Optional[int] = None
+                if raw_reference.endswith("]") and "[" in raw_reference:
+                    potential_column, potential_index = raw_reference.rsplit("[", 1)
+                    potential_index = potential_index[:-1]
+                    if potential_column:
+                        try:
+                            parsed_index = int(potential_index)
+                        except ValueError:
+                            parsed_index = None
+                        if parsed_index is not None:
+                            column_name = potential_column
+                            index_token = parsed_index
+
+                if has_rows and column_name in df.columns:
+                    series_values = df[column_name]
+                    values = (
+                        series_values.tolist()
+                        if hasattr(series_values, "tolist")
+                        else list(series_values)
+                    )
+                    if index_token is None:
+                        processed[key] = values
+                    else:
+                        try:
+                            processed[key] = values[index_token]
+                        except IndexError as exc:
+                            raise ChartGenerationError(
+                                f"Index {index_token} out of range for column '{column_name}' "
+                                f"with {len(values)} row(s)."
+                            ) from exc
+                elif not has_rows:
                     # For static charts without data, skip column references
                     # They should provide static data directly in the config
                     continue
                 else:
-                    available_columns = list(df.columns) if not df.empty else []
+                    available_columns = list(df.columns) if has_rows else []
+                    df_shape = getattr(df, "shape", (len(df), len(df.columns)))
                     raise ChartGenerationError(
                         f"Column '{column_name}' not found in PlotlyGraphObjects trace config. "
                         f"Available columns: {available_columns}. "
-                        f"DataFrame shape: {df.shape}"
+                        f"DataFrame shape: {df_shape}"
                     )
             elif isinstance(value, dict):
                 # Recursively process nested dictionaries
                 processed[key] = self._process_trace_config(value, df)
             elif isinstance(value, list):
                 # Process lists that might contain column references
-                # Column references are $word (alphanumeric/underscore), including complex names like $_color_col_0
-                column_ref_pattern = re.compile(r"^\$([a-zA-Z_]\w*)$")
+                # Column references are $word (alphanumeric/underscore),
+                # including complex names like $_color_col_0 and optional
+                # scalar index extraction like $metric[-1].
                 processed_list: List[Any] = []
 
                 for item in value:
                     if isinstance(item, str):
-                        match = column_ref_pattern.match(item)
-                        if match and not df.empty and match.group(1) in df.columns:
+                        match = list_column_ref_pattern.match(item)
+                        if match and has_rows and match.group(1) in df.columns:
                             # Valid column reference
-                            processed_list.append(df[match.group(1)].tolist())
+                            series_values = df[match.group(1)]
+                            values = (
+                                series_values.tolist()
+                                if hasattr(series_values, "tolist")
+                                else list(series_values)
+                            )
+                            list_index_token = match.group(2)
+                            if list_index_token is None:
+                                processed_list.append(values)
+                            else:
+                                index_value = int(list_index_token)
+                                try:
+                                    processed_list.append(values[index_value])
+                                except IndexError as exc:
+                                    raise ChartGenerationError(
+                                        f"Index {index_value} out of range for column '{match.group(1)}' "
+                                        f"with {len(values)} row(s)."
+                                    ) from exc
                         else:
                             # Not a column reference or column doesn't exist
                             processed_list.append(item)

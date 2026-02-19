@@ -1,0 +1,33 @@
+name: "Bar Grouped"
+description: "Grouped bar chart with two series for side-by-side comparisons."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "Category column"
+  - name: "y1_column"
+    type: "string"
+    required: true
+    description: "First metric column"
+  - name: "y2_column"
+    type: "string"
+    required: true
+    description: "Second metric column"
+template: |
+  traces:
+    - type: "bar"
+      x: "${{ x_column }}"
+      y: "${{ y1_column }}"
+      name: "{{ y1_column|title_case }}"
+    - type: "bar"
+      x: "${{ x_column }}"
+      y: "${{ y2_column }}"
+      name: "{{ y2_column|title_case }}"
+  layout_config:
+    title: "{{ title }}"
+    barmode: "group"

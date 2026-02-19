@@ -42,6 +42,8 @@ This is the most powerful and flexible way to create charts. It gives you access
 ```
 
 In this example, `$month` and `$revenue` are column references that will be replaced with the actual data from the `sales_data` source.
+When a scalar is required (for example Plotly `indicator.value`), use indexed
+references like `$revenue[0]` or `$revenue[-1]`.
 
 ### 2. Template Chart (`template`)
 
@@ -53,7 +55,7 @@ This chart type allows you to use a reusable YAML template to define your chart.
 - type: "template"
   config:
     title: "Monthly Active Users"
-    template_name: "bar_chart"
+    template_name: "bars/bar_basic"
     data_source:
       type: "csv"
       name: "mau_data"
@@ -64,6 +66,9 @@ This chart type allows you to use a reusable YAML template to define your chart.
       y_column: "mau"
       y_title: "Active Users"
 ```
+
+Built-in templates are bundled with SlideFlow. Local templates can override
+built-ins when names collide.
 
 ### 3. Custom Chart (`custom`)
 
@@ -91,3 +96,14 @@ SlideFlow provides a flexible system for positioning and sizing your charts on t
 -   `x`, `y`, `width`, `height`: These properties control the position and size of the chart. They can be numbers or string expressions (e.g., `"400 + 50"`).
 -   `dimensions_format`: This specifies the units for the `x`, `y`, `width`, and `height` properties. It can be `pt` (points), `emu` (English Metric Units), or `relative` (a ratio of the page size).
 -   `alignment_format`: This allows you to align the chart relative to the slide. For example, `center-top` will center the chart horizontally and align it to the top of the slide.
+
+## Chart Data Transforms
+
+Charts can include `data_transforms` before traces are rendered.
+See [Data Transforms](data-transforms.md) for the transform contract and registry setup.
+
+## Related Docs
+
+- [Template Catalog](template-catalog.md)
+- [Templating](templating.md)
+- [Data Connectors](data-connectors.md)

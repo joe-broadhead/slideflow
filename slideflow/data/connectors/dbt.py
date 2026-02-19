@@ -170,10 +170,43 @@ def _is_path_within(path: Path, parent: Path) -> bool:
         return False
 
 
+def _canonical_profiles_dir(profiles_dir: Optional[str]) -> Optional[str]:
+    """Normalize profiles_dir to an absolute path string when present."""
+    if not profiles_dir:
+        return None
+    return str(Path(profiles_dir).resolve())
+
+
+def _build_clone_identity_key(
+    package_url: str,
+    branch: Optional[str],
+    target: Optional[str] = None,
+    vars: Optional[dict[str, Any]] = None,
+    profiles_dir: Optional[str] = None,
+    profile_name: Optional[str] = None,
+) -> str:
+    """Build a deterministic identity key for managed DBT clone directories."""
+    payload = {
+        "package_url": package_url,
+        "branch": branch or "default",
+        "target": target or "",
+        "vars": vars or {},
+        "profiles_dir": profiles_dir or "",
+        "profile_name": profile_name or "",
+    }
+    return hashlib.sha1(
+        json.dumps(payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+
+
 def _resolve_managed_clone_dir(
     project_dir: str,
     package_url: str,
     branch: Optional[str],
+    target: Optional[str] = None,
+    vars: Optional[dict[str, Any]] = None,
+    profiles_dir: Optional[str] = None,
+    profile_name: Optional[str] = None,
 ) -> Path:
     """Resolve a safe managed clone directory under project_dir.
 
@@ -191,9 +224,14 @@ def _resolve_managed_clone_dir(
 
     managed_root = workspace_root / ".slideflow_dbt_clones"
     managed_root.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha1(
-        f"{package_url}|{branch or 'default'}".encode("utf-8")
-    ).hexdigest()[:16]
+    key = _build_clone_identity_key(
+        package_url=package_url,
+        branch=branch,
+        target=target,
+        vars=vars,
+        profiles_dir=profiles_dir,
+        profile_name=profile_name,
+    )
     return managed_root / key
 
 
@@ -241,13 +279,14 @@ def _get_compiled_project(
         ...     {"start_date": "2024-01-01"}
         ... )
     """
+    canonical_profiles_dir = _canonical_profiles_dir(profiles_dir)
     cache_key = (
         package_url,
         project_dir,
         branch,
         target,
         json.dumps(vars or {}, sort_keys=True),
-        str(Path(profiles_dir).resolve()) if profiles_dir else None,
+        canonical_profiles_dir,
         profile_name,
     )
 
@@ -258,7 +297,15 @@ def _get_compiled_project(
                 return cached_dir
 
         # Compile the project
-        clone_dir = _resolve_managed_clone_dir(project_dir, package_url, branch)
+        clone_dir = _resolve_managed_clone_dir(
+            project_dir=project_dir,
+            package_url=package_url,
+            branch=branch,
+            target=target,
+            vars=vars,
+            profiles_dir=canonical_profiles_dir,
+            profile_name=profile_name,
+        )
         _clone_repo(package_url, clone_dir, branch)
         # If provided, copy profiles directory or file into cloned project root
         if profiles_dir:

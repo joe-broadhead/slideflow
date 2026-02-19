@@ -1,0 +1,23 @@
+name: "Waterfall Delta"
+description: "Waterfall chart for period-over-period contribution deltas."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "label_column"
+    type: "string"
+    required: true
+    description: "Contribution label column"
+  - name: "value_column"
+    type: "string"
+    required: true
+    description: "Contribution value column"
+template: |
+  traces:
+    - type: "waterfall"
+      x: "${{ label_column }}"
+      y: "${{ value_column }}"
+  layout_config:
+    title: "{{ title }}"

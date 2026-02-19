@@ -1,0 +1,35 @@
+{
+  "layout": [],
+  "traces": {
+    "bar": [
+      "type"
+    ],
+    "box": [
+      "type"
+    ],
+    "funnel": [
+      "type"
+    ],
+    "heatmap": [
+      "type"
+    ],
+    "histogram": [
+      "type"
+    ],
+    "indicator": [
+      "type"
+    ],
+    "pie": [
+      "type"
+    ],
+    "scatter": [
+      "type"
+    ],
+    "table": [
+      "type"
+    ],
+    "waterfall": [
+      "type"
+    ]
+  }
+}

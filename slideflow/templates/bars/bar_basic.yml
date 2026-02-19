@@ -1,0 +1,33 @@
+name: "Bar Basic"
+description: "Single-series bar chart for KPI comparisons."
+version: "1.0"
+parameters:
+  - name: "title"
+    type: "string"
+    required: true
+    description: "Chart title"
+  - name: "x_column"
+    type: "string"
+    required: true
+    description: "Category column"
+  - name: "y_column"
+    type: "string"
+    required: true
+    description: "Value column"
+  - name: "y_title"
+    type: "string"
+    required: false
+    default: ""
+    description: "Optional y-axis title"
+template: |
+  traces:
+    - type: "bar"
+      x: "${{ x_column }}"
+      y: "${{ y_column }}"
+      name: "{{ y_column|title_case }}"
+  layout_config:
+    title: "{{ title }}"
+    xaxis:
+      title: "{{ x_column|title_case }}"
+    yaxis:
+      title: "{{ y_title if y_title else y_column|title_case }}"
