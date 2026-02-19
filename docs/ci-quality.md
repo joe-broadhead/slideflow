@@ -27,7 +27,7 @@
   - uploads audit reports as artifacts
 - `Live Google Slides` (`.github/workflows/live-google-slides.yml`)
   - runs on manual dispatch (`workflow_dispatch`) only
-  - executes `pytest -q live_tests -m live_google`
+  - executes `pytest -q tests/live_tests -m live_google`
   - uses dedicated secrets/folders to create real template-based presentations
   - validates full feature matrix behavior (all built-in chart templates, direct Plotly charts, custom chart function, AI text, dynamic function replacements)
   - requires secrets: `GOOGLE_SLIDEFLOW_CREDENTIALS`, `SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID`

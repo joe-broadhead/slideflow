@@ -2,7 +2,7 @@
 """Generate a lightweight Plotly trace/layout property reference index.
 
 Usage:
-  python skills/slideflow-yaml-authoring/scripts/generate_plotly_reference_index.py
+  python .github/skills/slideflow-yaml-authoring/scripts/generate_plotly_reference_index.py
 """
 
 from __future__ import annotations
