@@ -82,6 +82,19 @@ on:
         required: false
         default: "slideflow-build-logs"
         type: string
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS:
+        description: "Optional Google credentials content/path for provider env fallback"
+        required: false
+      DATABRICKS_HOST:
+        description: "Optional Databricks workspace host for connector env fallback"
+        required: false
+      DATABRICKS_HTTP_PATH:
+        description: "Optional Databricks SQL warehouse HTTP path for env fallback"
+        required: false
+      DATABRICKS_ACCESS_TOKEN:
+        description: "Optional Databricks access token for connector env fallback"
+        required: false
     outputs:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
@@ -102,6 +115,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_SLIDEFLOW_CREDENTIALS }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
       doctor_result_json: ${{ steps.extract_json.outputs.doctor_result_json }}

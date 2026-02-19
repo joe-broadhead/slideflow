@@ -27,7 +27,11 @@ on:
 jobs:
   weekly-slides:
     uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
-    secrets: inherit
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_SLIDEFLOW_CREDENTIALS }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: |
@@ -64,7 +68,12 @@ jobs:
 
 ## Secrets and Environment
 
-- Use `secrets: inherit` in the caller job to pass required secrets to providers.
+- The reusable workflow maps these optional secrets into runtime environment variables:
+- `GOOGLE_SLIDEFLOW_CREDENTIALS`
+- `DATABRICKS_HOST`
+- `DATABRICKS_HTTP_PATH`
+- `DATABRICKS_ACCESS_TOKEN`
+- Callers can either pass those secrets explicitly or use `secrets: inherit` if the same names exist in the caller repository/org.
 - Your Slideflow config can continue to reference environment variables as usual.
 - For Google Slides builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
 - Prefer pinning reusable workflow references to a commit SHA in production.
