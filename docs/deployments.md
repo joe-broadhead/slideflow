@@ -37,7 +37,11 @@ on:
 jobs:
   build:
     uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
-    secrets: inherit
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_SLIDEFLOW_CREDENTIALS }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: registries/base_registry.py
@@ -52,8 +56,15 @@ jobs:
 Security notes:
 
 - Prefer pinning reusable workflow refs to a commit SHA.
-- Treat `secrets: inherit` as privileged; only call trusted workflows.
+- Treat inherited or explicitly-mapped secrets as privileged; only call trusted workflows.
 - Keep secrets out of YAML files.
+
+Supported reusable-workflow secret mappings:
+
+- `GOOGLE_SLIDEFLOW_CREDENTIALS`
+- `DATABRICKS_HOST`
+- `DATABRICKS_HTTP_PATH`
+- `DATABRICKS_ACCESS_TOKEN`
 
 ### Passing machine-readable outputs to downstream jobs
 
