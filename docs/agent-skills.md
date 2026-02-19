@@ -5,7 +5,7 @@ chart configuration guidance.
 
 ## Included skill
 
-- `skills/slideflow-yaml-authoring/SKILL.md`
+- `.github/skills/slideflow-yaml-authoring/SKILL.md`
 
 This skill teaches agents to:
 
@@ -19,7 +19,7 @@ This skill teaches agents to:
 ## Skill package layout
 
 ```text
-skills/slideflow-yaml-authoring/
+.github/skills/slideflow-yaml-authoring/
   SKILL.md
   references/
     config-schema-cheatsheet.md

@@ -275,11 +275,20 @@ def _template_param_value(template_name: str, param_name: str) -> Any:
 
 
 def _build_template_charts(data_path: Path) -> List[Dict[str, Any]]:
-    builtins_path = Path(__file__).resolve().parents[1] / "slideflow" / "templates"
+    repo_root = Path(__file__).resolve().parents[2]
+    builtins_path = repo_root / "slideflow" / "templates"
+    if not builtins_path.is_dir():
+        raise AssertionError(
+            f"Built-in template directory not found at expected path: {builtins_path}"
+        )
+
     engine = TemplateEngine([builtins_path])
+    template_names = engine.list_templates()
+    if not template_names:
+        raise AssertionError(f"No built-in templates discovered from: {builtins_path}")
 
     charts: List[Dict[str, Any]] = []
-    for template_name in engine.list_templates():
+    for template_name in template_names:
         template_info = engine.get_template_info(template_name)
         template_config = {
             param["name"]: _template_param_value(template_name, param["name"])

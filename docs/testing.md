@@ -16,7 +16,7 @@
    - cross-module workflows with controlled fixtures/mocks
 3. End-to-end tests (`@pytest.mark.e2e`)
    - full `validate -> build` paths on representative configs
-4. Live Google Slides tests (`@pytest.mark.live_google`, `live_tests/`)
+4. Live Google Slides tests (`@pytest.mark.live_google`, `tests/live_tests/`)
    - creates real template presentations via Google API
    - copies template into a new deck during render
    - inserts real charts across full coverage:
@@ -75,7 +75,7 @@ export SLIDEFLOW_LIVE_SHARE_ROLE=reader
 # optional retention toggle; defaults to 1 when sharing is enabled:
 export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
 
-pytest -q live_tests -m live_google
+pytest -q tests/live_tests -m live_google
 ```
 
 When `SLIDEFLOW_LIVE_SHARE_EMAIL` is set, the rendered presentation is shared using the
