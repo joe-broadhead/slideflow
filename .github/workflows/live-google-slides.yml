@@ -50,4 +50,4 @@ jobs:
           SLIDEFLOW_LIVE_KEEP_ARTIFACTS: "0"
           SLIDEFLOW_LIVE_RPS: "1.0"
         run: |
-          python -m pytest -q live_tests -m live_google
+          python -m pytest -q live_tests -m live_google -s
