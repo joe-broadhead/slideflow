@@ -43,6 +43,7 @@ jobs:
       DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
       DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private databricks_dbt repos
+      DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN }} # optional; falls back to DBT_GIT_TOKEN in reusable workflow
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: registries/base_registry.py
@@ -67,6 +68,7 @@ Supported reusable-workflow secret mappings:
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
 - `DBT_GIT_TOKEN` (optional; used when `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
+- `DBT_ACCESS_TOKEN` (optional; if omitted, reusable workflow falls back to `DBT_GIT_TOKEN`)
 
 ### Passing machine-readable outputs to downstream jobs
 
