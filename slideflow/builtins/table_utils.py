@@ -182,7 +182,10 @@ def growth_color_function(value: Any) -> str:
         - Handles type conversion errors gracefully
     """
     try:
-        return "#28a745" if float(value) >= 0 else "#dc3545"
+        numeric_value = float(value)
+        if pd.isna(numeric_value):
+            return "black"
+        return "#28a745" if numeric_value >= 0 else "#dc3545"
     except (ValueError, TypeError):
         return "black"
 
@@ -234,7 +237,10 @@ def performance_color_function(value: Any, threshold: float = 0.0) -> str:
         - Can be partially applied for use with create_dynamic_colors
     """
     try:
-        return "#28a745" if float(value) >= threshold else "#dc3545"
+        numeric_value = float(value)
+        if pd.isna(numeric_value):
+            return "black"
+        return "#28a745" if numeric_value >= threshold else "#dc3545"
     except (ValueError, TypeError):
         return "black"
 
@@ -298,6 +304,8 @@ def create_traffic_light_colors(
     """
     try:
         val = float(value)
+        if pd.isna(val):
+            return "black"
         if val >= good_threshold:
             return "#28a745"  # Green
         elif val >= warning_threshold:

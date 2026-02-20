@@ -48,6 +48,28 @@ def test_process_trace_config_column_reference_index_out_of_range_raises():
         chart._process_trace_config({"value": "$metric[3]"}, df)
 
 
+def test_process_trace_config_empty_df_replaces_list_column_refs_with_empty_values():
+    chart = _chart()
+    df = pd.DataFrame(
+        {"metric_a": [], "metric_b": [], "_color_col_0": [], "_color_col_1": []}
+    )
+
+    processed = chart._process_trace_config(
+        {
+            "cells": {
+                "values": ["$metric_a", "$metric_b"],
+                "font": {"color": ["$_color_col_0", "$_color_col_1"]},
+                "meta": ["$metric_a[0]"],
+            }
+        },
+        df,
+    )
+
+    assert processed["cells"]["values"] == [[], []]
+    assert processed["cells"]["font"]["color"] == [[], []]
+    assert processed["cells"]["meta"] == [None]
+
+
 class _FakeFigure:
     def to_plotly_json(self):
         return {"data": [], "layout": {}}

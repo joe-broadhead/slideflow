@@ -690,7 +690,8 @@ class PlotlyGraphObjects(BaseChart):
             config: Trace configuration dictionary that may contain column
                 references in the format '$column_name'.
             df: DataFrame containing the data columns. May be empty for static
-                charts, in which case column references are skipped.
+                charts, in which case direct column references are skipped and
+                list-based references are replaced with empty values.
 
         Returns:
             Processed configuration with column references replaced by actual
@@ -770,26 +771,38 @@ class PlotlyGraphObjects(BaseChart):
                 for item in value:
                     if isinstance(item, str):
                         match = list_column_ref_pattern.match(item)
-                        if match and has_rows and match.group(1) in df.columns:
-                            # Valid column reference
-                            series_values = df[match.group(1)]
-                            values = (
-                                series_values.tolist()
-                                if hasattr(series_values, "tolist")
-                                else list(series_values)
-                            )
+                        if match:
+                            list_column_name = match.group(1)
                             list_index_token = match.group(2)
-                            if list_index_token is None:
-                                processed_list.append(values)
+
+                            if has_rows and list_column_name in df.columns:
+                                # Valid column reference
+                                series_values = df[list_column_name]
+                                values = (
+                                    series_values.tolist()
+                                    if hasattr(series_values, "tolist")
+                                    else list(series_values)
+                                )
+                                if list_index_token is None:
+                                    processed_list.append(values)
+                                else:
+                                    index_value = int(list_index_token)
+                                    try:
+                                        processed_list.append(values[index_value])
+                                    except IndexError as exc:
+                                        raise ChartGenerationError(
+                                            f"Index {index_value} out of range for column '{list_column_name}' "
+                                            f"with {len(values)} row(s)."
+                                        ) from exc
+                            elif not has_rows:
+                                # Preserve list structure for Plotly table configs.
+                                if list_index_token is None:
+                                    processed_list.append([])
+                                else:
+                                    processed_list.append(None)
                             else:
-                                index_value = int(list_index_token)
-                                try:
-                                    processed_list.append(values[index_value])
-                                except IndexError as exc:
-                                    raise ChartGenerationError(
-                                        f"Index {index_value} out of range for column '{match.group(1)}' "
-                                        f"with {len(values)} row(s)."
-                                    ) from exc
+                                # Not a resolvable column reference for this DataFrame.
+                                processed_list.append(item)
                         else:
                             # Not a column reference or column doesn't exist
                             processed_list.append(item)
