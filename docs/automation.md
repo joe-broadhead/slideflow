@@ -32,6 +32,7 @@ jobs:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
+      DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private databricks_dbt repos
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: |
@@ -73,9 +74,19 @@ jobs:
 - `DATABRICKS_HOST`
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
+- `DBT_GIT_TOKEN` (optional; used when `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
 - Callers can either pass those secrets explicitly or use `secrets: inherit` if the same names exist in the caller repository/org.
 - Your Slideflow config can continue to reference environment variables as usual.
 - For Google Slides builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
 - Prefer pinning reusable workflow references to a commit SHA in production.
+
+Example `databricks_dbt` source for a private dbt repo:
+
+```yaml
+data_source:
+  type: databricks_dbt
+  package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+  model_alias: revenue_monthly
+```
 
 For deployment patterns beyond GitHub Actions, see [Deployments](deployments.md).

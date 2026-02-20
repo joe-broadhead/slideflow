@@ -42,6 +42,7 @@ jobs:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
+      DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private databricks_dbt repos
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: registries/base_registry.py
@@ -65,6 +66,7 @@ Supported reusable-workflow secret mappings:
 - `DATABRICKS_HOST`
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
+- `DBT_GIT_TOKEN` (optional; used when `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
 
 ### Passing machine-readable outputs to downstream jobs
 
@@ -121,6 +123,15 @@ If using Databricks connectors, set:
 - `DATABRICKS_ACCESS_TOKEN`
 
 If using `databricks_dbt`, also ensure Git token env vars used in `package_url` are available.
+
+Private dbt repo example:
+
+```yaml
+data_source:
+  type: databricks_dbt
+  package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+  model_alias: monthly_revenue_by_region
+```
 
 ## Cloud Run
 

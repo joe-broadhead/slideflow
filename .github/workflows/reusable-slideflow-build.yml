@@ -95,6 +95,9 @@ on:
       DATABRICKS_ACCESS_TOKEN:
         description: "Optional Databricks access token for connector env fallback"
         required: false
+      DBT_GIT_TOKEN:
+        description: "Optional Git token for private databricks_dbt package_url clones"
+        required: false
     outputs:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
@@ -120,6 +123,7 @@ jobs:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
+      DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
       doctor_result_json: ${{ steps.extract_json.outputs.doctor_result_json }}
