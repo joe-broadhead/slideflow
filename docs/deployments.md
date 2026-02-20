@@ -44,6 +44,7 @@ jobs:
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
       DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private databricks_dbt repos
       DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN }} # optional; falls back to DBT_GIT_TOKEN in reusable workflow
+      DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL }} # optional; falls back to DBT_ACCESS_TOKEN, then DBT_GIT_TOKEN
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: registries/base_registry.py
@@ -69,6 +70,7 @@ Supported reusable-workflow secret mappings:
 - `DATABRICKS_ACCESS_TOKEN`
 - `DBT_GIT_TOKEN` (optional; used when `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
 - `DBT_ACCESS_TOKEN` (optional; if omitted, reusable workflow falls back to `DBT_GIT_TOKEN`)
+- `DBT_ENV_SECRET_GIT_CREDENTIAL` (optional; if omitted, reusable workflow falls back to `DBT_ACCESS_TOKEN`, then `DBT_GIT_TOKEN`)
 
 ### Passing machine-readable outputs to downstream jobs
 
@@ -124,7 +126,8 @@ If using Databricks connectors, set:
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
 
-If using `databricks_dbt`, also ensure Git token env vars used in `package_url` are available.
+If using `databricks_dbt`, also ensure Git token env vars used in `package_url` are available.  
+If your dbt packages rely on `env_var('DBT_ENV_SECRET_GIT_CREDENTIAL')`, set `DBT_ENV_SECRET_GIT_CREDENTIAL` (or rely on the reusable-workflow fallback chain).
 
 Private dbt repo example:
 

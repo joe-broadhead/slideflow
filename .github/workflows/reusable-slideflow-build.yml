@@ -101,6 +101,9 @@ on:
       DBT_ACCESS_TOKEN:
         description: "Optional DBT access token for dbt packages that require env_var('DBT_ACCESS_TOKEN')"
         required: false
+      DBT_ENV_SECRET_GIT_CREDENTIAL:
+        description: "Optional git credential for dbt deps private package clones"
+        required: false
     outputs:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
@@ -128,6 +131,7 @@ jobs:
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
       DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }}
       DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN || secrets.DBT_GIT_TOKEN }}
+      DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL || secrets.DBT_ACCESS_TOKEN || secrets.DBT_GIT_TOKEN }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
       doctor_result_json: ${{ steps.extract_json.outputs.doctor_result_json }}

@@ -34,6 +34,7 @@ jobs:
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
       DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private databricks_dbt repos
       DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN }} # optional; falls back to DBT_GIT_TOKEN in reusable workflow
+      DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL }} # optional; falls back to DBT_ACCESS_TOKEN, then DBT_GIT_TOKEN
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: |
@@ -77,6 +78,7 @@ jobs:
 - `DATABRICKS_ACCESS_TOKEN`
 - `DBT_GIT_TOKEN` (optional; used when `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
 - `DBT_ACCESS_TOKEN` (optional; if omitted, reusable workflow falls back to `DBT_GIT_TOKEN`)
+- `DBT_ENV_SECRET_GIT_CREDENTIAL` (optional; if omitted, reusable workflow falls back to `DBT_ACCESS_TOKEN`, then `DBT_GIT_TOKEN`)
 - Callers can either pass those secrets explicitly or use `secrets: inherit` if the same names exist in the caller repository/org.
 - Your Slideflow config can continue to reference environment variables as usual.
 - For Google Slides builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
@@ -90,5 +92,7 @@ data_source:
   package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
   model_alias: revenue_monthly
 ```
+
+If your dbt dependencies use `env_var('DBT_ENV_SECRET_GIT_CREDENTIAL')`, pass `DBT_ENV_SECRET_GIT_CREDENTIAL` as an optional secret (or rely on fallback to `DBT_ACCESS_TOKEN` / `DBT_GIT_TOKEN`).
 
 For deployment patterns beyond GitHub Actions, see [Deployments](deployments.md).
