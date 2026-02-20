@@ -127,10 +127,12 @@ def test_color_and_table_helpers_generate_expected_color_maps(monkeypatch):
     assert growth_color_function(0) == "#28a745"
     assert growth_color_function(-0.1) == "#dc3545"
     assert growth_color_function("bad") == "black"
+    assert growth_color_function(float("nan")) == "black"
 
     assert performance_color_function(100, threshold=80) == "#28a745"
     assert performance_color_function(79.9, threshold=80) == "#dc3545"
     assert performance_color_function(None, threshold=80) == "black"
+    assert performance_color_function(float("nan"), threshold=80) == "black"
 
     assert (
         create_traffic_light_colors(90, good_threshold=80, warning_threshold=60)
@@ -146,6 +148,12 @@ def test_color_and_table_helpers_generate_expected_color_maps(monkeypatch):
     )
     assert (
         create_traffic_light_colors("x", good_threshold=80, warning_threshold=60)
+        == "black"
+    )
+    assert (
+        create_traffic_light_colors(
+            float("nan"), good_threshold=80, warning_threshold=60
+        )
         == "black"
     )
 
