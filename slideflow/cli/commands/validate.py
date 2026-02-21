@@ -33,8 +33,9 @@ Example:
         slideflow validate config.yaml -r reg1.py -r reg2.py
 """
 
+import csv
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import typer
 import yaml  # type: ignore[import-untyped]
@@ -52,6 +53,218 @@ from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities import ConfigLoader
 
+_GOOGLE_SLIDES_CONTRACT_FIELDS = (
+    "slides(objectId,pageElements(shape(text(textElements(textRun(content))))))"
+)
+
+
+class ProviderContractValidationError(ValueError):
+    """Raised when provider contract checks fail."""
+
+    def __init__(self, message: str, summary: Dict[str, Any]):
+        super().__init__(message)
+        self.summary = summary
+
+
+def _first_error_line(error: Exception) -> str:
+    """Return a safe single-line error description."""
+    text = str(error)
+    if text:
+        first_line = text.splitlines()[0]
+        if first_line:
+            return first_line
+    return type(error).__name__
+
+
+def _collect_expected_contract(
+    presentation_config: PresentationConfig,
+) -> Dict[str, Set[str]]:
+    """Collect expected slide IDs and placeholder tokens from config."""
+    expected: Dict[str, Set[str]] = {}
+    slide_specs = list(getattr(presentation_config.presentation, "slides", []))
+
+    for slide_spec in slide_specs:
+        slide_id = getattr(slide_spec, "id", None)
+        if not isinstance(slide_id, str) or not slide_id:
+            continue
+
+        placeholders: Set[str] = set()
+        replacements = list(getattr(slide_spec, "replacements", []) or [])
+        for replacement in replacements:
+            replacement_config = getattr(replacement, "config", None)
+            if not isinstance(replacement_config, dict):
+                continue
+            placeholder = replacement_config.get("placeholder")
+            if isinstance(placeholder, str) and placeholder:
+                placeholders.add(placeholder)
+
+        expected[slide_id] = placeholders
+
+    return expected
+
+
+def _read_template_ids_from_params(params_path: Path) -> List[str]:
+    """Read unique template IDs from params CSV."""
+    template_ids: Set[str] = set()
+
+    with params_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if "template_id" not in (reader.fieldnames or []):
+            raise ValueError(
+                f"Missing 'template_id' column in params file: {params_path}"
+            )
+        for row in reader:
+            template_id = (row.get("template_id") or "").strip()
+            if template_id:
+                template_ids.add(template_id)
+
+    if not template_ids:
+        raise ValueError(
+            f"No template_id values found in params file: {params_path}. "
+            "Provide at least one template_id row."
+        )
+
+    return sorted(template_ids)
+
+
+def _resolve_template_ids_for_contract_check(
+    presentation_config: PresentationConfig, params_path: Optional[Path]
+) -> List[str]:
+    """Resolve template IDs from params CSV or provider config fallback."""
+    if params_path is not None:
+        return _read_template_ids_from_params(params_path)
+
+    provider_config = getattr(presentation_config.provider, "config", {})
+    if isinstance(provider_config, dict):
+        template_id = provider_config.get("template_id")
+        if isinstance(template_id, str) and template_id.strip():
+            return [template_id.strip()]
+
+    raise ValueError(
+        "No template IDs available for provider contract check. "
+        "Provide --params-path with a 'template_id' column or set "
+        "provider.config.template_id."
+    )
+
+
+def _extract_slide_text_map(presentation_payload: Dict[str, Any]) -> Dict[str, str]:
+    """Extract concatenated text content for each slide object ID."""
+    slide_text_map: Dict[str, str] = {}
+    slides = presentation_payload.get("slides", [])
+    if not isinstance(slides, list):
+        return slide_text_map
+
+    for slide in slides:
+        if not isinstance(slide, dict):
+            continue
+        slide_id = slide.get("objectId")
+        if not isinstance(slide_id, str) or not slide_id:
+            continue
+
+        chunks: List[str] = []
+        page_elements = slide.get("pageElements", [])
+        if isinstance(page_elements, list):
+            for element in page_elements:
+                if not isinstance(element, dict):
+                    continue
+                shape = element.get("shape")
+                if not isinstance(shape, dict):
+                    continue
+                text = shape.get("text")
+                if not isinstance(text, dict):
+                    continue
+                text_elements = text.get("textElements", [])
+                if not isinstance(text_elements, list):
+                    continue
+                for text_element in text_elements:
+                    if not isinstance(text_element, dict):
+                        continue
+                    text_run = text_element.get("textRun")
+                    if not isinstance(text_run, dict):
+                        continue
+                    content = text_run.get("content")
+                    if isinstance(content, str):
+                        chunks.append(content)
+
+        slide_text_map[slide_id] = "".join(chunks)
+
+    return slide_text_map
+
+
+def _run_google_provider_contract_check(
+    presentation_config: PresentationConfig,
+    provider: Any,
+    params_path: Optional[Path],
+) -> Dict[str, Any]:
+    """Validate configured slide IDs/placeholders against Google Slides templates."""
+    template_ids = _resolve_template_ids_for_contract_check(
+        presentation_config, params_path
+    )
+    expected_contract = _collect_expected_contract(presentation_config)
+    issues: List[Dict[str, Any]] = []
+    slide_text_cache: Dict[str, Dict[str, str]] = {}
+    checked_templates = 0
+
+    for template_id in template_ids:
+        slide_text_map = slide_text_cache.get(template_id)
+        if slide_text_map is None:
+            try:
+                response = provider._execute_request(  # noqa: SLF001
+                    provider.slides_service.presentations().get(
+                        presentationId=template_id,
+                        fields=_GOOGLE_SLIDES_CONTRACT_FIELDS,
+                    )
+                )
+                slide_text_map = _extract_slide_text_map(response)
+                slide_text_cache[template_id] = slide_text_map
+                checked_templates += 1
+            except Exception as error:
+                issues.append(
+                    {
+                        "type": "template_fetch_failed",
+                        "template_id": template_id,
+                        "slide_id": None,
+                        "placeholder": None,
+                        "detail": _first_error_line(error),
+                    }
+                )
+                continue
+
+        for slide_id, placeholders in expected_contract.items():
+            slide_text = slide_text_map.get(slide_id)
+            if slide_text is None:
+                issues.append(
+                    {
+                        "type": "missing_slide",
+                        "template_id": template_id,
+                        "slide_id": slide_id,
+                        "placeholder": None,
+                        "detail": "Slide id is not present in template presentation",
+                    }
+                )
+                continue
+
+            for placeholder in sorted(placeholders):
+                if placeholder not in slide_text:
+                    issues.append(
+                        {
+                            "type": "missing_placeholder",
+                            "template_id": template_id,
+                            "slide_id": slide_id,
+                            "placeholder": placeholder,
+                            "detail": "Placeholder not found on slide text",
+                        }
+                    )
+
+    return {
+        "enabled": True,
+        "provider_type": presentation_config.provider.type,
+        "checked_templates": checked_templates,
+        "template_ids": template_ids,
+        "checked_slides": sorted(expected_contract.keys()),
+        "issues": issues,
+    }
+
 
 def validate_command(
     config_file: Path = typer.Argument(..., help="Path to YAML configuration file"),
@@ -65,6 +278,17 @@ def validate_command(
         None,
         "--output-json",
         help="Optional path to write a machine-readable validation summary JSON file",
+    ),
+    params_path: Optional[Path] = typer.Option(
+        None,
+        "--params-path",
+        "-f",
+        help="Optional CSV file used for provider contract checks (expects template_id column)",
+    ),
+    provider_contract_check: bool = typer.Option(
+        False,
+        "--provider-contract-check",
+        help="Run provider-aware contract checks (Google Slides slide IDs/placeholders)",
     ),
 ) -> None:
     """Validate YAML configuration and registry files.
@@ -134,6 +358,7 @@ def validate_command(
 
     print_validation_header(str(config_file))
     run_started_at = now_iso8601_utc()
+    provider_contract_summary: Optional[Dict[str, Any]] = None
 
     try:
         raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
@@ -161,6 +386,25 @@ def validate_command(
         # Validate chart/replacement specs deeply so unresolved function refs fail validation.
         for slide_spec in presentation_config.presentation.slides:
             PresentationBuilder._build_slide(slide_spec)
+
+        if provider_contract_check:
+            if presentation_config.provider.type != "google_slides":
+                raise ValueError(
+                    "Provider contract check is currently only supported for provider type 'google_slides'."
+                )
+
+            provider = ProviderFactory.create_provider(presentation_config.provider)
+            provider_contract_summary = _run_google_provider_contract_check(
+                presentation_config=presentation_config,
+                provider=provider,
+                params_path=params_path,
+            )
+            if provider_contract_summary["issues"]:
+                raise ProviderContractValidationError(
+                    "Provider contract validation failed. "
+                    f"Found {len(provider_contract_summary['issues'])} issue(s).",
+                    provider_contract_summary,
+                )
 
         print_success()
 
@@ -199,11 +443,14 @@ def validate_command(
                     "replacements": total_replacements,
                     "charts": total_charts,
                 },
+                "provider_contract": provider_contract_summary,
             },
         )
 
     except Exception as e:
         error_code = resolve_cli_error_code(e, CliErrorCode.VALIDATE_FAILED)
+        if isinstance(e, ProviderContractValidationError):
+            provider_contract_summary = e.summary
         write_output_json(
             output_json,
             {
@@ -212,7 +459,8 @@ def validate_command(
                 "started_at": run_started_at,
                 "completed_at": now_iso8601_utc(),
                 "config_file": str(config_file),
-                "error": {"code": error_code, "message": str(e).split("\n")[0]},
+                "error": {"code": error_code, "message": _first_error_line(e)},
+                "provider_contract": provider_contract_summary,
             },
         )
         print_error(str(e), error_code=error_code)

@@ -475,3 +475,290 @@ def test_build_error_writes_output_json_with_error_code(tmp_path, monkeypatch):
     assert payload["command"] == "build"
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "SLIDEFLOW_BUILD_FAILED"
+
+
+def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+
+    slide_spec = types.SimpleNamespace(
+        id="slide-contract",
+        replacements=[
+            types.SimpleNamespace(config={"placeholder": "{{region}}"}),
+            types.SimpleNamespace(config={"placeholder": "{{metric}}"}),
+        ],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="google_slides", config={}),
+            presentation=types.SimpleNamespace(name="Demo", slides=[slide_spec]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    class FakeRequest:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def execute(self):
+            return self._payload
+
+    class FakePresentations:
+        def __init__(self, payload):
+            self._payload = payload
+            self.calls = []
+
+        def get(self, presentationId, fields):
+            self.calls.append((presentationId, fields))
+            return FakeRequest(self._payload[presentationId])
+
+    class FakeProvider:
+        def __init__(self, payload):
+            self._presentations = FakePresentations(payload)
+            self.slides_service = types.SimpleNamespace(
+                presentations=lambda: self._presentations
+            )
+
+        def _execute_request(self, request):
+            return request.execute()
+
+    template_id = "template-123"
+    provider_payload = {
+        template_id: {
+            "slides": [
+                {
+                    "objectId": "slide-contract",
+                    "pageElements": [
+                        {
+                            "shape": {
+                                "text": {
+                                    "textElements": [
+                                        {
+                                            "textRun": {
+                                                "content": "KPIs {{region}} and {{metric}}"
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    fake_provider = FakeProvider(provider_payload)
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: fake_provider),
+    )
+
+    config_file = tmp_path / "config.yaml"
+    params_path = tmp_path / "params.csv"
+    output_file = tmp_path / "validate-provider-contract.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("template_id\n" f"{template_id}\n")
+
+    validate_command_module.validate_command(
+        config_file=config_file,
+        registry_paths=None,
+        output_json=output_file,
+        params_path=params_path,
+        provider_contract_check=True,
+    )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "success"
+    assert payload["provider_contract"]["enabled"] is True
+    assert payload["provider_contract"]["template_ids"] == [template_id]
+    assert payload["provider_contract"]["issues"] == []
+
+    assert fake_provider._presentations.calls == [
+        (template_id, validate_command_module._GOOGLE_SLIDES_CONTRACT_FIELDS)
+    ]
+
+
+def test_validate_provider_contract_check_writes_failure_json(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+
+    slide_spec = types.SimpleNamespace(
+        id="slide-contract",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{region}}"})],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="google_slides", config={}),
+            presentation=types.SimpleNamespace(name="Demo", slides=[slide_spec]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    class FakeRequest:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def execute(self):
+            return self._payload
+
+    class FakeProvider:
+        def __init__(self, payload):
+            self.slides_service = types.SimpleNamespace(
+                presentations=lambda: types.SimpleNamespace(
+                    get=lambda presentationId, fields: FakeRequest(
+                        payload[presentationId]
+                    )
+                )
+            )
+
+        def _execute_request(self, request):
+            return request.execute()
+
+    template_id = "template-123"
+    provider_payload = {
+        template_id: {
+            "slides": [
+                {
+                    "objectId": "other-slide",
+                    "pageElements": [],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: FakeProvider(provider_payload)),
+    )
+
+    config_file = tmp_path / "config.yaml"
+    params_path = tmp_path / "params.csv"
+    output_file = tmp_path / "validate-provider-contract-error.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("template_id\n" f"{template_id}\n")
+
+    with pytest.raises(validate_command_module.typer.Exit) as exc_info:
+        validate_command_module.validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+            params_path=params_path,
+            provider_contract_check=True,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "SLIDEFLOW_VALIDATE_FAILED"
+    assert payload["provider_contract"]["enabled"] is True
+    assert payload["provider_contract"]["issues"][0]["type"] == "missing_slide"
+
+
+def test_validate_provider_contract_check_requires_google_provider(
+    tmp_path, monkeypatch
+):
+    _stub_cli_output(monkeypatch)
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="mock_provider", config={}),
+            presentation=types.SimpleNamespace(name="Demo", slides=[]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: (_ for _ in ()).throw(AssertionError)),
+    )
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "validate-provider-contract-unsupported.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    with pytest.raises(validate_command_module.typer.Exit) as exc_info:
+        validate_command_module.validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+            provider_contract_check=True,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert (
+        "only supported for provider type 'google_slides'"
+        in payload["error"]["message"]
+    )
