@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-02-21
+
 ### Added
 
 - `slideflow doctor` CLI preflight command with strict mode and machine-readable JSON output.
@@ -26,7 +28,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - DBT profile resolution behavior for project-root `profiles.yml` in cloned repos.
 - Safer first-line error extraction in CLI error reporting paths to avoid empty-message indexing issues.
 
-## [0.0.4] - 2026-02-21
+## [0.0.4] - 2026-02-19
 
 ### Notes
 
