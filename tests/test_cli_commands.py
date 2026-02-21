@@ -762,3 +762,124 @@ def test_validate_provider_contract_check_requires_google_provider(
         "only supported for provider type 'google_slides'"
         in payload["error"]["message"]
     )
+
+
+def test_validate_provider_contract_check_merges_duplicate_slide_ids(
+    tmp_path, monkeypatch
+):
+    _stub_cli_output(monkeypatch)
+
+    first_slide_spec = types.SimpleNamespace(
+        id="slide-contract",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{region}}"})],
+        charts=[],
+    )
+    second_slide_spec = types.SimpleNamespace(
+        id="slide-contract",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{metric}}"})],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="google_slides", config={}),
+            presentation=types.SimpleNamespace(
+                name="Demo", slides=[first_slide_spec, second_slide_spec]
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    class FakeRequest:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def execute(self):
+            return self._payload
+
+    class FakeProvider:
+        def __init__(self, payload):
+            self.slides_service = types.SimpleNamespace(
+                presentations=lambda: types.SimpleNamespace(
+                    get=lambda presentationId, fields: FakeRequest(
+                        payload[presentationId]
+                    )
+                )
+            )
+
+        def _execute_request(self, request):
+            return request.execute()
+
+    template_id = "template-123"
+    provider_payload = {
+        template_id: {
+            "slides": [
+                {
+                    "objectId": "slide-contract",
+                    "pageElements": [
+                        {
+                            "shape": {
+                                "text": {
+                                    "textElements": [
+                                        {"textRun": {"content": "KPI {{metric}} only"}}
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: FakeProvider(provider_payload)),
+    )
+
+    config_file = tmp_path / "config.yaml"
+    params_path = tmp_path / "params.csv"
+    output_file = tmp_path / "validate-provider-contract-duplicate-slide-ids.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("template_id\n" f"{template_id}\n")
+
+    with pytest.raises(validate_command_module.typer.Exit) as exc_info:
+        validate_command_module.validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+            params_path=params_path,
+            provider_contract_check=True,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    issue_types = [issue["type"] for issue in payload["provider_contract"]["issues"]]
+    assert "missing_placeholder" in issue_types
+    assert any(
+        issue.get("placeholder") == "{{region}}"
+        for issue in payload["provider_contract"]["issues"]
+    )

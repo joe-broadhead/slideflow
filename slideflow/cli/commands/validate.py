@@ -98,7 +98,8 @@ def _collect_expected_contract(
             if isinstance(placeholder, str) and placeholder:
                 placeholders.add(placeholder)
 
-        expected[slide_id] = placeholders
+        slide_placeholders = expected.setdefault(slide_id, set())
+        slide_placeholders.update(placeholders)
 
     return expected
 
