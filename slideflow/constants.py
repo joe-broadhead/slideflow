@@ -149,6 +149,7 @@ class Defaults:
     JSON_ORIENT = "records"
     DBT_TARGET = "prod"
     DBT_COMPILE = True
+    DBT_CACHE_MAX_ENTRIES = 20
 
     # AI provider defaults
     OPENAI_MODEL = "gpt-4o"

@@ -55,8 +55,9 @@ import re
 import shutil
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Optional, Type
+from typing import Any, ClassVar, Iterator, Literal, Optional, Type
 
 import pandas as pd
 from dbt.cli.main import dbtRunner
@@ -73,6 +74,10 @@ logger = get_logger(__name__)
 
 # Global cache for compiled DBT projects
 _compiled_projects_cache: dict[tuple, Path] = {}
+_compiled_projects_last_access: dict[tuple, float] = {}
+_compilation_inflight: dict[tuple, threading.Event] = {}
+_compiled_projects_in_use: dict[Path, int] = {}
+_pending_cleanup_dirs: set[Path] = set()
 _cache_lock = threading.Lock()
 
 
@@ -177,6 +182,147 @@ def _canonical_profiles_dir(profiles_dir: Optional[str]) -> Optional[str]:
     return str(Path(profiles_dir).resolve())
 
 
+def _canonical_project_dir(project_dir: str) -> str:
+    """Normalize project_dir to an absolute path string."""
+    return str(Path(project_dir).expanduser().resolve())
+
+
+def _resolve_dbt_cache_max_entries() -> int:
+    """Resolve max DBT compiled cache entries from env/defaults."""
+    raw_value = os.getenv("SLIDEFLOW_DBT_CACHE_MAX_ENTRIES")
+    if raw_value is None:
+        return Defaults.DBT_CACHE_MAX_ENTRIES
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SLIDEFLOW_DBT_CACHE_MAX_ENTRIES value '%s'; using default %s",
+            raw_value,
+            Defaults.DBT_CACHE_MAX_ENTRIES,
+        )
+        return Defaults.DBT_CACHE_MAX_ENTRIES
+    return max(parsed, 1)
+
+
+def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
+    """Best-effort removal of managed clone directories during cache eviction."""
+    managed_root = clone_dir.parent
+    if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
+        clone_dir, managed_root
+    ):
+        logger.warning(
+            "Refusing to delete unmanaged DBT clone directory: %s", clone_dir
+        )
+        return
+
+    if not clone_dir.exists():
+        return
+
+    try:
+        shutil.rmtree(clone_dir)
+    except Exception as error:
+        logger.warning(
+            "Failed to remove evicted DBT clone directory '%s': %s", clone_dir, error
+        )
+
+
+def _acquire_compiled_project_lease_locked(clone_dir: Path) -> None:
+    """Mark a compiled clone directory as actively in use.
+
+    Requires caller to hold _cache_lock.
+    """
+    _compiled_projects_in_use[clone_dir] = (
+        _compiled_projects_in_use.get(clone_dir, 0) + 1
+    )
+
+
+def _collect_ready_cleanup_dirs_locked() -> list[Path]:
+    """Collect pending cleanup directories that are safe to remove.
+
+    Requires caller to hold _cache_lock.
+    """
+    cached_dirs = set(_compiled_projects_cache.values())
+    ready: list[Path] = []
+    for clone_dir in list(_pending_cleanup_dirs):
+        if _compiled_projects_in_use.get(clone_dir, 0) > 0:
+            continue
+        if clone_dir in cached_dirs:
+            continue
+        _pending_cleanup_dirs.discard(clone_dir)
+        ready.append(clone_dir)
+    return ready
+
+
+def _cleanup_ready_managed_clone_dirs() -> None:
+    """Best-effort cleanup for pending evicted clone directories."""
+    with _cache_lock:
+        ready_dirs = _collect_ready_cleanup_dirs_locked()
+    for directory in ready_dirs:
+        _cleanup_managed_clone_dir(directory)
+
+
+def _release_compiled_project_lease(clone_dir: Path) -> None:
+    """Release a compiled project lease and cleanup any newly-safe evictions."""
+    with _cache_lock:
+        current = _compiled_projects_in_use.get(clone_dir, 0)
+        if current <= 1:
+            _compiled_projects_in_use.pop(clone_dir, None)
+        else:
+            _compiled_projects_in_use[clone_dir] = current - 1
+
+        ready_dirs = _collect_ready_cleanup_dirs_locked()
+
+    for directory in ready_dirs:
+        _cleanup_managed_clone_dir(directory)
+
+
+def _prune_compiled_projects_cache_locked(max_entries: int) -> None:
+    """Prune compiled project cache to max entries. Requires caller lock."""
+    while len(_compiled_projects_cache) > max_entries:
+        ordered_keys = sorted(
+            _compiled_projects_cache.keys(),
+            key=lambda cache_key: _compiled_projects_last_access.get(cache_key, 0.0),
+        )
+        evicted = False
+        for oldest_key in ordered_keys:
+            clone_dir = _compiled_projects_cache.get(oldest_key)
+            if clone_dir is None:
+                continue
+            if _compiled_projects_in_use.get(clone_dir, 0) > 0:
+                continue
+
+            _compiled_projects_cache.pop(oldest_key, None)
+            _compiled_projects_last_access.pop(oldest_key, None)
+            _pending_cleanup_dirs.add(clone_dir)
+            evicted = True
+            break
+
+        if not evicted:
+            # All cache entries are actively in use. Temporarily exceed max_entries.
+            break
+
+
+def _ensure_dbt_invoke_success(command: str, invocation_result: Any) -> None:
+    """Validate dbtRunner.invoke results and raise on command failures."""
+    if invocation_result is None:
+        return
+
+    success = getattr(invocation_result, "success", None)
+    if success is True:
+        return
+
+    if success is False:
+        exception = getattr(invocation_result, "exception", None)
+        if isinstance(exception, BaseException):
+            raise DataSourceError(f"dbt {command} failed: {exception}") from exception
+        if exception is not None:
+            raise DataSourceError(f"dbt {command} failed: {exception}")
+        raise DataSourceError(f"dbt {command} failed.")
+
+    if isinstance(invocation_result, bool) and not invocation_result:
+        raise DataSourceError(f"dbt {command} failed.")
+
+
 def _build_clone_identity_key(
     package_url: str,
     branch: Optional[str],
@@ -243,6 +389,7 @@ def _get_compiled_project(
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
+    acquire_lease: bool = False,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
 
@@ -280,9 +427,10 @@ def _get_compiled_project(
         ... )
     """
     canonical_profiles_dir = _canonical_profiles_dir(profiles_dir)
+    canonical_project_dir = _canonical_project_dir(project_dir)
     cache_key = (
         package_url,
-        project_dir,
+        canonical_project_dir,
         branch,
         target,
         json.dumps(vars or {}, sort_keys=True),
@@ -290,63 +438,83 @@ def _get_compiled_project(
         profile_name,
     )
 
-    with _cache_lock:
-        if cache_key in _compiled_projects_cache:
-            cached_dir = _compiled_projects_cache[cache_key]
-            if cached_dir.exists():
-                return cached_dir
+    max_cache_entries = _resolve_dbt_cache_max_entries()
 
-        # Compile the project
-        clone_dir = _resolve_managed_clone_dir(
-            project_dir=project_dir,
-            package_url=package_url,
-            branch=branch,
-            target=target,
-            vars=vars,
-            profiles_dir=canonical_profiles_dir,
-            profile_name=profile_name,
-        )
-        _clone_repo(package_url, clone_dir, branch)
-        # If provided, copy profiles directory or file into cloned project root
-        if profiles_dir:
-            try:
-                src = Path(profiles_dir)
-                if src.is_dir():
-                    # Prefer a direct profiles.yml in the given directory
-                    candidate = src / "profiles.yml"
-                    if candidate.exists():
-                        shutil.copy2(candidate, clone_dir / "profiles.yml")
-                    else:
-                        # Fallback: copy all yml/yaml files from directory
-                        for p in src.glob("*.y*ml"):
-                            shutil.copy2(p, clone_dir / p.name)
-                elif src.is_file():
-                    # If a file is passed, copy to profiles.yml in clone_dir
-                    dest = clone_dir / (
-                        "profiles.yml" if src.name != "profiles.yml" else src.name
-                    )
-                    shutil.copy2(src, dest)
-                else:
-                    logger.warning(f"profiles_dir path not found: {profiles_dir}")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
-                )
+    while True:
+        with _cache_lock:
+            cached_dir = _compiled_projects_cache.get(cache_key)
+            if cached_dir is not None:
+                if cached_dir.exists():
+                    _compiled_projects_last_access[cache_key] = time.time()
+                    if acquire_lease:
+                        _acquire_compiled_project_lease_locked(cached_dir)
+                    return cached_dir
+                _compiled_projects_cache.pop(cache_key, None)
+                _compiled_projects_last_access.pop(cache_key, None)
 
-        cwd = Path.cwd()
-        os.chdir(clone_dir)
+            pending = _compilation_inflight.get(cache_key)
+            if pending is None:
+                pending = threading.Event()
+                _compilation_inflight[cache_key] = pending
+                is_owner = True
+            else:
+                is_owner = False
+
+        if not is_owner:
+            pending.wait()
+            continue
 
         try:
+            clone_dir = _resolve_managed_clone_dir(
+                project_dir=canonical_project_dir,
+                package_url=package_url,
+                branch=branch,
+                target=target,
+                vars=vars,
+                profiles_dir=canonical_profiles_dir,
+                profile_name=profile_name,
+            )
+            with _cache_lock:
+                _pending_cleanup_dirs.discard(clone_dir)
+            _clone_repo(package_url, clone_dir, branch)
+
+            # If provided, copy profiles directory or file into cloned project root
+            if profiles_dir:
+                try:
+                    src = Path(profiles_dir)
+                    if src.is_dir():
+                        # Prefer a direct profiles.yml in the given directory
+                        candidate = src / "profiles.yml"
+                        if candidate.exists():
+                            shutil.copy2(candidate, clone_dir / "profiles.yml")
+                        else:
+                            # Fallback: copy all yml/yaml files from directory
+                            for p in src.glob("*.y*ml"):
+                                shutil.copy2(p, clone_dir / p.name)
+                    elif src.is_file():
+                        # If a file is passed, copy to profiles.yml in clone_dir
+                        dest = clone_dir / (
+                            "profiles.yml" if src.name != "profiles.yml" else src.name
+                        )
+                        shutil.copy2(src, dest)
+                    else:
+                        logger.warning(f"profiles_dir path not found: {profiles_dir}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
+                    )
+
             runner = dbtRunner()
 
             # Log dependencies install
             deps_start = time.time()
-            deps_args = ["deps"]
+            deps_args = ["deps", "--project-dir", str(clone_dir)]
             if profile_name:
                 deps_args.extend(["--profile", profile_name])
             if profiles_dir:
                 deps_args.extend(["--profiles-dir", str(clone_dir)])
-            runner.invoke(deps_args)
+            deps_result = runner.invoke(deps_args)
+            _ensure_dbt_invoke_success("deps", deps_result)
             deps_duration = time.time() - deps_start
             log_performance(
                 "dbt_deps", deps_duration, project=package_url, target=target
@@ -354,14 +522,15 @@ def _get_compiled_project(
 
             # Log compilation
             compile_start = time.time()
-            args = ["compile", "--target", target]
+            args = ["compile", "--project-dir", str(clone_dir), "--target", target]
             if profiles_dir:
                 args.extend(["--profiles-dir", str(clone_dir)])
             if profile_name:
                 args.extend(["--profile", profile_name])
             if vars:
                 args += ["--vars", json.dumps(vars)]
-            runner.invoke(args)
+            compile_result = runner.invoke(args)
+            _ensure_dbt_invoke_success("compile", compile_result)
             compile_duration = time.time() - compile_start
             log_performance(
                 "dbt_compile",
@@ -370,11 +539,52 @@ def _get_compiled_project(
                 target=target,
                 vars_count=len(vars) if vars else 0,
             )
-        finally:
-            os.chdir(cwd)
+        except BaseException:
+            with _cache_lock:
+                event = _compilation_inflight.pop(cache_key, None)
+                if event is not None:
+                    event.set()
+            raise
 
-        _compiled_projects_cache[cache_key] = clone_dir
+        with _cache_lock:
+            _compiled_projects_cache[cache_key] = clone_dir
+            _compiled_projects_last_access[cache_key] = time.time()
+            _prune_compiled_projects_cache_locked(max_cache_entries)
+            if acquire_lease:
+                _acquire_compiled_project_lease_locked(clone_dir)
+            event = _compilation_inflight.pop(cache_key, None)
+            if event is not None:
+                event.set()
+        _cleanup_ready_managed_clone_dirs()
+
         return clone_dir
+
+
+@contextmanager
+def _compiled_project_lease(
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    target: str,
+    vars: Optional[dict[str, Any]],
+    profiles_dir: Optional[str] = None,
+    profile_name: Optional[str] = None,
+) -> Iterator[Path]:
+    """Acquire a temporary usage lease for a compiled DBT clone directory."""
+    clone_dir = _get_compiled_project(
+        package_url=package_url,
+        project_dir=project_dir,
+        branch=branch,
+        target=target,
+        vars=vars,
+        profiles_dir=profiles_dir,
+        profile_name=profile_name,
+        acquire_lease=True,
+    )
+    try:
+        yield clone_dir
+    finally:
+        _release_compiled_project_lease(clone_dir)
 
 
 class DBTManifestConnector(BaseModel, DataConnector):
@@ -453,38 +663,37 @@ class DBTManifestConnector(BaseModel, DataConnector):
             >>> sql = connector.get_compiled_query("monthly_revenue")
             >>> print(f"Found SQL query with {len(sql)} characters")
         """
-        clone_dir = _get_compiled_project(
-            self.package_url,
-            self.project_dir,
-            self.branch,
-            self.target,
-            self.vars,
-            self.profiles_dir,
-            self.profile_name,
-        )
+        with _compiled_project_lease(
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            profile_name=self.profile_name,
+        ) as clone_dir:
+            # Load manifest.json
+            manifest_path = clone_dir / "target" / "manifest.json"
+            if not manifest_path.exists():
+                raise DataSourceError(f"manifest.json not found at {manifest_path}")
 
-        # Load manifest.json
-        manifest_path = clone_dir / "target" / "manifest.json"
-        if not manifest_path.exists():
-            raise DataSourceError(f"manifest.json not found at {manifest_path}")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
 
-        with open(manifest_path) as f:
-            manifest = json.load(f)
+            # Find the compiled SQL for the model
+            for node in manifest.get("nodes", {}).values():
+                if node.get("resource_type") not in ("model", "analysis"):
+                    continue
+                alias = node.get("alias")
+                if alias == model_name:
+                    path = node.get("compiled_path")
+                    full = clone_dir / path if path else None
+                    if full and full.exists():
+                        return full.read_text()
+                    else:
+                        logger.warning(f"Missing compiled file for {alias}: {path}")
 
-        # Find the compiled SQL for the model
-        for node in manifest.get("nodes", {}).values():
-            if node.get("resource_type") not in ("model", "analysis"):
-                continue
-            alias = node.get("alias")
-            if alias == model_name:
-                path = node.get("compiled_path")
-                full = clone_dir / path if path else None
-                if full and full.exists():
-                    return full.read_text()
-                else:
-                    logger.warning(f"Missing compiled file for {alias}: {path}")
-
-        return None
+            return None
 
     def fetch_data(self) -> pd.DataFrame:
         """Not implemented for manifest connector.
