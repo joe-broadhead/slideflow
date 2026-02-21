@@ -200,6 +200,43 @@ def test_get_compiled_project_does_not_change_process_cwd(monkeypatch, tmp_path)
     assert "--project-dir" in invoke_args[1]
 
 
+def test_get_compiled_project_uses_project_root_profiles_when_present(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True, exist_ok=True)
+        (clone_dir / "profiles.yml").write_text("default: {}")
+
+    invoke_args = []
+
+    class _Runner:
+        def invoke(self, args):
+            invoke_args.append(args)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    compiled_path = dbt_module._get_compiled_project(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+        profiles_dir=None,
+        profile_name=None,
+    )
+
+    assert compiled_path.exists()
+    assert invoke_args
+    assert "--profiles-dir" in invoke_args[0]
+    assert "--profiles-dir" in invoke_args[1]
+    assert str(compiled_path) in invoke_args[0]
+    assert str(compiled_path) in invoke_args[1]
+
+
 def test_get_compiled_project_raises_when_dbt_compile_reports_failure(
     monkeypatch, tmp_path
 ):

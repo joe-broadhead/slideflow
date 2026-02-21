@@ -510,13 +510,17 @@ def _get_compiled_project(
                     )
 
             runner = dbtRunner()
+            project_profiles_path = clone_dir / "profiles.yml"
+            use_project_profiles_dir = (
+                bool(profiles_dir) or project_profiles_path.exists()
+            )
 
             # Log dependencies install
             deps_start = time.time()
             deps_args = ["deps", "--project-dir", str(clone_dir)]
             if profile_name:
                 deps_args.extend(["--profile", profile_name])
-            if profiles_dir:
+            if use_project_profiles_dir:
                 deps_args.extend(["--profiles-dir", str(clone_dir)])
             deps_result = runner.invoke(deps_args)
             _ensure_dbt_invoke_success("deps", deps_result)
@@ -528,7 +532,7 @@ def _get_compiled_project(
             # Log compilation
             compile_start = time.time()
             args = ["compile", "--project-dir", str(clone_dir), "--target", target]
-            if profiles_dir:
+            if use_project_profiles_dir:
                 args.extend(["--profiles-dir", str(clone_dir)])
             if profile_name:
                 args.extend(["--profile", profile_name])
