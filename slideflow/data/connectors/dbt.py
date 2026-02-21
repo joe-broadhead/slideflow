@@ -55,8 +55,9 @@ import re
 import shutil
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Optional, Type
+from typing import Any, ClassVar, Iterator, Literal, Optional, Type
 
 import pandas as pd
 from dbt.cli.main import dbtRunner
@@ -75,6 +76,8 @@ logger = get_logger(__name__)
 _compiled_projects_cache: dict[tuple, Path] = {}
 _compiled_projects_last_access: dict[tuple, float] = {}
 _compilation_inflight: dict[tuple, threading.Event] = {}
+_compiled_projects_in_use: dict[Path, int] = {}
+_pending_cleanup_dirs: set[Path] = set()
 _cache_lock = threading.Lock()
 
 
@@ -179,6 +182,11 @@ def _canonical_profiles_dir(profiles_dir: Optional[str]) -> Optional[str]:
     return str(Path(profiles_dir).resolve())
 
 
+def _canonical_project_dir(project_dir: str) -> str:
+    """Normalize project_dir to an absolute path string."""
+    return str(Path(project_dir).expanduser().resolve())
+
+
 def _resolve_dbt_cache_max_entries() -> int:
     """Resolve max DBT compiled cache entries from env/defaults."""
     raw_value = os.getenv("SLIDEFLOW_DBT_CACHE_MAX_ENTRIES")
@@ -218,21 +226,80 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
         )
 
 
-def _prune_compiled_projects_cache_locked(max_entries: int) -> list[Path]:
+def _acquire_compiled_project_lease_locked(clone_dir: Path) -> None:
+    """Mark a compiled clone directory as actively in use.
+
+    Requires caller to hold _cache_lock.
+    """
+    _compiled_projects_in_use[clone_dir] = (
+        _compiled_projects_in_use.get(clone_dir, 0) + 1
+    )
+
+
+def _collect_ready_cleanup_dirs_locked() -> list[Path]:
+    """Collect pending cleanup directories that are safe to remove.
+
+    Requires caller to hold _cache_lock.
+    """
+    cached_dirs = set(_compiled_projects_cache.values())
+    ready: list[Path] = []
+    for clone_dir in list(_pending_cleanup_dirs):
+        if _compiled_projects_in_use.get(clone_dir, 0) > 0:
+            continue
+        if clone_dir in cached_dirs:
+            continue
+        _pending_cleanup_dirs.discard(clone_dir)
+        ready.append(clone_dir)
+    return ready
+
+
+def _cleanup_ready_managed_clone_dirs() -> None:
+    """Best-effort cleanup for pending evicted clone directories."""
+    with _cache_lock:
+        ready_dirs = _collect_ready_cleanup_dirs_locked()
+    for directory in ready_dirs:
+        _cleanup_managed_clone_dir(directory)
+
+
+def _release_compiled_project_lease(clone_dir: Path) -> None:
+    """Release a compiled project lease and cleanup any newly-safe evictions."""
+    with _cache_lock:
+        current = _compiled_projects_in_use.get(clone_dir, 0)
+        if current <= 1:
+            _compiled_projects_in_use.pop(clone_dir, None)
+        else:
+            _compiled_projects_in_use[clone_dir] = current - 1
+
+        ready_dirs = _collect_ready_cleanup_dirs_locked()
+
+    for directory in ready_dirs:
+        _cleanup_managed_clone_dir(directory)
+
+
+def _prune_compiled_projects_cache_locked(max_entries: int) -> None:
     """Prune compiled project cache to max entries. Requires caller lock."""
-    evicted_dirs: list[Path] = []
-
     while len(_compiled_projects_cache) > max_entries:
-        oldest_key = min(
+        ordered_keys = sorted(
             _compiled_projects_cache.keys(),
-            key=lambda key: _compiled_projects_last_access.get(key, 0.0),
+            key=lambda cache_key: _compiled_projects_last_access.get(cache_key, 0.0),
         )
-        clone_dir = _compiled_projects_cache.pop(oldest_key, None)
-        _compiled_projects_last_access.pop(oldest_key, None)
-        if clone_dir is not None:
-            evicted_dirs.append(clone_dir)
+        evicted = False
+        for oldest_key in ordered_keys:
+            clone_dir = _compiled_projects_cache.get(oldest_key)
+            if clone_dir is None:
+                continue
+            if _compiled_projects_in_use.get(clone_dir, 0) > 0:
+                continue
 
-    return evicted_dirs
+            _compiled_projects_cache.pop(oldest_key, None)
+            _compiled_projects_last_access.pop(oldest_key, None)
+            _pending_cleanup_dirs.add(clone_dir)
+            evicted = True
+            break
+
+        if not evicted:
+            # All cache entries are actively in use. Temporarily exceed max_entries.
+            break
 
 
 def _ensure_dbt_invoke_success(command: str, invocation_result: Any) -> None:
@@ -322,6 +389,7 @@ def _get_compiled_project(
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
+    acquire_lease: bool = False,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
 
@@ -359,9 +427,10 @@ def _get_compiled_project(
         ... )
     """
     canonical_profiles_dir = _canonical_profiles_dir(profiles_dir)
+    canonical_project_dir = _canonical_project_dir(project_dir)
     cache_key = (
         package_url,
-        project_dir,
+        canonical_project_dir,
         branch,
         target,
         json.dumps(vars or {}, sort_keys=True),
@@ -377,6 +446,8 @@ def _get_compiled_project(
             if cached_dir is not None:
                 if cached_dir.exists():
                     _compiled_projects_last_access[cache_key] = time.time()
+                    if acquire_lease:
+                        _acquire_compiled_project_lease_locked(cached_dir)
                     return cached_dir
                 _compiled_projects_cache.pop(cache_key, None)
                 _compiled_projects_last_access.pop(cache_key, None)
@@ -395,7 +466,7 @@ def _get_compiled_project(
 
         try:
             clone_dir = _resolve_managed_clone_dir(
-                project_dir=project_dir,
+                project_dir=canonical_project_dir,
                 package_url=package_url,
                 branch=branch,
                 target=target,
@@ -403,6 +474,8 @@ def _get_compiled_project(
                 profiles_dir=canonical_profiles_dir,
                 profile_name=profile_name,
             )
+            with _cache_lock:
+                _pending_cleanup_dirs.discard(clone_dir)
             _clone_repo(package_url, clone_dir, branch)
 
             # If provided, copy profiles directory or file into cloned project root
@@ -473,19 +546,45 @@ def _get_compiled_project(
                     event.set()
             raise
 
-        evicted_dirs: list[Path] = []
         with _cache_lock:
             _compiled_projects_cache[cache_key] = clone_dir
             _compiled_projects_last_access[cache_key] = time.time()
-            evicted_dirs = _prune_compiled_projects_cache_locked(max_cache_entries)
+            _prune_compiled_projects_cache_locked(max_cache_entries)
+            if acquire_lease:
+                _acquire_compiled_project_lease_locked(clone_dir)
             event = _compilation_inflight.pop(cache_key, None)
             if event is not None:
                 event.set()
-
-        for directory in evicted_dirs:
-            _cleanup_managed_clone_dir(directory)
+        _cleanup_ready_managed_clone_dirs()
 
         return clone_dir
+
+
+@contextmanager
+def _compiled_project_lease(
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    target: str,
+    vars: Optional[dict[str, Any]],
+    profiles_dir: Optional[str] = None,
+    profile_name: Optional[str] = None,
+) -> Iterator[Path]:
+    """Acquire a temporary usage lease for a compiled DBT clone directory."""
+    clone_dir = _get_compiled_project(
+        package_url=package_url,
+        project_dir=project_dir,
+        branch=branch,
+        target=target,
+        vars=vars,
+        profiles_dir=profiles_dir,
+        profile_name=profile_name,
+        acquire_lease=True,
+    )
+    try:
+        yield clone_dir
+    finally:
+        _release_compiled_project_lease(clone_dir)
 
 
 class DBTManifestConnector(BaseModel, DataConnector):
@@ -564,38 +663,37 @@ class DBTManifestConnector(BaseModel, DataConnector):
             >>> sql = connector.get_compiled_query("monthly_revenue")
             >>> print(f"Found SQL query with {len(sql)} characters")
         """
-        clone_dir = _get_compiled_project(
-            self.package_url,
-            self.project_dir,
-            self.branch,
-            self.target,
-            self.vars,
-            self.profiles_dir,
-            self.profile_name,
-        )
+        with _compiled_project_lease(
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            profile_name=self.profile_name,
+        ) as clone_dir:
+            # Load manifest.json
+            manifest_path = clone_dir / "target" / "manifest.json"
+            if not manifest_path.exists():
+                raise DataSourceError(f"manifest.json not found at {manifest_path}")
 
-        # Load manifest.json
-        manifest_path = clone_dir / "target" / "manifest.json"
-        if not manifest_path.exists():
-            raise DataSourceError(f"manifest.json not found at {manifest_path}")
+            with open(manifest_path) as f:
+                manifest = json.load(f)
 
-        with open(manifest_path) as f:
-            manifest = json.load(f)
+            # Find the compiled SQL for the model
+            for node in manifest.get("nodes", {}).values():
+                if node.get("resource_type") not in ("model", "analysis"):
+                    continue
+                alias = node.get("alias")
+                if alias == model_name:
+                    path = node.get("compiled_path")
+                    full = clone_dir / path if path else None
+                    if full and full.exists():
+                        return full.read_text()
+                    else:
+                        logger.warning(f"Missing compiled file for {alias}: {path}")
 
-        # Find the compiled SQL for the model
-        for node in manifest.get("nodes", {}).values():
-            if node.get("resource_type") not in ("model", "analysis"):
-                continue
-            alias = node.get("alias")
-            if alias == model_name:
-                path = node.get("compiled_path")
-                full = clone_dir / path if path else None
-                if full and full.exists():
-                    return full.read_text()
-                else:
-                    logger.warning(f"Missing compiled file for {alias}: {path}")
-
-        return None
+            return None
 
     def fetch_data(self) -> pd.DataFrame:
         """Not implemented for manifest connector.
