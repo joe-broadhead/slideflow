@@ -41,7 +41,10 @@ jobs:
         registries/base_registry.py
         registries/team_registry.py
       params-path: config/weekly_variants.csv
+      run-doctor: true
+      strict-doctor: true
       run-validate: true
+      run-provider-contract-check: true
       threads: "2"
       requests-per-second: "1.0"
       upload-log-artifact: true
@@ -58,7 +61,11 @@ jobs:
 - `slideflow-package-spec` (optional): Package to install. Default `slideflow-presentations`.
 - `extra-pip-packages` (optional): Newline-separated additional packages.
 - `run-pip-check` (optional): Run `pip check`. Default `true`.
+- `run-doctor` (optional): Run `slideflow doctor` before validate/build. Default `true`.
+- `strict-doctor` (optional): Make doctor fail on error-severity findings. Default `false`.
 - `run-validate` (optional): Run `slideflow validate` before build. Default `true`.
+- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate. Default `false`.
+- `provider-contract-params-path` (optional): CSV path for validate contract checks; falls back to `params-path` when unset.
 - `dry-run` (optional): Run build with `--dry-run`. Default `false`.
 - `threads` (optional): Value passed to `--threads`.
 - `requests-per-second` (optional): Value passed to `--rps`.

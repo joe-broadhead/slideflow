@@ -50,8 +50,9 @@ jobs:
       registry-files: registries/base_registry.py
       params-path: config/weekly_variants.csv
       run-doctor: true
-      strict-doctor: false
+      strict-doctor: true
       run-validate: true
+      run-provider-contract-check: true
       threads: "2"
       requests-per-second: "1.0"
 ```
@@ -115,8 +116,8 @@ Typical pattern:
 3. Run:
 
 ```bash
-slideflow doctor --config-file config.yml --registry registry.py
-slideflow validate config.yml --registry registry.py --output-json validate-result.json
+slideflow doctor --config-file config.yml --registry registry.py --strict --output-json doctor-result.json
+slideflow validate config.yml --registry registry.py --provider-contract-check --params-path variants.csv --output-json validate-result.json
 slideflow build config.yml --registry registry.py --threads 2 --rps 0.8 --output-json build-result.json
 ```
 
@@ -149,8 +150,8 @@ Use a container image that includes:
 Recommended command sequence:
 
 ```bash
-slideflow doctor --config-file /app/config.yml --registry /app/registry.py
-slideflow validate /app/config.yml --registry /app/registry.py --output-json /tmp/validate-result.json
+slideflow doctor --config-file /app/config.yml --registry /app/registry.py --strict --output-json /tmp/doctor-result.json
+slideflow validate /app/config.yml --registry /app/registry.py --provider-contract-check --params-path /app/variants.csv --output-json /tmp/validate-result.json
 slideflow build /app/config.yml --registry /app/registry.py --threads 2 --rps 0.8 --output-json /tmp/build-result.json
 ```
 
@@ -163,7 +164,8 @@ Operational notes:
 ## Production Rollout Checklist
 
 - `slideflow validate` enforced before `slideflow build`
-- `slideflow doctor` runs before long render jobs (strict mode in CI if desired)
+- `slideflow doctor` runs before long render jobs (`--strict` in CI)
+- provider contract checks enabled where template compatibility guarantees matter (`slideflow validate --provider-contract-check`)
 - Secrets managed by platform secret manager (not committed)
 - API quotas/rate limits measured and tuned (`--rps`, `--threads`)
 - Failure notifications wired to orchestration platform

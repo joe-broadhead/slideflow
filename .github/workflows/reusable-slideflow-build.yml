@@ -57,6 +57,16 @@ on:
         required: false
         default: true
         type: boolean
+      run-provider-contract-check:
+        description: "Run provider contract checks during validate (Google Slides)"
+        required: false
+        default: false
+        type: boolean
+      provider-contract-params-path:
+        description: "Optional CSV for provider contract check template IDs; falls back to params-path when unset"
+        required: false
+        default: ""
+        type: string
       dry-run:
         description: "Run build with --dry-run"
         required: false
@@ -215,6 +225,16 @@ jobs:
             validate_cmd=(slideflow validate "${{ inputs.config-file }}" --output-json "$VALIDATE_JSON_FILE")
             if [[ ${#registry_args[@]} -gt 0 ]]; then
               validate_cmd+=("${registry_args[@]}")
+            fi
+            if [[ "${{ inputs.run-provider-contract-check }}" == "true" ]]; then
+              validate_cmd+=("--provider-contract-check")
+              contract_params_path="${{ inputs.provider-contract-params-path }}"
+              if [[ -z "$contract_params_path" && -n "${{ inputs.params-path }}" ]]; then
+                contract_params_path="${{ inputs.params-path }}"
+              fi
+              if [[ -n "$contract_params_path" ]]; then
+                validate_cmd+=("--params-path" "$contract_params_path")
+              fi
             fi
             {
               echo "Running: ${validate_cmd[*]}"

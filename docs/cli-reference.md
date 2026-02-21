@@ -32,6 +32,8 @@ Options:
 | Option | Description |
 | --- | --- |
 | `-r`, `--registry` | One or more Python registry files |
+| `-f`, `--params-path` | Optional CSV used for provider contract checks (`template_id` column) |
+| `--provider-contract-check` | Validate configured slide IDs/placeholders against Google Slides templates |
 | `--output-json` | Write machine-readable validation summary JSON |
 
 Registry resolution order:
@@ -48,6 +50,7 @@ slideflow validate config.yml
 slideflow validate config.yml --registry registry.py
 slideflow validate config.yml -r base_registry.py -r team_registry.py
 slideflow validate config.yml --output-json validate-result.json
+slideflow validate config.yml --provider-contract-check --params-path variants.csv
 ```
 
 ## `slideflow build`
