@@ -17,6 +17,7 @@ def _reset_dbt_caches() -> None:
     dbt_module._compiled_projects_cache.clear()
     dbt_module._compiled_projects_last_access.clear()
     dbt_module._compilation_inflight.clear()
+    dbt_module._compilation_failures.clear()
     dbt_module._compiled_projects_in_use.clear()
     dbt_module._pending_cleanup_dirs.clear()
 
@@ -231,6 +232,91 @@ def test_get_compiled_project_raises_when_dbt_compile_reports_failure(
 
     assert dbt_module._compiled_projects_cache == {}
     assert dbt_module._compilation_inflight == {}
+
+
+def test_get_compiled_project_caches_failure_and_fails_fast_for_same_key(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    compile_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True, exist_ok=True)
+
+    class _Runner:
+        def invoke(self, args):
+            nonlocal compile_calls
+            if args[0] == "deps":
+                return SimpleNamespace(success=True)
+            compile_calls += 1
+            return SimpleNamespace(
+                success=False, exception=RuntimeError("profiles path missing")
+            )
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+        "profiles_dir": None,
+        "profile_name": None,
+    }
+
+    with pytest.raises(DataSourceError, match="dbt compile failed"):
+        dbt_module._get_compiled_project(**kwargs)
+    with pytest.raises(DataSourceError, match="dbt compile failed"):
+        dbt_module._get_compiled_project(**kwargs)
+
+    assert compile_calls == 1
+
+
+def test_get_compiled_project_caches_failure_for_waiting_threads(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    compile_calls = 0
+    counter_lock = threading.Lock()
+    start_barrier = threading.Barrier(4)
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True, exist_ok=True)
+
+    class _Runner:
+        def invoke(self, args):
+            nonlocal compile_calls
+            if args[0] == "deps":
+                return SimpleNamespace(success=True)
+            with counter_lock:
+                compile_calls += 1
+            time.sleep(0.05)
+            return SimpleNamespace(
+                success=False, exception=RuntimeError("profiles path missing")
+            )
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+        "profiles_dir": None,
+        "profile_name": None,
+    }
+
+    def _worker():
+        start_barrier.wait()
+        with pytest.raises(DataSourceError, match="dbt compile failed"):
+            dbt_module._get_compiled_project(**kwargs)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(lambda _i: _worker(), range(4)))
+
+    assert compile_calls == 1
 
 
 def test_get_compiled_project_single_flight_deduplicates_concurrent_compiles(

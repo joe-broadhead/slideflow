@@ -76,6 +76,7 @@ logger = get_logger(__name__)
 _compiled_projects_cache: dict[tuple, Path] = {}
 _compiled_projects_last_access: dict[tuple, float] = {}
 _compilation_inflight: dict[tuple, threading.Event] = {}
+_compilation_failures: dict[tuple, str] = {}
 _compiled_projects_in_use: dict[Path, int] = {}
 _pending_cleanup_dirs: set[Path] = set()
 _cache_lock = threading.Lock()
@@ -452,6 +453,10 @@ def _get_compiled_project(
                 _compiled_projects_cache.pop(cache_key, None)
                 _compiled_projects_last_access.pop(cache_key, None)
 
+            failure_message = _compilation_failures.get(cache_key)
+            if failure_message is not None:
+                raise DataSourceError(failure_message)
+
             pending = _compilation_inflight.get(cache_key)
             if pending is None:
                 pending = threading.Event()
@@ -539,8 +544,10 @@ def _get_compiled_project(
                 target=target,
                 vars_count=len(vars) if vars else 0,
             )
-        except BaseException:
+        except BaseException as error:
+            failure_message = str(error) or type(error).__name__
             with _cache_lock:
+                _compilation_failures[cache_key] = failure_message
                 event = _compilation_inflight.pop(cache_key, None)
                 if event is not None:
                     event.set()
@@ -549,6 +556,7 @@ def _get_compiled_project(
         with _cache_lock:
             _compiled_projects_cache[cache_key] = clone_dir
             _compiled_projects_last_access[cache_key] = time.time()
+            _compilation_failures.pop(cache_key, None)
             _prune_compiled_projects_cache_locked(max_cache_entries)
             if acquire_lease:
                 _acquire_compiled_project_lease_locked(clone_dir)
