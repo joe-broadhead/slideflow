@@ -23,6 +23,12 @@ On push to a `release/vX.Y.Z` branch, the `Release` workflow:
 7. creates and pushes Git tag `vX.Y.Z`
 8. creates GitHub release with artifacts
 
+Idempotency behavior:
+
+- If the same version is already published on PyPI, publish is skipped.
+- If tag/release already exist, those steps are skipped.
+- This keeps reruns green when a release branch receives a follow-up docs/metadata commit.
+
 ## Version consistency contract
 
 These must match:
