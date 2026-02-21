@@ -230,7 +230,7 @@ class DataSourceCache:
             if is_owner:
                 try:
                     data = loader()
-                except Exception:
+                except BaseException:
                     with self._lock:
                         event = self._inflight.pop(key, None)
                         if event is not None:
