@@ -73,6 +73,8 @@ logger = get_logger(__name__)
 
 # Global cache for compiled DBT projects
 _compiled_projects_cache: dict[tuple, Path] = {}
+_compiled_projects_last_access: dict[tuple, float] = {}
+_compilation_inflight: dict[tuple, threading.Event] = {}
 _cache_lock = threading.Lock()
 
 
@@ -175,6 +177,83 @@ def _canonical_profiles_dir(profiles_dir: Optional[str]) -> Optional[str]:
     if not profiles_dir:
         return None
     return str(Path(profiles_dir).resolve())
+
+
+def _resolve_dbt_cache_max_entries() -> int:
+    """Resolve max DBT compiled cache entries from env/defaults."""
+    raw_value = os.getenv("SLIDEFLOW_DBT_CACHE_MAX_ENTRIES")
+    if raw_value is None:
+        return Defaults.DBT_CACHE_MAX_ENTRIES
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SLIDEFLOW_DBT_CACHE_MAX_ENTRIES value '%s'; using default %s",
+            raw_value,
+            Defaults.DBT_CACHE_MAX_ENTRIES,
+        )
+        return Defaults.DBT_CACHE_MAX_ENTRIES
+    return max(parsed, 1)
+
+
+def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
+    """Best-effort removal of managed clone directories during cache eviction."""
+    managed_root = clone_dir.parent
+    if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
+        clone_dir, managed_root
+    ):
+        logger.warning(
+            "Refusing to delete unmanaged DBT clone directory: %s", clone_dir
+        )
+        return
+
+    if not clone_dir.exists():
+        return
+
+    try:
+        shutil.rmtree(clone_dir)
+    except Exception as error:
+        logger.warning(
+            "Failed to remove evicted DBT clone directory '%s': %s", clone_dir, error
+        )
+
+
+def _prune_compiled_projects_cache_locked(max_entries: int) -> list[Path]:
+    """Prune compiled project cache to max entries. Requires caller lock."""
+    evicted_dirs: list[Path] = []
+
+    while len(_compiled_projects_cache) > max_entries:
+        oldest_key = min(
+            _compiled_projects_cache.keys(),
+            key=lambda key: _compiled_projects_last_access.get(key, 0.0),
+        )
+        clone_dir = _compiled_projects_cache.pop(oldest_key, None)
+        _compiled_projects_last_access.pop(oldest_key, None)
+        if clone_dir is not None:
+            evicted_dirs.append(clone_dir)
+
+    return evicted_dirs
+
+
+def _ensure_dbt_invoke_success(command: str, invocation_result: Any) -> None:
+    """Validate dbtRunner.invoke results and raise on command failures."""
+    if invocation_result is None:
+        return
+
+    success = getattr(invocation_result, "success", None)
+    if success is True:
+        return
+
+    if success is False:
+        exception = getattr(invocation_result, "exception", None)
+        if isinstance(exception, BaseException):
+            raise DataSourceError(f"dbt {command} failed: {exception}") from exception
+        if exception is not None:
+            raise DataSourceError(f"dbt {command} failed: {exception}")
+        raise DataSourceError(f"dbt {command} failed.")
+
+    if isinstance(invocation_result, bool) and not invocation_result:
+        raise DataSourceError(f"dbt {command} failed.")
 
 
 def _build_clone_identity_key(
@@ -290,63 +369,79 @@ def _get_compiled_project(
         profile_name,
     )
 
-    with _cache_lock:
-        if cache_key in _compiled_projects_cache:
-            cached_dir = _compiled_projects_cache[cache_key]
-            if cached_dir.exists():
-                return cached_dir
+    max_cache_entries = _resolve_dbt_cache_max_entries()
 
-        # Compile the project
-        clone_dir = _resolve_managed_clone_dir(
-            project_dir=project_dir,
-            package_url=package_url,
-            branch=branch,
-            target=target,
-            vars=vars,
-            profiles_dir=canonical_profiles_dir,
-            profile_name=profile_name,
-        )
-        _clone_repo(package_url, clone_dir, branch)
-        # If provided, copy profiles directory or file into cloned project root
-        if profiles_dir:
-            try:
-                src = Path(profiles_dir)
-                if src.is_dir():
-                    # Prefer a direct profiles.yml in the given directory
-                    candidate = src / "profiles.yml"
-                    if candidate.exists():
-                        shutil.copy2(candidate, clone_dir / "profiles.yml")
-                    else:
-                        # Fallback: copy all yml/yaml files from directory
-                        for p in src.glob("*.y*ml"):
-                            shutil.copy2(p, clone_dir / p.name)
-                elif src.is_file():
-                    # If a file is passed, copy to profiles.yml in clone_dir
-                    dest = clone_dir / (
-                        "profiles.yml" if src.name != "profiles.yml" else src.name
-                    )
-                    shutil.copy2(src, dest)
-                else:
-                    logger.warning(f"profiles_dir path not found: {profiles_dir}")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
-                )
+    while True:
+        with _cache_lock:
+            cached_dir = _compiled_projects_cache.get(cache_key)
+            if cached_dir is not None:
+                if cached_dir.exists():
+                    _compiled_projects_last_access[cache_key] = time.time()
+                    return cached_dir
+                _compiled_projects_cache.pop(cache_key, None)
+                _compiled_projects_last_access.pop(cache_key, None)
 
-        cwd = Path.cwd()
-        os.chdir(clone_dir)
+            pending = _compilation_inflight.get(cache_key)
+            if pending is None:
+                pending = threading.Event()
+                _compilation_inflight[cache_key] = pending
+                is_owner = True
+            else:
+                is_owner = False
+
+        if not is_owner:
+            pending.wait()
+            continue
 
         try:
+            clone_dir = _resolve_managed_clone_dir(
+                project_dir=project_dir,
+                package_url=package_url,
+                branch=branch,
+                target=target,
+                vars=vars,
+                profiles_dir=canonical_profiles_dir,
+                profile_name=profile_name,
+            )
+            _clone_repo(package_url, clone_dir, branch)
+
+            # If provided, copy profiles directory or file into cloned project root
+            if profiles_dir:
+                try:
+                    src = Path(profiles_dir)
+                    if src.is_dir():
+                        # Prefer a direct profiles.yml in the given directory
+                        candidate = src / "profiles.yml"
+                        if candidate.exists():
+                            shutil.copy2(candidate, clone_dir / "profiles.yml")
+                        else:
+                            # Fallback: copy all yml/yaml files from directory
+                            for p in src.glob("*.y*ml"):
+                                shutil.copy2(p, clone_dir / p.name)
+                    elif src.is_file():
+                        # If a file is passed, copy to profiles.yml in clone_dir
+                        dest = clone_dir / (
+                            "profiles.yml" if src.name != "profiles.yml" else src.name
+                        )
+                        shutil.copy2(src, dest)
+                    else:
+                        logger.warning(f"profiles_dir path not found: {profiles_dir}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
+                    )
+
             runner = dbtRunner()
 
             # Log dependencies install
             deps_start = time.time()
-            deps_args = ["deps"]
+            deps_args = ["deps", "--project-dir", str(clone_dir)]
             if profile_name:
                 deps_args.extend(["--profile", profile_name])
             if profiles_dir:
                 deps_args.extend(["--profiles-dir", str(clone_dir)])
-            runner.invoke(deps_args)
+            deps_result = runner.invoke(deps_args)
+            _ensure_dbt_invoke_success("deps", deps_result)
             deps_duration = time.time() - deps_start
             log_performance(
                 "dbt_deps", deps_duration, project=package_url, target=target
@@ -354,14 +449,15 @@ def _get_compiled_project(
 
             # Log compilation
             compile_start = time.time()
-            args = ["compile", "--target", target]
+            args = ["compile", "--project-dir", str(clone_dir), "--target", target]
             if profiles_dir:
                 args.extend(["--profiles-dir", str(clone_dir)])
             if profile_name:
                 args.extend(["--profile", profile_name])
             if vars:
                 args += ["--vars", json.dumps(vars)]
-            runner.invoke(args)
+            compile_result = runner.invoke(args)
+            _ensure_dbt_invoke_success("compile", compile_result)
             compile_duration = time.time() - compile_start
             log_performance(
                 "dbt_compile",
@@ -370,10 +466,25 @@ def _get_compiled_project(
                 target=target,
                 vars_count=len(vars) if vars else 0,
             )
-        finally:
-            os.chdir(cwd)
+        except BaseException:
+            with _cache_lock:
+                event = _compilation_inflight.pop(cache_key, None)
+                if event is not None:
+                    event.set()
+            raise
 
-        _compiled_projects_cache[cache_key] = clone_dir
+        evicted_dirs: list[Path] = []
+        with _cache_lock:
+            _compiled_projects_cache[cache_key] = clone_dir
+            _compiled_projects_last_access[cache_key] = time.time()
+            evicted_dirs = _prune_compiled_projects_cache_locked(max_cache_entries)
+            event = _compilation_inflight.pop(cache_key, None)
+            if event is not None:
+                event.set()
+
+        for directory in evicted_dirs:
+            _cleanup_managed_clone_dir(directory)
+
         return clone_dir
 
 
