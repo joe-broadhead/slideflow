@@ -150,6 +150,8 @@ class Defaults:
     DBT_TARGET = "prod"
     DBT_COMPILE = True
     DBT_CACHE_MAX_ENTRIES = 20
+    DBT_COMPILE_FAILURE_BACKOFF_S = 60
+    DBT_FAILURE_CACHE_MAX_ENTRIES = 200
 
     # AI provider defaults
     OPENAI_MODEL = "gpt-4o"

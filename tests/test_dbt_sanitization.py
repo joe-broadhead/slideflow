@@ -311,6 +311,49 @@ def test_get_compiled_project_caches_failure_and_fails_fast_for_same_key(
     assert compile_calls == 1
 
 
+def test_get_compiled_project_retries_after_failure_backoff_expiry(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    monkeypatch.setenv("SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S", "0")
+    compile_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True, exist_ok=True)
+
+    class _Runner:
+        def invoke(self, args):
+            nonlocal compile_calls
+            if args[0] == "deps":
+                return SimpleNamespace(success=True)
+            compile_calls += 1
+            if compile_calls == 1:
+                return SimpleNamespace(
+                    success=False, exception=RuntimeError("transient compile error")
+                )
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+        "profiles_dir": None,
+        "profile_name": None,
+    }
+
+    with pytest.raises(DataSourceError, match="dbt compile failed"):
+        dbt_module._get_compiled_project(**kwargs)
+
+    compiled_path = dbt_module._get_compiled_project(**kwargs)
+    assert compiled_path.exists()
+    assert compile_calls == 2
+
+
 def test_get_compiled_project_caches_failure_for_waiting_threads(monkeypatch, tmp_path):
     _reset_dbt_caches()
     compile_calls = 0
@@ -354,6 +397,41 @@ def test_get_compiled_project_caches_failure_for_waiting_threads(monkeypatch, tm
         list(executor.map(lambda _i: _worker(), range(4)))
 
     assert compile_calls == 1
+
+
+def test_get_compiled_project_bounds_failure_cache_entries(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    monkeypatch.setenv("SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S", "3600")
+    monkeypatch.setenv("SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES", "2")
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True, exist_ok=True)
+
+    class _Runner:
+        def invoke(self, args):
+            if args[0] == "deps":
+                return SimpleNamespace(success=True)
+            return SimpleNamespace(
+                success=False, exception=RuntimeError("persistent compile error")
+            )
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    workspace = str(tmp_path / "workspace")
+    for country in ("US", "CA", "MX"):
+        with pytest.raises(DataSourceError, match="dbt compile failed"):
+            dbt_module._get_compiled_project(
+                package_url="https://github.com/org/repo.git",
+                project_dir=workspace,
+                branch="main",
+                target="prod",
+                vars={"country": country},
+                profiles_dir=None,
+                profile_name=None,
+            )
+
+    assert len(dbt_module._compilation_failures) == 2
 
 
 def test_get_compiled_project_single_flight_deduplicates_concurrent_compiles(

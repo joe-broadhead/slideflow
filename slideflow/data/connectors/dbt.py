@@ -76,7 +76,7 @@ logger = get_logger(__name__)
 _compiled_projects_cache: dict[tuple, Path] = {}
 _compiled_projects_last_access: dict[tuple, float] = {}
 _compilation_inflight: dict[tuple, threading.Event] = {}
-_compilation_failures: dict[tuple, str] = {}
+_compilation_failures: dict[tuple, tuple[float, str]] = {}
 _compiled_projects_in_use: dict[Path, int] = {}
 _pending_cleanup_dirs: set[Path] = set()
 _cache_lock = threading.Lock()
@@ -205,6 +205,40 @@ def _resolve_dbt_cache_max_entries() -> int:
     return max(parsed, 1)
 
 
+def _resolve_dbt_compile_failure_backoff_seconds() -> float:
+    """Resolve compile failure backoff window (seconds) from env/defaults."""
+    raw_value = os.getenv("SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S")
+    if raw_value is None:
+        return float(Defaults.DBT_COMPILE_FAILURE_BACKOFF_S)
+    try:
+        parsed = float(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S value '%s'; using default %s",
+            raw_value,
+            Defaults.DBT_COMPILE_FAILURE_BACKOFF_S,
+        )
+        return float(Defaults.DBT_COMPILE_FAILURE_BACKOFF_S)
+    return max(parsed, 0.0)
+
+
+def _resolve_dbt_failure_cache_max_entries() -> int:
+    """Resolve max entries for compile failure cache from env/defaults."""
+    raw_value = os.getenv("SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES")
+    if raw_value is None:
+        return Defaults.DBT_FAILURE_CACHE_MAX_ENTRIES
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES value '%s'; using default %s",
+            raw_value,
+            Defaults.DBT_FAILURE_CACHE_MAX_ENTRIES,
+        )
+        return Defaults.DBT_FAILURE_CACHE_MAX_ENTRIES
+    return max(parsed, 1)
+
+
 def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
     """Best-effort removal of managed clone directories during cache eviction."""
     managed_root = clone_dir.parent
@@ -301,6 +335,38 @@ def _prune_compiled_projects_cache_locked(max_entries: int) -> None:
         if not evicted:
             # All cache entries are actively in use. Temporarily exceed max_entries.
             break
+
+
+def _prune_compilation_failures_locked(
+    max_entries: int, failure_backoff_s: float
+) -> None:
+    """Bound and clean stale compile-failure cache entries.
+
+    Requires caller to hold _cache_lock.
+    """
+    now = time.time()
+    if failure_backoff_s <= 0:
+        _compilation_failures.clear()
+        return
+
+    expired_keys = [
+        key
+        for key, (failed_at, _message) in _compilation_failures.items()
+        if (now - failed_at) >= failure_backoff_s
+    ]
+    for key in expired_keys:
+        _compilation_failures.pop(key, None)
+
+    if len(_compilation_failures) <= max_entries:
+        return
+
+    sorted_keys = sorted(
+        _compilation_failures.keys(),
+        key=lambda key: _compilation_failures[key][0],
+    )
+    remove_count = len(_compilation_failures) - max_entries
+    for key in sorted_keys[:remove_count]:
+        _compilation_failures.pop(key, None)
 
 
 def _ensure_dbt_invoke_success(command: str, invocation_result: Any) -> None:
@@ -440,9 +506,15 @@ def _get_compiled_project(
     )
 
     max_cache_entries = _resolve_dbt_cache_max_entries()
+    failure_backoff_s = _resolve_dbt_compile_failure_backoff_seconds()
+    failure_cache_max_entries = _resolve_dbt_failure_cache_max_entries()
 
     while True:
         with _cache_lock:
+            _prune_compilation_failures_locked(
+                max_entries=failure_cache_max_entries,
+                failure_backoff_s=failure_backoff_s,
+            )
             cached_dir = _compiled_projects_cache.get(cache_key)
             if cached_dir is not None:
                 if cached_dir.exists():
@@ -453,8 +525,9 @@ def _get_compiled_project(
                 _compiled_projects_cache.pop(cache_key, None)
                 _compiled_projects_last_access.pop(cache_key, None)
 
-            failure_message = _compilation_failures.get(cache_key)
-            if failure_message is not None:
+            failure_entry = _compilation_failures.get(cache_key)
+            if failure_entry is not None:
+                _failed_at, failure_message = failure_entry
                 raise DataSourceError(failure_message)
 
             pending = _compilation_inflight.get(cache_key)
@@ -551,7 +624,11 @@ def _get_compiled_project(
         except BaseException as error:
             failure_message = str(error) or type(error).__name__
             with _cache_lock:
-                _compilation_failures[cache_key] = failure_message
+                _compilation_failures[cache_key] = (time.time(), failure_message)
+                _prune_compilation_failures_locked(
+                    max_entries=failure_cache_max_entries,
+                    failure_backoff_s=failure_backoff_s,
+                )
                 event = _compilation_inflight.pop(cache_key, None)
                 if event is not None:
                     event.set()
