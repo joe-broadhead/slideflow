@@ -43,7 +43,7 @@ Functions:
 
 import hashlib
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import pandas as pd
 
@@ -86,6 +86,7 @@ class DataSourceCache:
 
     _instance: Optional["DataSourceCache"] = None
     _cache: Dict[str, pd.DataFrame]
+    _inflight: Dict[str, threading.Event]
     _enabled: bool
     _lock: threading.RLock
 
@@ -102,6 +103,7 @@ class DataSourceCache:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._cache = {}
+            cls._instance._inflight = {}
             cls._instance._enabled = True
             cls._instance._lock = threading.RLock()
         return cls._instance
@@ -189,6 +191,61 @@ class DataSourceCache:
             # Store reference instead of copy - safe since cache lifecycle
             # is contained within a single build operation
             self._cache[key] = data
+
+    def get_or_load(
+        self, source_type: str, loader: Callable[[], pd.DataFrame], **kwargs
+    ) -> pd.DataFrame:
+        """Get cached data or load it exactly once per key under concurrency.
+
+        Prevents cache stampedes by ensuring only one concurrent caller executes
+        `loader` for a given cache key while others wait for that result.
+
+        Args:
+            source_type: Type of data source (e.g., "csv", "databricks").
+            loader: Zero-arg callable that fetches the DataFrame on cache miss.
+            **kwargs: Parameters that uniquely identify the data source.
+
+        Returns:
+            Cached or freshly loaded DataFrame for the requested key.
+        """
+        key = self._generate_key(source_type, **kwargs)
+
+        while True:
+            if not self._enabled:
+                return loader()
+
+            with self._lock:
+                cached = self._cache.get(key)
+                if cached is not None:
+                    return cached
+
+                pending = self._inflight.get(key)
+                if pending is None:
+                    pending = threading.Event()
+                    self._inflight[key] = pending
+                    is_owner = True
+                else:
+                    is_owner = False
+
+            if is_owner:
+                try:
+                    data = loader()
+                except Exception:
+                    with self._lock:
+                        event = self._inflight.pop(key, None)
+                        if event is not None:
+                            event.set()
+                    raise
+
+                with self._lock:
+                    if self._enabled:
+                        self._cache[key] = data
+                    event = self._inflight.pop(key, None)
+                    if event is not None:
+                        event.set()
+                return data
+
+            pending.wait()
 
     def clear(self) -> None:
         """Remove all cached DataFrames.

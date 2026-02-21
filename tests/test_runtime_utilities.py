@@ -1,4 +1,7 @@
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import pytest
@@ -44,6 +47,36 @@ def test_data_source_cache_key_generation_is_order_stable():
     key_a = cache._generate_key("databricks", query="select 1", target="prod")
     key_b = cache._generate_key("databricks", target="prod", query="select 1")
     assert key_a == key_b
+
+
+def test_data_source_cache_get_or_load_deduplicates_concurrent_loads():
+    cache = get_data_cache()
+    cache.enable()
+    cache.clear()
+
+    load_calls = 0
+    counter_lock = threading.Lock()
+    start_barrier = threading.Barrier(8)
+    expected_df = pd.DataFrame({"value": [42]})
+
+    def loader():
+        nonlocal load_calls
+        with counter_lock:
+            load_calls += 1
+        time.sleep(0.05)
+        return expected_df
+
+    def worker():
+        start_barrier.wait()
+        return cache.get_or_load("csv", loader, file_path="shared.csv")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda _i: worker(), range(8)))
+
+    assert load_calls == 1
+    assert all(result is expected_df for result in results)
+
+    cache.clear()
 
 
 def test_handle_google_credentials_from_file_and_env(tmp_path, monkeypatch):

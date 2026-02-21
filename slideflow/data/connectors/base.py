@@ -274,15 +274,12 @@ class BaseSourceConfig(BaseModel):
             >>> data2 = config.fetch_data()  # Returns cached data
         """
         cache = get_data_cache()
-
         cache_kwargs = self.model_dump(
             include={f for f in type(self).model_fields if f not in ("name",)}
         )
 
-        cached_data = cache.get(source_type=self.type, **cache_kwargs)
-        if cached_data is not None:
-            return cached_data
-        data = self.get_connector().fetch_data()
-        cache.set(data, source_type=self.type, **cache_kwargs)
-
-        return data
+        return cache.get_or_load(
+            source_type=self.type,
+            loader=lambda: self.get_connector().fetch_data(),
+            **cache_kwargs,
+        )
