@@ -1,3 +1,6 @@
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import ClassVar, Literal
 
@@ -39,6 +42,36 @@ class DummySourceConfig(base_connectors_module.BaseSourceConfig):
     type: Literal["dummy"] = "dummy"
     token: str
     connector_class: ClassVar = DummyConnector
+
+
+class CountingConnector(base_connectors_module.DataConnector):
+    _fetch_calls = 0
+    _fetch_lock = threading.Lock()
+
+    def __init__(self, token: str):
+        self.token = token
+
+    @classmethod
+    def reset_calls(cls):
+        with cls._fetch_lock:
+            cls._fetch_calls = 0
+
+    @classmethod
+    def fetch_calls(cls) -> int:
+        with cls._fetch_lock:
+            return cls._fetch_calls
+
+    def fetch_data(self) -> pd.DataFrame:
+        with self._fetch_lock:
+            type(self)._fetch_calls += 1
+        time.sleep(0.05)
+        return pd.DataFrame({"token": [self.token]})
+
+
+class CountingSourceConfig(base_connectors_module.BaseSourceConfig):
+    type: Literal["counting"] = "counting"
+    token: str
+    connector_class: ClassVar = CountingConnector
 
 
 class DummyProviderConfig(PresentationProviderConfig):
@@ -104,6 +137,14 @@ def test_data_connector_context_manager_and_base_source_cache(monkeypatch):
             self.set_calls += 1
             self.store[self._key(source_type, kwargs)] = data
 
+        def get_or_load(self, source_type, loader, **kwargs):
+            cached = self.get(source_type, **kwargs)
+            if cached is not None:
+                return cached
+            data = loader()
+            self.set(data, source_type, **kwargs)
+            return data
+
     fake_cache = FakeCache()
     monkeypatch.setattr(base_connectors_module, "get_data_cache", lambda: fake_cache)
 
@@ -114,6 +155,23 @@ def test_data_connector_context_manager_and_base_source_cache(monkeypatch):
     assert first.to_dict(orient="records")[0]["token"] == "secret"
     assert second is first
     assert fake_cache.set_calls == 1
+
+
+def test_base_source_config_fetch_data_deduplicates_concurrent_connector_fetches():
+    cache = base_connectors_module.get_data_cache()
+    cache.enable()
+    cache.clear()
+    CountingConnector.reset_calls()
+
+    config = CountingSourceConfig(name="shared", type="counting", token="secret")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda _i: config.fetch_data(), range(8)))
+
+    assert CountingConnector.fetch_calls() == 1
+    assert all(result is results[0] for result in results)
+
+    cache.clear()
 
 
 def test_databricks_connector_connect_disconnect_and_fetch(monkeypatch):

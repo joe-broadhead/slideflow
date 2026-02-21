@@ -1,4 +1,7 @@
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import pytest
@@ -44,6 +47,85 @@ def test_data_source_cache_key_generation_is_order_stable():
     key_a = cache._generate_key("databricks", query="select 1", target="prod")
     key_b = cache._generate_key("databricks", target="prod", query="select 1")
     assert key_a == key_b
+
+
+def test_data_source_cache_get_or_load_deduplicates_concurrent_loads():
+    cache = get_data_cache()
+    cache.enable()
+    cache.clear()
+
+    load_calls = 0
+    counter_lock = threading.Lock()
+    start_barrier = threading.Barrier(8)
+    expected_df = pd.DataFrame({"value": [42]})
+
+    def loader():
+        nonlocal load_calls
+        with counter_lock:
+            load_calls += 1
+        time.sleep(0.05)
+        return expected_df
+
+    def worker():
+        start_barrier.wait()
+        return cache.get_or_load("csv", loader, file_path="shared.csv")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda _i: worker(), range(8)))
+
+    assert load_calls == 1
+    assert all(result is expected_df for result in results)
+
+    cache.clear()
+
+
+def test_data_source_cache_get_or_load_unblocks_waiters_on_base_exception():
+    cache = get_data_cache()
+    cache.enable()
+    cache.clear()
+
+    load_calls = 0
+    counter_lock = threading.Lock()
+    start_barrier = threading.Barrier(2)
+    expected_df = pd.DataFrame({"value": [99]})
+
+    class LoaderExit(BaseException):
+        pass
+
+    def loader():
+        nonlocal load_calls
+        with counter_lock:
+            load_calls += 1
+            current = load_calls
+        time.sleep(0.05)
+        if current == 1:
+            raise LoaderExit("exit")
+        return expected_df
+
+    def worker():
+        start_barrier.wait()
+        return cache.get_or_load("csv", loader, file_path="shared-base-exception.csv")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(worker) for _ in range(2)]
+        completed = list(as_completed(futures, timeout=2))
+
+    assert len(completed) == 2
+
+    outcomes = []
+    for future in completed:
+        try:
+            outcomes.append(future.result())
+        except LoaderExit as error:
+            outcomes.append(error)
+
+    assert any(isinstance(item, LoaderExit) for item in outcomes)
+    data_results = [item for item in outcomes if isinstance(item, pd.DataFrame)]
+    assert len(data_results) == 1
+    assert data_results[0] is expected_df
+    assert load_calls == 2
+
+    cache.clear()
 
 
 def test_handle_google_credentials_from_file_and_env(tmp_path, monkeypatch):
