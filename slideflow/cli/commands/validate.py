@@ -313,6 +313,11 @@ def validate_command(
         registry_paths: List of Python files containing function registries.
             Defaults to ["registry.py"]. These files are loaded to resolve
             function references in the configuration.
+        output_json: Optional path for machine-readable validation output.
+        params_path: Optional CSV path for provider contract checks. Must include
+            a `template_id` column when used.
+        provider_contract_check: When true, runs provider-aware contract checks
+            for Google Slides (slide IDs and placeholder presence).
 
     Raises:
         typer.Exit: Exits with code 1 if validation fails at any stage.
@@ -351,7 +356,9 @@ def validate_command(
             - Suggestions for fixing common problems
 
     Note:
-        - Validation does not perform actual data fetching or API calls
+        - By default, validation does not perform actual data fetching or API calls
+        - `--provider-contract-check` performs read checks against the
+          Google Slides API for referenced templates
         - Registry functions are resolved but not executed
         - Template parameters are validated for syntax, not content
         - This command is safe to run in CI/CD pipelines
