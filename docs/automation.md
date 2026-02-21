@@ -74,7 +74,28 @@ jobs:
 
 ## Outputs
 
-- `presentation-urls`: Comma-separated Google Slides URLs found in logs.
+- `presentation-urls`: Comma-separated Google Slides URLs extracted from build JSON output.
+- `doctor-result-json`: JSON summary emitted by `slideflow doctor --output-json`.
+- `validate-result-json`: JSON summary emitted by `slideflow validate --output-json`.
+- `build-result-json`: JSON summary emitted by `slideflow build --output-json`.
+
+Example downstream usage:
+
+```yaml
+jobs:
+  build:
+    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
+    secrets: inherit
+    with:
+      config-file: config/report.yml
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - run: echo "URLs: ${{ needs.build.outputs['presentation-urls'] }}"
+      - run: echo '${{ needs.build.outputs["build-result-json"] }}' > build-result.json
+```
 
 ## Secrets and Environment
 

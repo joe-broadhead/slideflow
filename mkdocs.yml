@@ -122,6 +122,7 @@ nav:
       - Testing: testing.md
       - Security: security.md
       - Release: release-process.md
+      - Changelog: changelog.md
   - Development:
       - Compatibility Policy: compatibility-policy.md
       - CI & Quality: ci-quality.md

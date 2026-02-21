@@ -95,9 +95,9 @@ that mode so you can validate the slides visually.
 
 - Chart image export runs through headless Kaleido.
 - For Cloud Run/Databricks/self-hosted runners, ensure a Chrome/Chromium binary is available in the runtime image.
-- On macOS local runs, if the desktop Chrome app still steals focus, set `BROWSER_PATH`
-  to a dedicated Chromium/Chrome-for-Testing binary instead of
-  `/Applications/Google Chrome.app/...`.
+- On macOS local runs, if desktop Chrome still steals focus, set `CHROME_PATH`
+  or `GOOGLE_CHROME_BIN` to a dedicated Chromium/Chrome-for-Testing binary
+  instead of `/Applications/Google Chrome.app/...`.
 
 ## Compatibility matrix
 

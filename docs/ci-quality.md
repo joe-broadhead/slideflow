@@ -44,7 +44,7 @@ python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 pytest -q
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=75
+pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=80
 pytest -q -m integration
 pytest -q -m e2e
 mkdocs build --strict

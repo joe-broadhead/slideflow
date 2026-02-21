@@ -1,5 +1,13 @@
 # Troubleshooting
 
+## Start with doctor
+
+Run this first to catch environment/runtime issues before longer builds:
+
+```bash
+slideflow doctor --config-file config.yml --registry registry.py --strict --output-json doctor-result.json
+```
+
 ## Validation fails
 
 Command:
@@ -52,6 +60,27 @@ Common causes:
 - missing Databricks auth env vars
 - invalid `package_url` or missing token env var used in URL
 - profile/target mismatch during dbt compile
+
+Frequent CI symptom:
+
+- `dbt compile failed: Path '/home/runner/.dbt' does not exist`
+
+Fixes:
+
+- set `profiles_dir` in your `databricks_dbt` source config, or
+- ensure `profiles.yml` exists at the dbt project root in the cloned repo.
+
+For private dbt deps/repo access, ensure token env vars referenced by
+`package_url` or `env_var(...)` are present at runtime.
+
+## NumPy binary-compatibility warnings
+
+If you see warnings like:
+
+- `numpy.integer size changed, may indicate binary incompatibility`
+
+recreate the virtual environment and reinstall dependencies from scratch to
+realign wheel binaries for your Python/runtime.
 
 ## AI replacement issues
 

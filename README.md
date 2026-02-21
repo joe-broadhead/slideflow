@@ -61,6 +61,7 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 -   **Powerful CLI:**
     -   `slideflow build`: Generate one or many presentations.
     -   `slideflow validate`: Validate your configuration before you build.
+    -   `slideflow doctor`: Run preflight diagnostics before validate/build.
     -   `slideflow templates`: Inspect available template names and parameter contracts.
     -   Generate multiple presentations from a single template using a CSV parameter file.
 
@@ -109,39 +110,32 @@ slideflow build your_config.yml
 
 SlideFlow comes with a simple CLI.
 
-### `build`
+### Commands
 
-The `build` command generates your presentation(s).
+-   `slideflow validate CONFIG_FILE [OPTIONS]`
+    -   validate config/registry resolution
+    -   optional provider contract checks (`--provider-contract-check`)
+    -   optional machine-readable output (`--output-json`)
+-   `slideflow build CONFIG_FILE [OPTIONS]`
+    -   generate one or many presentations
+    -   supports batch params (`--params-path`), dry-run, threads, and RPS controls
+    -   optional machine-readable output (`--output-json`)
+-   `slideflow doctor [OPTIONS]`
+    -   runtime preflight checks (Python/chart/runtime/provider environment)
+    -   supports strict fail mode (`--strict`) and JSON output
+-   `slideflow templates list|info`
+    -   inspect available chart templates and contract metadata
 
-```bash
-slideflow build [CONFIG_FILE] [OPTIONS]
-```
-
-**Arguments:**
-
--   `CONFIG_FILE`: Path to your YAML configuration file.
-
-**Options:**
-
--   `--registry, -r`: Path to a Python file containing a `function_registry`. You can use this option multiple times.
--   `--params-path, -f`: Path to a CSV file containing parameters for generating multiple presentations.
--   `--dry-run`: Validate the configuration without building the presentation.
-
-### `validate`
-
-The `validate` command checks your configuration for errors.
+Examples:
 
 ```bash
-slideflow validate [CONFIG_FILE] [OPTIONS]
+slideflow doctor --config-file config.yml --registry registry.py --strict --output-json doctor-result.json
+slideflow validate config.yml --registry registry.py --provider-contract-check --params-path variants.csv --output-json validate-result.json
+slideflow build config.yml --registry registry.py --params-path variants.csv --threads 2 --rps 0.8 --output-json build-result.json
 ```
 
-**Arguments:**
-
--   `CONFIG_FILE`: Path to your YAML configuration file.
-
-**Options:**
-
--   `--registry, -r`: Path to a Python file containing a `function_registry`.
+For the complete and current command surface, see
+[CLI Reference](https://joe-broadhead.github.io/slideflow/cli-reference/).
 
 ---
 

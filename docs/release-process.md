@@ -8,7 +8,7 @@ Release branches must follow:
 
 Example:
 
-- `release/v0.0.2`
+- `release/v0.0.5`
 
 ## Automated release flow
 
@@ -40,7 +40,12 @@ PyPI package identity:
 ## Pre-release checklist
 
 1. Ensure tests pass locally.
-2. Ensure docs are updated and build cleanly:
+2. Update docs + changelog in the same release prep PR:
+
+- update user-facing docs for new behavior/flags/workflows
+- update `CHANGELOG.md` with release notes and known issues
+
+3. Ensure docs build cleanly:
 
 ```bash
 source .venv/bin/activate
@@ -49,12 +54,13 @@ python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 pytest -q
+python -m pip install -e ".[docs]"
 mkdocs build --strict
 ```
 
-3. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
-4. Create release branch `release/vX.Y.Z`.
-5. Push and monitor `CI`, `Docs`, and `Release` workflows.
+4. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
+5. Create release branch `release/vX.Y.Z`.
+6. Push and monitor `CI`, `Docs`, and `Release` workflows.
 
 ## PyPI trusted publishing setup
 

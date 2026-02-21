@@ -104,6 +104,12 @@ Behavior highlights:
 - Repositories are cloned under `project_dir/.slideflow_dbt_clones/<key>`.
 - `project_dir` is treated as a workspace root, not a direct clone target.
 - If `package_url` embeds `$TOKEN_NAME`, that env var must exist at runtime.
+- If `profiles_dir` is provided, SlideFlow copies profiles into the cloned dbt
+  workspace and runs dbt with `--profiles-dir <clone_dir>`.
+- If `profiles_dir` is omitted but the cloned repo contains `profiles.yml` at
+  project root, SlideFlow auto-uses that project-root profiles file.
+- Compile/dependency work for identical manifest cache keys is deduplicated
+  across concurrent presentation threads in a single run.
 
 ## Caching and Execution
 
@@ -113,6 +119,12 @@ SlideFlow caches connector fetches by config identity, which helps when:
 - multiple replacements reuse one source
 
 Treat connectors as read-only sources during a run for predictable results.
+
+DBT compile/cache tuning env vars:
+
+- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (default from built-in constants)
+- `SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S`
+- `SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES`
 
 ## Recommended Workflow
 
