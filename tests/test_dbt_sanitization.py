@@ -1,8 +1,10 @@
+import builtins
 import json
 import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -335,6 +337,115 @@ def test_manifest_connector_single_flight_deduplicates_concurrent_manifest_reads
     assert clone_calls == 1
     assert compile_calls == 1
     assert results == ["select 1 as answer"] * 4
+
+
+def test_parallel_model_fetches_with_low_cache_do_not_delete_active_manifest(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    monkeypatch.setenv("SLIDEFLOW_DBT_CACHE_MAX_ENTRIES", "1")
+
+    package_url = "https://github.com/org/repo.git"
+    workspace = str(tmp_path / "workspace")
+    branch = "main"
+    target = "prod"
+
+    us_clone_dir = dbt_module._resolve_managed_clone_dir(
+        project_dir=workspace,
+        package_url=package_url,
+        branch=branch,
+        target=target,
+        vars={"country": "US"},
+        profiles_dir=None,
+        profile_name=None,
+    )
+
+    def _write_compiled_artifacts(clone_dir):
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "compiled.sql").write_text("select 1 as answer")
+        manifest = {
+            "nodes": {
+                "model.project.metrics": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "compiled_path": "target/compiled.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    def _fake_clone(_url, clone_dir, _branch):
+        _write_compiled_artifacts(clone_dir)
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    first_about_to_open = threading.Event()
+    allow_first_open = threading.Event()
+    us_manifest_path = (us_clone_dir / "target" / "manifest.json").resolve()
+    real_open = builtins.open
+
+    def _open_proxy(file, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if "r" in mode:
+            try:
+                candidate = Path(file).resolve()
+            except Exception:
+                candidate = None
+            if candidate == us_manifest_path and not first_about_to_open.is_set():
+                first_about_to_open.set()
+                assert allow_first_open.wait(5), "Timed out waiting for parallel fetch"
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", _open_proxy)
+
+    us_connector = dbt_module.DBTManifestConnector(
+        package_url=package_url,
+        project_dir=workspace,
+        branch=branch,
+        target=target,
+        vars={"country": "US"},
+    )
+    ca_connector = dbt_module.DBTManifestConnector(
+        package_url=package_url,
+        project_dir=workspace,
+        branch=branch,
+        target=target,
+        vars={"country": "CA"},
+    )
+
+    results: dict[str, str] = {}
+    errors: list[BaseException] = []
+
+    def _run(name: str, connector: dbt_module.DBTManifestConnector) -> None:
+        try:
+            sql = connector.get_compiled_query("metrics_model")
+            assert sql is not None
+            results[name] = sql
+        except BaseException as error:  # pragma: no cover - assertion helper path
+            errors.append(error)
+
+    us_thread = threading.Thread(target=_run, args=("us", us_connector))
+    us_thread.start()
+
+    assert first_about_to_open.wait(5), "US fetch never reached manifest read"
+
+    ca_thread = threading.Thread(target=_run, args=("ca", ca_connector))
+    ca_thread.start()
+    ca_thread.join(timeout=5)
+    assert not ca_thread.is_alive(), "CA fetch did not complete in time"
+
+    allow_first_open.set()
+    us_thread.join(timeout=5)
+    assert not us_thread.is_alive(), "US fetch did not complete in time"
+
+    assert errors == []
+    assert results["us"] == "select 1 as answer"
+    assert results["ca"] == "select 1 as answer"
 
 
 def test_in_use_cache_entry_is_not_evicted_or_recompiled_for_same_key(
