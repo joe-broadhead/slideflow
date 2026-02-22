@@ -68,8 +68,8 @@ class ProviderContractValidationError(ValueError):
 
 def _first_error_line(error: Exception) -> str:
     """Return a safe single-line error description."""
-    first_line, _sep, _rest = str(error).partition("\n")
-    first_line = first_line.strip()
+    lines = str(error).splitlines()
+    first_line = lines[0].strip() if lines else ""
     if first_line:
         return first_line
     return type(error).__name__
