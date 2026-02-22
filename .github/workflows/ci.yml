@@ -37,6 +37,10 @@ jobs:
         run: |
           python -m pip check
 
+      - name: Check NumPy/Pandas binary compatibility
+        run: |
+          python scripts/ci/check_numpy_binary_compatibility.py
+
       - name: Version consistency checks
         run: |
           python scripts/ci/check_version_consistency.py

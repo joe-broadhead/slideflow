@@ -5,6 +5,7 @@
 - `CI` (`.github/workflows/ci.yml`)
   - installs project + dev deps
   - runs `pip check`
+  - runs NumPy/Pandas ABI compatibility check (`scripts/ci/check_numpy_binary_compatibility.py`)
   - runs `black --check`, `ruff check`, and `mypy`
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
   - runs integration marker tests (`-m integration`)
@@ -17,6 +18,7 @@
 - `Release` (`.github/workflows/release.yml`)
   - runs on `release/vX.Y.Z`
   - validates branch/version consistency
+  - validates NumPy/Pandas ABI compatibility
   - runs format/lint/type/test/build checks
   - verifies distribution identity (`slideflow-presentations`)
   - publishes to PyPI first
@@ -40,6 +42,7 @@
 ```bash
 source .venv/bin/activate
 python -m pip check
+python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow

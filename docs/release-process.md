@@ -16,12 +16,13 @@ On push to a `release/vX.Y.Z` branch, the `Release` workflow:
 
 1. validates branch naming
 2. validates project version consistency
-3. runs release test suite + coverage gate
-4. builds wheel and source distributions
-5. installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
-6. publishes package to PyPI (OIDC trusted publishing)
-7. creates and pushes Git tag `vX.Y.Z`
-8. creates GitHub release with artifacts
+3. validates NumPy/Pandas ABI compatibility
+4. runs release test suite + coverage gate
+5. builds wheel and source distributions
+6. installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
+7. publishes package to PyPI (OIDC trusted publishing)
+8. creates and pushes Git tag `vX.Y.Z`
+9. creates GitHub release with artifacts
 
 Idempotency behavior:
 
@@ -56,6 +57,7 @@ PyPI package identity:
 ```bash
 source .venv/bin/activate
 python -m pip check
+python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow

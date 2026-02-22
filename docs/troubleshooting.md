@@ -78,9 +78,25 @@ For private dbt deps/repo access, ensure token env vars referenced by
 If you see warnings like:
 
 - `numpy.integer size changed, may indicate binary incompatibility`
+- `numpy.floating size changed, may indicate binary incompatibility`
 
-recreate the virtual environment and reinstall dependencies from scratch to
-realign wheel binaries for your Python/runtime.
+these indicate a local wheel ABI mismatch. Rebuild the environment from
+scratch so NumPy/Pandas are installed as a compatible pair:
+
+```bash
+rm -rf .venv
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,ai,docs]"
+python scripts/ci/check_numpy_binary_compatibility.py
+```
+
+Notes:
+
+- CI now runs the same ABI check script to prevent regressions.
+- If your org mirrors wheels, ensure both NumPy and Pandas are resolved from
+  the same mirror snapshot.
 
 ## AI replacement issues
 
