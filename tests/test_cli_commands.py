@@ -64,6 +64,16 @@ def _stub_presentation_validation(monkeypatch):
     )
 
 
+def test_validate_first_error_line_handles_carriage_return_separator():
+    error = RuntimeError("first line\rsecond line")
+    assert validate_command_module._first_error_line(error) == "first line"
+
+
+def test_validate_first_error_line_falls_back_to_exception_type_when_empty():
+    error = RuntimeError("")
+    assert validate_command_module._first_error_line(error) == "RuntimeError"
+
+
 def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
     tmp_path, monkeypatch
 ):
