@@ -38,6 +38,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,ai]" build
 
+      - name: Check NumPy/Pandas binary compatibility
+        run: |
+          python scripts/ci/check_numpy_binary_compatibility.py
+
       - name: Validate version consistency
         run: |
           python scripts/ci/check_version_consistency.py "${GITHUB_REF_NAME}"
