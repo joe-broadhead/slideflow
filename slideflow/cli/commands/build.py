@@ -169,9 +169,7 @@ def build_command(
     ] = None,
     params_path: Annotated[
         Optional[Path],
-        typer.Option(
-            "--params-path", "-f", help="Path to CSV with parameter rows"
-        ),
+        typer.Option("--params-path", "-f", help="Path to CSV with parameter rows"),
     ] = None,
     dry_run: Annotated[
         bool,
@@ -179,15 +177,11 @@ def build_command(
     ] = False,
     threads: Annotated[
         Optional[int],
-        typer.Option(
-            "--threads", "-t", help="Number of concurrent threads to use"
-        ),
+        typer.Option("--threads", "-t", help="Number of concurrent threads to use"),
     ] = None,
     requests_per_second: Annotated[
         Optional[float],
-        typer.Option(
-            "--rps", help="Override the API rate limit (requests per second)"
-        ),
+        typer.Option("--rps", help="Override the API rate limit (requests per second)"),
     ] = None,
     output_json: Annotated[
         Optional[Path],
