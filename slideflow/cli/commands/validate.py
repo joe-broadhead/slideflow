@@ -35,7 +35,7 @@ Example:
 
 import csv
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Annotated, Any, Dict, List, Optional, Set
 
 import typer
 import yaml  # type: ignore[import-untyped]
@@ -267,29 +267,39 @@ def _run_google_provider_contract_check(
 
 
 def validate_command(
-    config_file: Path = typer.Argument(..., help="Path to YAML configuration file"),
-    registry_paths: Optional[List[Path]] = typer.Option(
-        None,
-        "--registry",
-        "-r",
-        help="Path to Python registry files (can be used multiple times)",
-    ),
-    output_json: Optional[Path] = typer.Option(
-        None,
-        "--output-json",
-        help="Optional path to write a machine-readable validation summary JSON file",
-    ),
-    params_path: Optional[Path] = typer.Option(
-        None,
-        "--params-path",
-        "-f",
-        help="Optional CSV file used for provider contract checks (expects template_id column)",
-    ),
-    provider_contract_check: bool = typer.Option(
-        False,
-        "--provider-contract-check",
-        help="Run provider-aware contract checks (Google Slides slide IDs/placeholders)",
-    ),
+    config_file: Annotated[
+        Path, typer.Argument(help="Path to YAML configuration file")
+    ],
+    registry_paths: Annotated[
+        Optional[List[Path]],
+        typer.Option(
+            "--registry",
+            "-r",
+            help="Path to Python registry files (can be used multiple times)",
+        ),
+    ] = None,
+    output_json: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output-json",
+            help="Optional path to write a machine-readable validation summary JSON file",
+        ),
+    ] = None,
+    params_path: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--params-path",
+            "-f",
+            help="Optional CSV file used for provider contract checks (expects template_id column)",
+        ),
+    ] = None,
+    provider_contract_check: Annotated[
+        bool,
+        typer.Option(
+            "--provider-contract-check",
+            help="Run provider-aware contract checks (Google Slides slide IDs/placeholders)",
+        ),
+    ] = False,
 ) -> None:
     """Validate YAML configuration and registry files.
 

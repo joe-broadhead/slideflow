@@ -33,7 +33,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, cast
+from typing import Annotated, Any, List, Optional, Tuple, cast
 
 import pandas as pd
 import typer
@@ -156,30 +156,40 @@ def build_single_presentation(
 
 
 def build_command(
-    config_file: Path = typer.Argument(..., help="Path to YAML configuration file"),
-    registry_files: Optional[List[Path]] = typer.Option(
-        None,
-        "--registry",
-        "-r",
-        help="Path to Python registry files (can be used multiple times)",
-    ),
-    params_path: Optional[Path] = typer.Option(
-        None, "--params-path", "-f", help="Path to CSV with parameter rows"
-    ),
-    dry_run: Optional[bool] = typer.Option(
-        False, "--dry-run", help="Validate config without building"
-    ),
-    threads: Optional[int] = typer.Option(
-        None, "--threads", "-t", help="Number of concurrent threads to use"
-    ),
-    requests_per_second: Optional[float] = typer.Option(
-        None, "--rps", help="Override the API rate limit (requests per second)"
-    ),
-    output_json: Optional[Path] = typer.Option(
-        None,
-        "--output-json",
-        help="Optional path to write a machine-readable build summary JSON file",
-    ),
+    config_file: Annotated[
+        Path, typer.Argument(help="Path to YAML configuration file")
+    ],
+    registry_files: Annotated[
+        Optional[List[Path]],
+        typer.Option(
+            "--registry",
+            "-r",
+            help="Path to Python registry files (can be used multiple times)",
+        ),
+    ] = None,
+    params_path: Annotated[
+        Optional[Path],
+        typer.Option("--params-path", "-f", help="Path to CSV with parameter rows"),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Validate config without building"),
+    ] = False,
+    threads: Annotated[
+        Optional[int],
+        typer.Option("--threads", "-t", help="Number of concurrent threads to use"),
+    ] = None,
+    requests_per_second: Annotated[
+        Optional[float],
+        typer.Option("--rps", help="Override the API rate limit (requests per second)"),
+    ] = None,
+    output_json: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output-json",
+            help="Optional path to write a machine-readable build summary JSON file",
+        ),
+    ] = None,
 ) -> List[dict]:
     """Generate presentations from YAML configuration.
 
