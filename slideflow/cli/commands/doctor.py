@@ -4,7 +4,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import typer
 import yaml  # type: ignore[import-untyped]
@@ -184,28 +184,36 @@ def _provider_checks(
 
 
 def doctor_command(
-    config_file: Optional[Path] = typer.Option(
-        None,
-        "--config-file",
-        "-c",
-        help="Optional config file to run provider-level diagnostics",
-    ),
-    registry_paths: Optional[List[Path]] = typer.Option(
-        None,
-        "--registry",
-        "-r",
-        help="Path to Python registry files (can be used multiple times)",
-    ),
-    output_json: Optional[Path] = typer.Option(
-        None,
-        "--output-json",
-        help="Optional path to write a machine-readable doctor summary JSON file",
-    ),
-    strict: bool = typer.Option(
-        False,
-        "--strict",
-        help="Exit non-zero when any error-severity checks fail",
-    ),
+    config_file: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--config-file",
+            "-c",
+            help="Optional config file to run provider-level diagnostics",
+        ),
+    ] = None,
+    registry_paths: Annotated[
+        Optional[List[Path]],
+        typer.Option(
+            "--registry",
+            "-r",
+            help="Path to Python registry files (can be used multiple times)",
+        ),
+    ] = None,
+    output_json: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output-json",
+            help="Optional path to write a machine-readable doctor summary JSON file",
+        ),
+    ] = None,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Exit non-zero when any error-severity checks fail",
+        ),
+    ] = False,
 ) -> Dict[str, Any]:
     """Run preflight diagnostics for local and provider/runtime dependencies."""
     started_at = now_iso8601_utc()
