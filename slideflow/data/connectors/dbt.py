@@ -1260,9 +1260,7 @@ class DBTSourceConfig(BaseSourceConfig):
         None, description="Optional dbt model name selector for alias disambiguation"
     )
     dbt: DBTProjectConfig = Field(..., description="DBT project settings")
-    warehouse: DBTWarehouseConfig = Field(
-        ..., description="Warehouse backend settings"
-    )
+    warehouse: DBTWarehouseConfig = Field(..., description="Warehouse backend settings")
 
     # BaseSourceConfig expects a connector_class; composable routing still
     # resolves to DBTDatabricksConnector today.
