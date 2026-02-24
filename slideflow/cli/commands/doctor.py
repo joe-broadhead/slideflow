@@ -91,14 +91,14 @@ def _local_environment_checks() -> List[Dict[str, Any]]:
             _check("kaleido_import", True, "kaleido import succeeded", "error")
         )
     except Exception as error:
-        checks.append(_check("kaleido_import", False, str(error), "error"))
+        checks.append(_check("kaleido_import", False, _first_error_line(error), "error"))
 
     try:
         import plotly  # type: ignore[import-untyped]  # noqa: F401
 
         checks.append(_check("plotly_import", True, "plotly import succeeded", "error"))
     except Exception as error:
-        checks.append(_check("plotly_import", False, str(error), "error"))
+        checks.append(_check("plotly_import", False, _first_error_line(error), "error"))
 
     chrome_binary = _detect_chrome_binary()
     checks.append(
