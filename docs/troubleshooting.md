@@ -58,6 +58,7 @@ slideflow build config.yml --dry-run
 Common causes:
 
 - missing Databricks auth env vars
+- missing BigQuery project/auth settings when using `warehouse.type: bigquery`
 - invalid `package_url` or missing token env var used in URL
 - profile/target mismatch during dbt compile
 
@@ -72,6 +73,18 @@ Fixes:
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.
+
+For BigQuery DBT execution, ensure at least one project-id source is available:
+
+- `warehouse.project_id`, or
+- `BIGQUERY_PROJECT`, or
+- `GOOGLE_CLOUD_PROJECT`.
+
+And provide BigQuery auth via one of:
+
+- `warehouse.credentials_path`,
+- `warehouse.credentials_json`, or
+- Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`, workload identity, etc).
 
 ## NumPy binary-compatibility warnings
 

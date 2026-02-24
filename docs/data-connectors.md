@@ -17,7 +17,7 @@ Use these in any `data_source` block for charts or replacements.
 | `csv` | local tabular files | no | none |
 | `json` | local API exports/events | no | none |
 | `databricks` | direct warehouse SQL | yes | `DATABRICKS_HOST`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_ACCESS_TOKEN` |
-| `dbt` | dbt model SQL executed on Databricks (composable config) | yes | same Databricks env vars (+ Git token env if needed) |
+| `dbt` | dbt model SQL executed on Databricks or BigQuery (composable config) | yes | Databricks env vars or BigQuery project/auth env vars (+ Git token env if needed) |
 | `databricks_dbt` | dbt model SQL executed on Databricks | yes | same Databricks env vars (+ Git token env if needed) |
 
 ## CSV
@@ -115,6 +115,47 @@ Behavior highlights:
   project root, SlideFlow auto-uses that project-root profiles file.
 - Compile/dependency work for identical manifest cache keys is deduplicated
   across concurrent presentation threads in a single run.
+
+## dbt on BigQuery (`dbt`)
+
+This connector shape compiles a dbt project, resolves a model's compiled SQL,
+then executes it on BigQuery.
+
+```yaml
+data_source:
+  type: "dbt"
+  name: "dbt_model_bigquery"
+  model_alias: "monthly_revenue_by_region"
+  dbt:
+    package_url: "https://$GIT_TOKEN@github.com/org/analytics-dbt.git"
+    project_dir: "/tmp/dbt_project_workspace"
+    branch: "main"
+    target: "prod"
+    vars:
+      start_date: "2026-01-01"
+      end_date: "2026-01-31"
+    profiles_dir: "/path/to/profiles"
+    profile_name: "analytics"
+  warehouse:
+    type: "bigquery"
+    project_id: "my-gcp-project" # optional if BIGQUERY_PROJECT/GOOGLE_CLOUD_PROJECT set
+    location: "US" # optional
+    credentials_path: "/path/to/service-account.json" # optional
+    # credentials_json: '{"type":"service_account",...}' # optional alternative
+```
+
+BigQuery runtime options:
+
+- Install BigQuery runtime dependencies:
+  `pip install "slideflow-presentations[bigquery]"`.
+- Set project id via:
+  - `warehouse.project_id`, or
+  - `BIGQUERY_PROJECT`, or
+  - `GOOGLE_CLOUD_PROJECT`.
+- Auth options:
+  - `warehouse.credentials_path`, or
+  - `warehouse.credentials_json`, or
+  - Application Default Credentials (for example `GOOGLE_APPLICATION_CREDENTIALS`).
 
 ## Legacy dbt on Databricks (`databricks_dbt`)
 

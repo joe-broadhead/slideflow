@@ -67,6 +67,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
+from slideflow.data.connectors.bigquery import BigQuerySQLExecutor
 from slideflow.data.connectors.databricks import DatabricksSQLExecutor
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
@@ -1115,6 +1116,64 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
         return type(self).sql_executor_factory().execute(sql_text)
 
 
+class DBTBigQueryConnector(BaseModel, DataConnector):
+    """Connector that combines DBT model compilation with BigQuery execution."""
+
+    model_alias: str
+    model_unique_id: Optional[str] = None
+    model_package_name: Optional[str] = None
+    model_selector_name: Optional[str] = None
+    package_url: str
+    project_dir: str
+    profile_name: Optional[str] = None
+    branch: Optional[str] = None
+    target: str = Defaults.DBT_TARGET
+    vars: Optional[dict[str, Any]] = None
+    compile: bool = Defaults.DBT_COMPILE
+    profiles_dir: Optional[str] = None
+    project_id: Optional[str] = None
+    location: Optional[str] = None
+    credentials_json: Optional[str] = None
+    credentials_path: Optional[str] = None
+    _manifest_connector: Optional[DBTManifestConnector] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
+        self._manifest_connector = DBTManifestConnector(
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            compile=self.compile,
+            profile_name=self.profile_name,
+        )
+
+    def fetch_data(self) -> pd.DataFrame:
+        """Compile DBT model and execute the resulting SQL on BigQuery."""
+        if self._manifest_connector is None:
+            raise DataSourceError("DBT manifest connector is not initialized.")
+        sql_text = self._manifest_connector.get_compiled_query(
+            self.model_alias,
+            model_unique_id=self.model_unique_id,
+            model_package_name=self.model_package_name,
+            model_selector_name=self.model_selector_name,
+        )
+        if not sql_text:
+            raise DataSourceError(f"No compiled model '{self.model_alias}'")
+
+        executor = BigQuerySQLExecutor(
+            project_id=self.project_id,
+            location=self.location,
+            credentials_json=self.credentials_json,
+            credentials_path=self.credentials_path,
+        )
+        return executor.execute(sql_text)
+
+
 class DBTDatabricksSourceConfig(BaseSourceConfig):
     """Configuration model for DBT models executed on Databricks.
 
@@ -1234,8 +1293,36 @@ class DBTProjectConfig(BaseModel):
 class DBTWarehouseConfig(BaseModel):
     """Warehouse execution backend for composable DBT sources."""
 
-    type: Literal["databricks"] = Field(
+    type: Literal["databricks", "bigquery"] = Field(
         "databricks", description="Warehouse backend type"
+    )
+    project_id: Optional[str] = Field(
+        None,
+        description=(
+            "BigQuery project id override. Used when warehouse.type is "
+            "'bigquery'; falls back to BIGQUERY_PROJECT/GOOGLE_CLOUD_PROJECT."
+        ),
+    )
+    location: Optional[str] = Field(
+        None,
+        description=(
+            "Warehouse location/region. For BigQuery this maps to query job "
+            "location and optional client default location."
+        ),
+    )
+    credentials_json: Optional[str] = Field(
+        None,
+        description=(
+            "Optional BigQuery service account JSON payload string. Used only "
+            "when warehouse.type is 'bigquery'."
+        ),
+    )
+    credentials_path: Optional[str] = Field(
+        None,
+        description=(
+            "Optional path to BigQuery service account JSON file. Used only "
+            "when warehouse.type is 'bigquery'."
+        ),
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -1284,5 +1371,24 @@ class DBTSourceConfig(BaseSourceConfig):
                 vars=self.dbt.vars,
                 compile=self.dbt.compile,
                 profiles_dir=self.dbt.profiles_dir,
+            )
+        if self.warehouse.type == "bigquery":
+            return DBTBigQueryConnector(
+                model_alias=self.model_alias,
+                model_unique_id=self.model_unique_id,
+                model_package_name=self.model_package_name,
+                model_selector_name=self.model_selector_name,
+                package_url=self.dbt.package_url,
+                project_dir=self.dbt.project_dir,
+                profile_name=self.dbt.profile_name,
+                branch=self.dbt.branch,
+                target=self.dbt.target,
+                vars=self.dbt.vars,
+                compile=self.dbt.compile,
+                profiles_dir=self.dbt.profiles_dir,
+                project_id=self.warehouse.project_id,
+                location=self.warehouse.location,
+                credentials_json=self.warehouse.credentials_json,
+                credentials_path=self.warehouse.credentials_path,
             )
         raise DataSourceError(f"Unsupported DBT warehouse type '{self.warehouse.type}'")
