@@ -1053,9 +1053,9 @@ def test_legacy_and_composable_dbt_configs_resolve_equivalent_connectors():
         "compile",
         "profiles_dir",
     )
-    assert {
-        field: getattr(legacy_connector, field) for field in parity_fields
-    } == {field: getattr(composable_connector, field) for field in parity_fields}
+    assert {field: getattr(legacy_connector, field) for field in parity_fields} == {
+        field: getattr(composable_connector, field) for field in parity_fields
+    }
 
 
 def test_legacy_and_composable_dbt_configs_fetch_with_runtime_parity(monkeypatch):
