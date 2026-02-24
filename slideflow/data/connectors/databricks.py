@@ -206,6 +206,11 @@ class DatabricksConnector(DataConnector):
             return "network"
         return "query"
 
+    def _categorize_connect_error(self, error: Exception) -> str:
+        """Classify connect-time failures while avoiding a false query label."""
+        category = self._categorize_error(error)
+        return "connection" if category == "query" else category
+
     @staticmethod
     def _get_databricks_credentials() -> tuple[str, str, str]:
         """Read and validate required Databricks auth env vars."""
@@ -275,8 +280,9 @@ class DatabricksConnector(DataConnector):
             except DatabricksConnectorError:
                 raise
             except Exception as error:
+                category = self._categorize_connect_error(error)
                 raise DatabricksConnectorError(
-                    "connection",
+                    category,
                     f"Failed to connect to Databricks ({_safe_error_message(error)})",
                 ) from error
         return self._connection

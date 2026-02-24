@@ -303,6 +303,20 @@ def test_databricks_connector_applies_explicit_retry_and_timeout_overrides(monke
     assert connect_calls[0]["_retry_delay_max"] == 5.0
 
 
+def test_databricks_connector_connect_classifies_auth_errors(monkeypatch):
+    def fake_connect(**_kwargs):
+        raise RuntimeError("invalid access token")
+
+    monkeypatch.setattr(databricks_module.sql, "connect", fake_connect)
+    monkeypatch.setenv("DATABRICKS_HOST", "host")
+    monkeypatch.setenv("DATABRICKS_HTTP_PATH", "http-path")
+    monkeypatch.setenv("DATABRICKS_ACCESS_TOKEN", "token")
+
+    connector = databricks_module.DatabricksConnector("SELECT 1")
+    with pytest.raises(DataSourceError, match=r"databricks\[authentication\]"):
+        connector.connect()
+
+
 def test_databricks_connector_fetch_logs_failure(monkeypatch):
     class FailingCursor:
         def __enter__(self):
