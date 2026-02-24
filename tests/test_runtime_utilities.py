@@ -73,6 +73,42 @@ def test_data_source_cache_key_generation_is_order_stable_for_nested_values():
     assert key_a == key_b
 
 
+def test_data_source_cache_key_generation_distinguishes_dict_key_types():
+    cache = DataSourceCache()
+    key_with_int = cache._generate_key(
+        "dbt",
+        vars={
+            "filters": {
+                "country": "US",
+                1: "int-key",
+            }
+        },
+    )
+    key_with_string = cache._generate_key(
+        "dbt",
+        vars={
+            "filters": {
+                "country": "US",
+                "1": "string-key",
+            }
+        },
+    )
+    assert key_with_int != key_with_string
+
+
+def test_data_source_cache_key_generation_distinguishes_tuple_from_list():
+    cache = DataSourceCache()
+    key_with_tuple = cache._generate_key(
+        "dbt",
+        vars={"dimensions": ("region", "segment")},
+    )
+    key_with_list = cache._generate_key(
+        "dbt",
+        vars={"dimensions": ["region", "segment"]},
+    )
+    assert key_with_tuple != key_with_list
+
+
 def test_data_source_cache_enforces_lru_entry_cap(monkeypatch):
     monkeypatch.setenv(Environment.SLIDEFLOW_DATA_CACHE_MAX_ENTRIES, "2")
     cache = get_data_cache()

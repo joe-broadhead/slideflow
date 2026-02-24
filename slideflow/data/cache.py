@@ -131,30 +131,58 @@ class DataSourceCache:
         return cls._instance
 
     @staticmethod
+    def _stable_json(value: Any) -> str:
+        """Render a deterministic JSON string for normalized key fragments."""
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
+
+    @staticmethod
     def _normalize_for_key(value: Any) -> Any:
         """Normalize nested structures into a deterministic JSON-serializable form."""
         if value is None or isinstance(value, (str, int, float, bool)):
             return value
 
         if isinstance(value, dict):
+            normalized_items = [
+                [
+                    DataSourceCache._normalize_for_key(key),
+                    DataSourceCache._normalize_for_key(inner),
+                ]
+                for key, inner in value.items()
+            ]
+            normalized_items.sort(
+                key=lambda item: DataSourceCache._stable_json(item[0])
+            )
+            return {"__dict__": normalized_items}
+
+        if isinstance(value, list):
             return {
-                str(key): DataSourceCache._normalize_for_key(inner)
-                for key, inner in sorted(value.items(), key=lambda item: str(item[0]))
+                "__list__": [
+                    DataSourceCache._normalize_for_key(inner) for inner in value
+                ]
             }
 
-        if isinstance(value, (list, tuple)):
-            return [DataSourceCache._normalize_for_key(inner) for inner in value]
+        if isinstance(value, tuple):
+            return {
+                "__tuple__": [
+                    DataSourceCache._normalize_for_key(inner) for inner in value
+                ]
+            }
 
         if isinstance(value, (set, frozenset)):
             normalized_items = [
                 DataSourceCache._normalize_for_key(inner) for inner in value
             ]
-            return sorted(
-                normalized_items,
-                key=lambda item: json.dumps(
-                    item, sort_keys=True, separators=(",", ":"), default=str
-                ),
+            normalized_items = sorted(
+                normalized_items, key=lambda item: DataSourceCache._stable_json(item)
             )
+            set_tag = "__frozenset__" if isinstance(value, frozenset) else "__set__"
+            return {set_tag: normalized_items}
 
         if isinstance(value, bytes):
             return {"__bytes__": value.hex()}
