@@ -68,6 +68,12 @@ data_source:
     SELECT month, revenue, target
     FROM mart.revenue_summary
     WHERE fiscal_quarter = '{quarter}'
+  # optional connector runtime overrides:
+  # socket_timeout_s: 300
+  # retry_max_attempts: 30
+  # retry_max_duration_s: 900
+  # retry_delay_min_s: 1
+  # retry_delay_max_s: 60
 ```
 
 Required environment:
@@ -77,6 +83,14 @@ export DATABRICKS_HOST="<workspace-hostname>"
 export DATABRICKS_HTTP_PATH="<sql-warehouse-http-path>"
 export DATABRICKS_ACCESS_TOKEN="<token>"
 ```
+
+Optional Databricks connector runtime env tuning:
+
+- `SLIDEFLOW_DATABRICKS_SOCKET_TIMEOUT_S`
+- `SLIDEFLOW_DATABRICKS_RETRY_MAX_ATTEMPTS`
+- `SLIDEFLOW_DATABRICKS_RETRY_MAX_DURATION_S`
+- `SLIDEFLOW_DATABRICKS_RETRY_DELAY_MIN_S`
+- `SLIDEFLOW_DATABRICKS_RETRY_DELAY_MAX_S`
 
 Tips:
 
@@ -192,8 +206,9 @@ SlideFlow caches connector fetches by config identity, which helps when:
 
 Treat connectors as read-only sources during a run for predictable results.
 
-DBT compile/cache tuning env vars:
+Cache/compile tuning env vars:
 
+- `SLIDEFLOW_DATA_CACHE_MAX_ENTRIES` (global source cache cap)
 - `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (default from built-in constants)
 - `SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S`
 - `SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES`

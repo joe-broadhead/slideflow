@@ -10,12 +10,33 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - Additive composable DBT connector config (`type: dbt`) with nested `dbt` + `warehouse` blocks.
+- Warehouse execution abstraction for DBT-compiled SQL and pluggable warehouse backends.
+- BigQuery SQL executor support for composable DBT sources (`warehouse.type: bigquery`).
+- Deterministic DBT manifest model resolution index with explicit disambiguation selectors:
+  - `model_unique_id`
+  - `model_package_name`
+  - `model_selector_name`
+- Bounded data-source cache controls via `SLIDEFLOW_DATA_CACHE_MAX_ENTRIES`.
 - Dedicated DBT migration guide with side-by-side legacy/composable examples and explicit selector disambiguation guidance.
+- NumPy/Pandas ABI compatibility checker script (`scripts/ci/check_numpy_binary_compatibility.py`) enforced in CI/release workflows.
 
 ### Changed
 
-- Documentation now treats `type: dbt` as the preferred DBT config shape while keeping `databricks_dbt` documented as legacy-compatible syntax.
-- Explicit compatibility statement: `databricks_dbt` remains supported and migration to `dbt` is optional/non-breaking.
+- `databricks_dbt` remains supported and now runs through the composable DBT runtime path for backward-compatible behavior.
+- Databricks connector now supports explicit timeout/retry tuning and typed error categories.
+- Release workflow is idempotent for reruns:
+  - skips PyPI publish when version already exists
+  - skips tag/release creation when already present
+- Reusable workflow now supports BigQuery/ADC secret mapping:
+  - `BIGQUERY_PROJECT`
+  - `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+- Documentation now treats `type: dbt` as the preferred DBT config shape while keeping `databricks_dbt` as legacy-compatible syntax.
+
+### Fixed
+
+- Safer first-line error extraction across CLI/connector paths to avoid empty-message indexing failures.
+- DBT manifest lookup now fails deterministically on alias collisions with actionable selector guidance.
+- DBT/data cache behavior hardened for concurrent builds to reduce duplicate compile/fetch work.
 
 ## [0.0.5] - 2026-02-21
 

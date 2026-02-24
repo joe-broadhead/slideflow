@@ -190,6 +190,12 @@ orient: "records"
 type: "databricks"
 name: "warehouse_query"
 query: "SELECT * FROM mart.sales LIMIT 100"
+# optional connector runtime overrides:
+# socket_timeout_s: 300
+# retry_max_attempts: 30
+# retry_max_duration_s: 900
+# retry_delay_min_s: 1
+# retry_delay_max_s: 60
 ```
 
 Requires env vars:
@@ -197,6 +203,14 @@ Requires env vars:
 - `DATABRICKS_HOST`
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
+
+Optional per-source runtime tuning fields:
+
+- `socket_timeout_s`
+- `retry_max_attempts`
+- `retry_max_duration_s`
+- `retry_delay_min_s`
+- `retry_delay_max_s`
 
 ### dbt on Databricks (composable, preferred)
 
