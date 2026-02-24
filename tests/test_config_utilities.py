@@ -142,14 +142,11 @@ def test_load_registry_from_path_is_thread_safe_under_concurrency(tmp_path):
 
     (package_dir / "__init__.py").write_text("")
     (package_dir / "helpers.py").write_text(
-        "def marker(value):\n"
-        "    return f'ok-{value}'\n"
+        "def marker(value):\n" "    return f'ok-{value}'\n"
     )
     registry_file = package_dir / "registry.py"
     registry_file.write_text(
-        "from .helpers import marker\n"
-        "\n"
-        "function_registry = {'marker': marker}\n"
+        "from .helpers import marker\n" "\n" "function_registry = {'marker': marker}\n"
     )
 
     def load_and_call(value: int) -> str:
@@ -170,21 +167,15 @@ def test_config_loader_is_thread_safe_with_shared_registry(tmp_path):
 
     (package_dir / "__init__.py").write_text("")
     (package_dir / "helpers.py").write_text(
-        "def marker(value):\n"
-        "    return f'loader-{value}'\n"
+        "def marker(value):\n" "    return f'loader-{value}'\n"
     )
     registry_file = package_dir / "registry.py"
     registry_file.write_text(
-        "from .helpers import marker\n"
-        "\n"
-        "function_registry = {'marker': marker}\n"
+        "from .helpers import marker\n" "\n" "function_registry = {'marker': marker}\n"
     )
 
     config_file = tmp_path / "config.yml"
-    config_file.write_text(
-        "rendered: \"{value}\"\n"
-        "fn: marker\n"
-    )
+    config_file.write_text('rendered: "{value}"\n' "fn: marker\n")
 
     def load_config(i: int) -> str:
         loader = ConfigLoader(
