@@ -36,7 +36,8 @@ def _safe_error_message(error: Exception) -> str:
     message = str(error).strip()
     if not message:
         return error.__class__.__name__
-    return message.splitlines()[0]
+    first_line, _sep, _rest = message.partition("\n")
+    return first_line.strip() or error.__class__.__name__
 
 
 class BigQueryConnectorError(DataSourceError):
