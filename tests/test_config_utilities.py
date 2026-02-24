@@ -1,11 +1,16 @@
 import importlib
 import importlib.util
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from slideflow.presentations.config import PresentationConfig
-from slideflow.utilities.config import load_registry_from_path, render_params
+from slideflow.utilities.config import (
+    ConfigLoader,
+    load_registry_from_path,
+    render_params,
+)
 from slideflow.utilities.exceptions import ConfigurationError
 
 
@@ -127,6 +132,64 @@ def test_render_params_tolerates_invalid_format_syntax():
     rendered = render_params(payload, {"quarter": "Q1"})
 
     assert rendered == payload
+
+
+def test_load_registry_from_path_is_thread_safe_under_concurrency(tmp_path):
+    package_name = "threadsafepkg"
+    package_parent = tmp_path / "pkg_parent"
+    package_dir = package_parent / package_name
+    package_dir.mkdir(parents=True)
+
+    (package_dir / "__init__.py").write_text("")
+    (package_dir / "helpers.py").write_text(
+        "def marker(value):\n" "    return f'ok-{value}'\n"
+    )
+    registry_file = package_dir / "registry.py"
+    registry_file.write_text(
+        "from .helpers import marker\n" "\n" "function_registry = {'marker': marker}\n"
+    )
+
+    def load_and_call(value: int) -> str:
+        registry = load_registry_from_path(registry_file)
+        return registry["marker"](value)
+
+    for _round in range(20):
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            results = list(executor.map(load_and_call, range(60)))
+        assert results == [f"ok-{value}" for value in range(60)]
+
+
+def test_config_loader_is_thread_safe_with_shared_registry(tmp_path):
+    package_name = "loaderthreadpkg"
+    package_parent = tmp_path / "pkg_parent"
+    package_dir = package_parent / package_name
+    package_dir.mkdir(parents=True)
+
+    (package_dir / "__init__.py").write_text("")
+    (package_dir / "helpers.py").write_text(
+        "def marker(value):\n" "    return f'loader-{value}'\n"
+    )
+    registry_file = package_dir / "registry.py"
+    registry_file.write_text(
+        "from .helpers import marker\n" "\n" "function_registry = {'marker': marker}\n"
+    )
+
+    config_file = tmp_path / "config.yml"
+    config_file.write_text('rendered: "{value}"\n' "fn: marker\n")
+
+    def load_config(i: int) -> str:
+        loader = ConfigLoader(
+            yaml_path=config_file,
+            registry_paths=[registry_file],
+            params={"value": f"v-{i}"},
+        )
+        cfg = loader.config
+        return f"{cfg['rendered']}|{cfg['fn'](i)}"
+
+    for _round in range(12):
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(load_config, range(40)))
+        assert results == [f"v-{i}|loader-{i}" for i in range(40)]
 
 
 def test_presentation_config_accepts_registry_as_string():
