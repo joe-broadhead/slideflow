@@ -42,7 +42,7 @@ jobs:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
       DATABRICKS_ACCESS_TOKEN: ${{ secrets.DATABRICKS_ACCESS_TOKEN }}
-      DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private databricks_dbt repos
+      DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private dbt/databricks_dbt repos
       DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN }} # optional; falls back to DBT_GIT_TOKEN in reusable workflow
       DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL }} # optional; falls back to DBT_ACCESS_TOKEN, then DBT_GIT_TOKEN
     with:
@@ -69,7 +69,7 @@ Supported reusable-workflow secret mappings:
 - `DATABRICKS_HOST`
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
-- `DBT_GIT_TOKEN` (optional; used when `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
+- `DBT_GIT_TOKEN` (optional; used when `dbt` or `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
 - `DBT_ACCESS_TOKEN` (optional; if omitted, reusable workflow falls back to `DBT_GIT_TOKEN`)
 - `DBT_ENV_SECRET_GIT_CREDENTIAL` (optional; if omitted, reusable workflow falls back to `DBT_ACCESS_TOKEN`, then `DBT_GIT_TOKEN`)
 
@@ -127,16 +127,20 @@ If using Databricks connectors, set:
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
 
-If using `databricks_dbt`, also ensure Git token env vars used in `package_url` are available.  
+If using `dbt` or `databricks_dbt`, also ensure Git token env vars used in `package_url` are available.  
 If your dbt packages rely on `env_var('DBT_ENV_SECRET_GIT_CREDENTIAL')`, set `DBT_ENV_SECRET_GIT_CREDENTIAL` (or rely on the reusable-workflow fallback chain).
 
 Private dbt repo example:
 
 ```yaml
 data_source:
-  type: databricks_dbt
-  package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+  type: dbt
   model_alias: monthly_revenue_by_region
+  dbt:
+    package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+    project_dir: /tmp/dbt_project
+  warehouse:
+    type: databricks
 ```
 
 ## Cloud Run

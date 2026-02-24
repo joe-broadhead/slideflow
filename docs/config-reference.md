@@ -198,7 +198,24 @@ Requires env vars:
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
 
-### dbt on Databricks
+### dbt on Databricks (composable, preferred)
+
+```yaml
+type: "dbt"
+name: "dbt_model"
+model_alias: "revenue_model"
+dbt:
+  package_url: "https://$GIT_TOKEN@github.com/org/repo.git"
+  project_dir: "/tmp/dbt_project"
+  branch: "main"
+  target: "prod"
+  vars:
+    as_of_date: "2026-02-18"
+warehouse:
+  type: "databricks"
+```
+
+### Legacy dbt on Databricks (`databricks_dbt`)
 
 ```yaml
 type: "databricks_dbt"

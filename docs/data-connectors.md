@@ -1,11 +1,12 @@
 # Data Connectors
 
-SlideFlow supports four connector types for chart/replacement data sources:
+SlideFlow supports five connector types for chart/replacement data sources:
 
 - `csv`
 - `json`
 - `databricks`
-- `databricks_dbt`
+- `dbt` (composable, preferred)
+- `databricks_dbt` (legacy, still supported)
 
 Use these in any `data_source` block for charts or replacements.
 
@@ -16,6 +17,7 @@ Use these in any `data_source` block for charts or replacements.
 | `csv` | local tabular files | no | none |
 | `json` | local API exports/events | no | none |
 | `databricks` | direct warehouse SQL | yes | `DATABRICKS_HOST`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_ACCESS_TOKEN` |
+| `dbt` | dbt model SQL executed on Databricks (composable config) | yes | same Databricks env vars (+ Git token env if needed) |
 | `databricks_dbt` | dbt model SQL executed on Databricks | yes | same Databricks env vars (+ Git token env if needed) |
 
 ## CSV
@@ -79,24 +81,27 @@ Tips:
 - Limit columns to what chart/replacement logic needs.
 - Prefer validated parameter substitution (`{quarter}` from batch params) over string concatenation.
 
-## dbt on Databricks (`databricks_dbt`)
+## dbt on Databricks (`dbt`, preferred)
 
 This connector compiles a dbt project, resolves a model's compiled SQL, then executes it on Databricks.
 
 ```yaml
 data_source:
-  type: "databricks_dbt"
+  type: "dbt"
   name: "dbt_model"
   model_alias: "monthly_revenue_by_region"
-  package_url: "https://$GIT_TOKEN@github.com/org/analytics-dbt.git"
-  project_dir: "/tmp/dbt_project_workspace"
-  branch: "main"
-  target: "prod"
-  vars:
-    start_date: "2026-01-01"
-    end_date: "2026-01-31"
-  profiles_dir: "/path/to/profiles"
-  profile_name: "analytics"
+  dbt:
+    package_url: "https://$GIT_TOKEN@github.com/org/analytics-dbt.git"
+    project_dir: "/tmp/dbt_project_workspace"
+    branch: "main"
+    target: "prod"
+    vars:
+      start_date: "2026-01-01"
+      end_date: "2026-01-31"
+    profiles_dir: "/path/to/profiles"
+    profile_name: "analytics"
+  warehouse:
+    type: "databricks"
 ```
 
 Behavior highlights:
@@ -110,6 +115,24 @@ Behavior highlights:
   project root, SlideFlow auto-uses that project-root profiles file.
 - Compile/dependency work for identical manifest cache keys is deduplicated
   across concurrent presentation threads in a single run.
+
+## Legacy dbt on Databricks (`databricks_dbt`)
+
+This legacy shape is still fully supported for backward compatibility.
+
+```yaml
+data_source:
+  type: "databricks_dbt"
+  name: "dbt_model_legacy"
+  model_alias: "monthly_revenue_by_region"
+  package_url: "https://$GIT_TOKEN@github.com/org/analytics-dbt.git"
+  project_dir: "/tmp/dbt_project_workspace"
+  branch: "main"
+  target: "prod"
+  vars:
+    start_date: "2026-01-01"
+    end_date: "2026-01-31"
+```
 
 ## Caching and Execution
 
@@ -130,7 +153,7 @@ DBT compile/cache tuning env vars:
 
 1. Start with local `csv`/`json` while designing charts and replacements.
 2. Move to `databricks` once schema and logic are stable.
-3. Move to `databricks_dbt` when business logic should live in dbt models.
+3. Move to `dbt` when business logic should live in dbt models (`databricks_dbt` remains supported as legacy syntax).
 4. Run `slideflow validate` before `slideflow build` in CI/CD.
 
 ## Troubleshooting

@@ -47,7 +47,8 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
     -   `csv`: For local CSV files.
     -   `json`: For local JSON files.
     -   `databricks`: For running SQL queries directly against Databricks.
-    -   `databricks_dbt`: For using your existing dbt models as data sources.
+    -   `dbt`: Composable dbt source config with explicit `dbt` + `warehouse` blocks.
+    -   `databricks_dbt`: Legacy dbt connector format (still supported for compatibility).
 -   **Dynamic Content Replacements:**
     -   **Text:** Replace simple placeholders like `{{TOTAL_REVENUE}}` with dynamic values.
     -   **Tables:** Populate entire tables in your slides from a DataFrame.
