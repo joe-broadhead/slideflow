@@ -56,6 +56,7 @@ import shutil
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Literal, Optional, Type
 
@@ -79,7 +80,151 @@ _compilation_inflight: dict[tuple, threading.Event] = {}
 _compilation_failures: dict[tuple, tuple[float, str]] = {}
 _compiled_projects_in_use: dict[Path, int] = {}
 _pending_cleanup_dirs: set[Path] = set()
+_manifest_index_cache: dict[Path, "_ManifestIndex"] = {}
+_manifest_index_inflight: dict[Path, threading.Event] = {}
 _cache_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class _ManifestNodeIndexEntry:
+    """Indexed DBT manifest node metadata used for model resolution."""
+
+    unique_id: str
+    alias: str
+    package_name: Optional[str]
+    model_name: Optional[str]
+    compiled_path: Optional[str]
+
+
+@dataclass(frozen=True)
+class _ManifestIndex:
+    """Fast lookup index for a compiled DBT manifest."""
+
+    by_alias: dict[str, list[_ManifestNodeIndexEntry]]
+    by_unique_id: dict[str, _ManifestNodeIndexEntry]
+
+
+def _manifest_cache_key(clone_dir: Path) -> Path:
+    """Normalize clone_dir for manifest index cache lookups."""
+    return clone_dir.resolve()
+
+
+def _drop_manifest_index_locked(clone_dir: Path) -> None:
+    """Remove manifest cache entries for a clone dir. Requires caller lock."""
+    key = _manifest_cache_key(clone_dir)
+    _manifest_index_cache.pop(key, None)
+    pending = _manifest_index_inflight.pop(key, None)
+    if pending is not None:
+        pending.set()
+
+
+def _drop_manifest_index(clone_dir: Path) -> None:
+    """Remove manifest cache entries for a clone dir."""
+    with _cache_lock:
+        _drop_manifest_index_locked(clone_dir)
+
+
+def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
+    """Parse manifest.json and build lookup indexes for models/analyses."""
+    manifest_path = clone_dir / "target" / "manifest.json"
+    if not manifest_path.exists():
+        raise DataSourceError(f"manifest.json not found at {manifest_path}")
+
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+
+    by_alias: dict[str, list[_ManifestNodeIndexEntry]] = {}
+    by_unique_id: dict[str, _ManifestNodeIndexEntry] = {}
+
+    for unique_id, node in manifest.get("nodes", {}).items():
+        if node.get("resource_type") not in ("model", "analysis"):
+            continue
+
+        alias = node.get("alias")
+        if not alias:
+            continue
+
+        compiled_path = node.get("compiled_path")
+        entry = _ManifestNodeIndexEntry(
+            unique_id=str(unique_id),
+            alias=str(alias),
+            package_name=node.get("package_name"),
+            model_name=node.get("name"),
+            compiled_path=str(compiled_path) if compiled_path else None,
+        )
+
+        by_alias.setdefault(entry.alias, []).append(entry)
+        by_unique_id[entry.unique_id] = entry
+
+    return _ManifestIndex(by_alias=by_alias, by_unique_id=by_unique_id)
+
+
+def _get_manifest_index(clone_dir: Path) -> _ManifestIndex:
+    """Get or build a manifest index for a compiled clone directory."""
+    key = _manifest_cache_key(clone_dir)
+
+    while True:
+        with _cache_lock:
+            cached = _manifest_index_cache.get(key)
+            if cached is not None:
+                return cached
+
+            pending = _manifest_index_inflight.get(key)
+            if pending is None:
+                pending = threading.Event()
+                _manifest_index_inflight[key] = pending
+                is_owner = True
+            else:
+                is_owner = False
+
+        if not is_owner:
+            pending.wait()
+            continue
+
+        try:
+            index = _load_manifest_index(key)
+        except BaseException:
+            with _cache_lock:
+                event = _manifest_index_inflight.pop(key, None)
+                if event is not None:
+                    event.set()
+            raise
+
+        with _cache_lock:
+            _manifest_index_cache[key] = index
+            event = _manifest_index_inflight.pop(key, None)
+            if event is not None:
+                event.set()
+
+        return index
+
+
+def _format_manifest_candidate(entry: _ManifestNodeIndexEntry) -> str:
+    """Render an indexed manifest candidate for error diagnostics."""
+    package_name = entry.package_name or "unknown-package"
+    model_name = entry.model_name or "unknown-model"
+    return (
+        f"{entry.unique_id} (alias={entry.alias}, package_name={package_name}, "
+        f"model_name={model_name})"
+    )
+
+
+def _format_selector_context(
+    model_unique_id: Optional[str],
+    model_package_name: Optional[str],
+    model_name: Optional[str],
+) -> str:
+    """Format optional selector fields for user-facing error messages."""
+    selectors = []
+    if model_unique_id:
+        selectors.append(f"model_unique_id='{model_unique_id}'")
+    if model_package_name:
+        selectors.append(f"model_package_name='{model_package_name}'")
+    if model_name:
+        selectors.append(f"model_name='{model_name}'")
+    if not selectors:
+        return ""
+    return " with selectors " + ", ".join(selectors)
 
 
 def _sanitize_git_url(git_url: str) -> str:
@@ -127,6 +272,7 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
     safe_git_url = _sanitize_git_url(git_url)
 
     if clone_dir.exists():
+        _drop_manifest_index(clone_dir)
         managed_root = clone_dir.parent
         if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
             clone_dir, managed_root
@@ -241,6 +387,7 @@ def _resolve_dbt_failure_cache_max_entries() -> int:
 
 def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
     """Best-effort removal of managed clone directories during cache eviction."""
+    _drop_manifest_index(clone_dir)
     managed_root = clone_dir.parent
     if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
         clone_dir, managed_root
@@ -522,6 +669,7 @@ def _get_compiled_project(
                     if acquire_lease:
                         _acquire_compiled_project_lease_locked(cached_dir)
                     return cached_dir
+                _drop_manifest_index_locked(cached_dir)
                 _compiled_projects_cache.pop(cache_key, None)
                 _compiled_projects_last_access.pop(cache_key, None)
 
@@ -726,7 +874,14 @@ class DBTManifestConnector(BaseModel, DataConnector):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    def get_compiled_query(self, model_name: str) -> Optional[str]:
+    def get_compiled_query(
+        self,
+        model_name: str,
+        *,
+        model_unique_id: Optional[str] = None,
+        model_package_name: Optional[str] = None,
+        model_selector_name: Optional[str] = None,
+    ) -> Optional[str]:
         """Extract compiled SQL query for a specific DBT model.
 
         Compiles the DBT project if needed and parses the manifest.json file
@@ -736,6 +891,12 @@ class DBTManifestConnector(BaseModel, DataConnector):
         Args:
             model_name: The alias of the DBT model to retrieve SQL for.
                 This should match the alias defined in the model's configuration.
+            model_unique_id: Optional dbt unique_id selector to disambiguate
+                aliases that appear in multiple packages.
+            model_package_name: Optional package_name selector for alias
+                disambiguation.
+            model_selector_name: Optional dbt model name selector (node.name)
+                for alias disambiguation.
 
         Returns:
             The compiled SQL query as a string, or None if the model is not found.
@@ -761,27 +922,75 @@ class DBTManifestConnector(BaseModel, DataConnector):
             profiles_dir=self.profiles_dir,
             profile_name=self.profile_name,
         ) as clone_dir:
-            # Load manifest.json
-            manifest_path = clone_dir / "target" / "manifest.json"
-            if not manifest_path.exists():
-                raise DataSourceError(f"manifest.json not found at {manifest_path}")
+            manifest_index = _get_manifest_index(clone_dir)
+            candidates = list(manifest_index.by_alias.get(model_name, []))
+            if not candidates:
+                return None
 
-            with open(manifest_path) as f:
-                manifest = json.load(f)
+            selector_context = _format_selector_context(
+                model_unique_id=model_unique_id,
+                model_package_name=model_package_name,
+                model_name=model_selector_name,
+            )
 
-            # Find the compiled SQL for the model
-            for node in manifest.get("nodes", {}).values():
-                if node.get("resource_type") not in ("model", "analysis"):
-                    continue
-                alias = node.get("alias")
-                if alias == model_name:
-                    path = node.get("compiled_path")
-                    full = clone_dir / path if path else None
-                    if full and full.exists():
-                        return full.read_text()
-                    else:
-                        logger.warning(f"Missing compiled file for {alias}: {path}")
+            if model_unique_id:
+                unique_candidate = manifest_index.by_unique_id.get(model_unique_id)
+                if unique_candidate is None:
+                    raise DataSourceError(
+                        f"No dbt node with unique_id '{model_unique_id}'"
+                        f" for alias '{model_name}'."
+                    )
+                if unique_candidate.alias != model_name:
+                    raise DataSourceError(
+                        f"unique_id '{model_unique_id}' resolved to alias "
+                        f"'{unique_candidate.alias}', expected '{model_name}'."
+                    )
+                candidates = [unique_candidate]
 
+            if model_package_name:
+                candidates = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.package_name == model_package_name
+                ]
+
+            if model_selector_name:
+                candidates = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.model_name == model_selector_name
+                ]
+
+            if not candidates:
+                raise DataSourceError(
+                    f"No dbt model found for alias '{model_name}'{selector_context}."
+                )
+
+            if len(candidates) > 1:
+                rendered_candidates = ", ".join(
+                    _format_manifest_candidate(candidate) for candidate in candidates
+                )
+                raise DataSourceError(
+                    f"Ambiguous dbt model alias '{model_name}'. "
+                    "Provide one of `model_unique_id`, `model_package_name`, "
+                    "or `model_selector_name` to disambiguate. "
+                    f"Candidates: {rendered_candidates}"
+                )
+
+            selected = candidates[0]
+            full = (
+                clone_dir / selected.compiled_path
+                if selected.compiled_path is not None
+                else None
+            )
+            if full and full.exists():
+                return full.read_text()
+
+            logger.warning(
+                "Missing compiled file for %s: %s",
+                selected.alias,
+                selected.compiled_path,
+            )
             return None
 
     def fetch_data(self) -> pd.DataFrame:
@@ -840,6 +1049,9 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
     """
 
     model_alias: str
+    model_unique_id: Optional[str] = None
+    model_package_name: Optional[str] = None
+    model_selector_name: Optional[str] = None
     package_url: str
     project_dir: str
     profile_name: Optional[str] = None
@@ -891,7 +1103,12 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
         """
         if self._manifest_connector is None:
             raise DataSourceError("DBT manifest connector is not initialized.")
-        sql_text = self._manifest_connector.get_compiled_query(self.model_alias)
+        sql_text = self._manifest_connector.get_compiled_query(
+            self.model_alias,
+            model_unique_id=self.model_unique_id,
+            model_package_name=self.model_package_name,
+            model_selector_name=self.model_selector_name,
+        )
         if not sql_text:
             raise DataSourceError(f"No compiled model '{self.model_alias}'")
         return DatabricksConnector(sql_text).fetch_data()
@@ -965,6 +1182,15 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
         "databricks_dbt", description="dbt + Databricks data source"
     )
     model_alias: str = Field(..., description="dbt model alias")
+    model_unique_id: Optional[str] = Field(
+        None, description="Optional dbt unique_id selector for alias disambiguation"
+    )
+    model_package_name: Optional[str] = Field(
+        None, description="Optional dbt package_name selector for alias disambiguation"
+    )
+    model_selector_name: Optional[str] = Field(
+        None, description="Optional dbt model name selector for alias disambiguation"
+    )
     package_url: str = Field(..., description="Git URL of dbt project")
     project_dir: str = Field(..., description="Local project path")
     profile_name: Optional[str] = Field(
