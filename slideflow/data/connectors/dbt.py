@@ -1209,3 +1209,80 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
 
     model_config = ConfigDict(extra="forbid")
+
+
+class DBTProjectConfig(BaseModel):
+    """Composable DBT project settings shared across warehouse backends."""
+
+    package_url: str = Field(..., description="Git URL of dbt project")
+    project_dir: str = Field(..., description="Local project path")
+    profile_name: Optional[str] = Field(
+        None, description="dbt profile name to override the one in dbt_project.yml"
+    )
+    branch: Optional[str] = Field(None, description="Git branch")
+    target: str = Field(Defaults.DBT_TARGET, description="dbt target")
+    vars: Optional[dict[str, Any]] = Field(None, description="dbt vars")
+    compile: bool = Field(Defaults.DBT_COMPILE, description="Whether to compile")
+    profiles_dir: Optional[str] = Field(
+        None,
+        description="Optional path to a dbt profiles directory or profiles.yml. Copied into the cloned project root before running dbt.",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DBTWarehouseConfig(BaseModel):
+    """Warehouse execution backend for composable DBT sources."""
+
+    type: Literal["databricks"] = Field(
+        "databricks", description="Warehouse backend type"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DBTSourceConfig(BaseSourceConfig):
+    """Composable DBT source configuration with explicit dbt + warehouse blocks.
+
+    This additive format is intended for future multi-warehouse DBT support while
+    preserving legacy ``type: databricks_dbt`` behavior.
+    """
+
+    type: Literal["dbt"] = Field("dbt", description="Composable dbt data source")
+    model_alias: str = Field(..., description="dbt model alias")
+    model_unique_id: Optional[str] = Field(
+        None, description="Optional dbt unique_id selector for alias disambiguation"
+    )
+    model_package_name: Optional[str] = Field(
+        None, description="Optional dbt package_name selector for alias disambiguation"
+    )
+    model_selector_name: Optional[str] = Field(
+        None, description="Optional dbt model name selector for alias disambiguation"
+    )
+    dbt: DBTProjectConfig = Field(..., description="DBT project settings")
+    warehouse: DBTWarehouseConfig = Field(..., description="Warehouse backend settings")
+
+    # BaseSourceConfig expects a connector_class; composable routing still
+    # resolves to DBTDatabricksConnector today.
+    connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
+
+    model_config = ConfigDict(extra="forbid")
+
+    def get_connector(self) -> DataConnector:
+        """Resolve composable DBT config to a concrete connector."""
+        if self.warehouse.type == "databricks":
+            return DBTDatabricksConnector(
+                model_alias=self.model_alias,
+                model_unique_id=self.model_unique_id,
+                model_package_name=self.model_package_name,
+                model_selector_name=self.model_selector_name,
+                package_url=self.dbt.package_url,
+                project_dir=self.dbt.project_dir,
+                profile_name=self.dbt.profile_name,
+                branch=self.dbt.branch,
+                target=self.dbt.target,
+                vars=self.dbt.vars,
+                compile=self.dbt.compile,
+                profiles_dir=self.dbt.profiles_dir,
+            )
+        raise DataSourceError(f"Unsupported DBT warehouse type '{self.warehouse.type}'")

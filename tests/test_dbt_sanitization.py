@@ -8,9 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 import slideflow.data.connectors.dbt as dbt_module
+from slideflow.data.cache import get_data_cache
 from slideflow.utilities.exceptions import DataSourceError
 
 
@@ -952,6 +955,91 @@ def test_databricks_connector_forwards_manifest_disambiguation_selectors(monkeyp
         "model_package_name": "pkg",
         "model_selector_name": "metrics_eu",
     }
+
+
+def test_composable_dbt_source_config_resolves_to_databricks_connector():
+    config = dbt_module.DBTSourceConfig(
+        name="metrics",
+        type="dbt",
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_model",
+        model_package_name="pkg",
+        model_selector_name="metrics_model",
+        dbt={
+            "package_url": "https://github.com/org/repo.git",
+            "project_dir": "/tmp/workspace",
+            "profile_name": "analytics",
+            "branch": "main",
+            "target": "prod",
+            "vars": {"country": "US"},
+            "compile": False,
+            "profiles_dir": "/tmp/profiles",
+        },
+        warehouse={"type": "databricks"},
+    )
+
+    connector = config.get_connector()
+
+    assert isinstance(connector, dbt_module.DBTDatabricksConnector)
+    assert connector.model_alias == "metrics_model"
+    assert connector.model_unique_id == "model.pkg.metrics_model"
+    assert connector.model_package_name == "pkg"
+    assert connector.model_selector_name == "metrics_model"
+    assert connector.package_url == "https://github.com/org/repo.git"
+    assert connector.project_dir == "/tmp/workspace"
+    assert connector.profile_name == "analytics"
+    assert connector.branch == "main"
+    assert connector.target == "prod"
+    assert connector.vars == {"country": "US"}
+    assert connector.compile is False
+    assert connector.profiles_dir == "/tmp/profiles"
+
+
+def test_composable_dbt_source_config_fetch_data_routes_and_caches(monkeypatch):
+    cache = get_data_cache()
+    cache.enable()
+    cache.clear()
+    call_count = 0
+
+    def _fake_fetch(self):
+        nonlocal call_count
+        call_count += 1
+        return pd.DataFrame({"value": [1]})
+
+    monkeypatch.setattr(dbt_module.DBTDatabricksConnector, "fetch_data", _fake_fetch)
+
+    config = dbt_module.DBTSourceConfig(
+        name="metrics",
+        type="dbt",
+        model_alias="metrics_model",
+        dbt={
+            "package_url": "https://github.com/org/repo.git",
+            "project_dir": "/tmp/workspace",
+        },
+        warehouse={"type": "databricks"},
+    )
+
+    first = config.fetch_data()
+    second = config.fetch_data()
+
+    assert call_count == 1
+    assert first is second
+
+    cache.clear()
+
+
+def test_composable_dbt_source_config_rejects_unknown_warehouse():
+    with pytest.raises(ValidationError, match="Input should be 'databricks'"):
+        dbt_module.DBTSourceConfig(
+            name="metrics",
+            type="dbt",
+            model_alias="metrics_model",
+            dbt={
+                "package_url": "https://github.com/org/repo.git",
+                "project_dir": "/tmp/workspace",
+            },
+            warehouse={"type": "snowflake"},
+        )
 
 
 def test_parallel_model_fetches_with_low_cache_do_not_delete_active_manifest(

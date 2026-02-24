@@ -67,7 +67,7 @@ Frequent CI symptom:
 
 Fixes:
 
-- set `profiles_dir` in your `databricks_dbt` source config, or
+- set `dbt.profiles_dir` in your `dbt` source config (or `profiles_dir` in legacy `databricks_dbt`), or
 - ensure `profiles.yml` exists at the dbt project root in the cloned repo.
 
 For private dbt deps/repo access, ensure token env vars referenced by

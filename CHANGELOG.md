@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Additive composable DBT connector config (`type: dbt`) with nested `dbt` + `warehouse` blocks.
+
+### Changed
+
+- Documentation now treats `type: dbt` as the preferred DBT config shape while keeping `databricks_dbt` documented as legacy-compatible syntax.
+
 ## [0.0.5] - 2026-02-21
 
 ### Added

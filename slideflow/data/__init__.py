@@ -92,6 +92,9 @@ from slideflow.data.connectors import (
     DataConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
+    DBTProjectConfig,
+    DBTSourceConfig,
+    DBTWarehouseConfig,
     JSONConnector,
     JSONSourceConfig,
     SQLExecutor,
@@ -115,4 +118,7 @@ __all__ = [
     "DatabricksSourceConfig",
     "DBTDatabricksConnector",
     "DBTDatabricksSourceConfig",
+    "DBTProjectConfig",
+    "DBTWarehouseConfig",
+    "DBTSourceConfig",
 ]

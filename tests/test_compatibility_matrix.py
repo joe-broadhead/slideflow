@@ -11,6 +11,7 @@ from slideflow.data.connectors import (
     DatabricksSourceConfig,
     DataSourceConfig,
     DBTDatabricksSourceConfig,
+    DBTSourceConfig,
     JSONSourceConfig,
 )
 from slideflow.presentations.charts import (
@@ -68,6 +69,19 @@ def test_cli_commands_remain_available():
                 "project_dir": "/tmp/dbt_project",
             },
             DBTDatabricksSourceConfig,
+        ),
+        (
+            {
+                "type": "dbt",
+                "name": "source_dbt_composable",
+                "model_alias": "model_a",
+                "dbt": {
+                    "package_url": "https://github.com/example/dbt-project.git",
+                    "project_dir": "/tmp/dbt_project",
+                },
+                "warehouse": {"type": "databricks"},
+            },
+            DBTSourceConfig,
         ),
     ],
 )
