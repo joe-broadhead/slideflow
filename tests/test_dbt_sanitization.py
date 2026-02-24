@@ -1,5 +1,6 @@
 import builtins
 import json
+import shutil
 import threading
 import time
 from collections import Counter
@@ -695,6 +696,260 @@ def test_manifest_lookup_reuses_manifest_index_for_repeated_queries(
     assert first == "select 1 as answer"
     assert second == "select 1 as answer"
     assert load_calls == 1
+
+
+def test_manifest_index_is_rebuilt_when_cached_clone_dir_is_missing(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        nonlocal clone_calls
+        clone_calls += 1
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        if clone_calls == 1:
+            compiled_name = "compiled_first.sql"
+            sql_text = "select 'first' as version"
+        else:
+            compiled_name = "compiled_second.sql"
+            sql_text = "select 'second' as version"
+        (clone_dir / "target" / compiled_name).write_text(sql_text)
+        manifest = {
+            "nodes": {
+                "model.project.metrics": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "compiled_path": f"target/{compiled_name}",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    first = connector.get_compiled_query("metrics_model")
+    assert first == "select 'first' as version"
+
+    with dbt_module._cache_lock:
+        cached_clone_dir = next(iter(dbt_module._compiled_projects_cache.values()))
+    shutil.rmtree(cached_clone_dir)
+
+    second = connector.get_compiled_query("metrics_model")
+    assert second == "select 'second' as version"
+    assert clone_calls == 2
+
+
+def test_manifest_index_single_flight_deduplicates_parallel_reads_on_warm_cache(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    start_barrier = threading.Barrier(4)
+    load_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "compiled.sql").write_text("select 1 as answer")
+        manifest = {
+            "nodes": {
+                "model.project.metrics": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "compiled_path": "target/compiled.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    assert connector.get_compiled_query("metrics_model") == "select 1 as answer"
+    dbt_module._manifest_index_cache.clear()
+    dbt_module._manifest_index_inflight.clear()
+
+    original_loader = dbt_module._load_manifest_index
+
+    def _counting_loader(clone_dir):
+        nonlocal load_calls
+        load_calls += 1
+        time.sleep(0.05)
+        return original_loader(clone_dir)
+
+    monkeypatch.setattr(dbt_module, "_load_manifest_index", _counting_loader)
+
+    def _worker():
+        start_barrier.wait()
+        return connector.get_compiled_query("metrics_model")
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(lambda _i: _worker(), range(4)))
+
+    assert results == ["select 1 as answer"] * 4
+    assert load_calls == 1
+
+
+def test_manifest_index_single_flight_recovers_after_loader_failure(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_dir = tmp_path / "clone"
+    clone_dir.mkdir(parents=True, exist_ok=True)
+    start_barrier = threading.Barrier(2)
+    calls = 0
+    call_lock = threading.Lock()
+
+    success_index = dbt_module._ManifestIndex(
+        by_alias={},
+        by_unique_id={},
+    )
+
+    def _flaky_loader(_clone_dir):
+        nonlocal calls
+        with call_lock:
+            calls += 1
+            call_number = calls
+        if call_number == 1:
+            time.sleep(0.05)
+            raise DataSourceError("manifest load failed")
+        return success_index
+
+    monkeypatch.setattr(dbt_module, "_load_manifest_index", _flaky_loader)
+
+    results = []
+    errors = []
+
+    def _worker():
+        start_barrier.wait()
+        try:
+            results.append(dbt_module._get_manifest_index(clone_dir))
+        except BaseException as error:  # pragma: no cover - assertion helper path
+            errors.append(error)
+
+    t1 = threading.Thread(target=_worker)
+    t2 = threading.Thread(target=_worker)
+    t1.start()
+    t2.start()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert not t1.is_alive()
+    assert not t2.is_alive()
+    assert calls == 2
+    assert len(results) == 1
+    assert results[0] is success_index
+    assert len(errors) == 1
+    assert isinstance(errors[0], DataSourceError)
+
+
+def test_manifest_lookup_returns_none_when_compiled_file_is_missing(
+    monkeypatch, tmp_path, caplog
+):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "nodes": {
+                "model.project.metrics": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "compiled_path": "target/missing.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    caplog.set_level("WARNING")
+    sql = connector.get_compiled_query("metrics_model")
+
+    assert sql is None
+    assert "Missing compiled file for metrics_model" in caplog.text
+
+
+def test_databricks_connector_forwards_manifest_disambiguation_selectors(monkeypatch):
+    captured = {}
+
+    class _ManifestStub:
+        def __init__(self, **kwargs):
+            captured["manifest_init"] = kwargs
+
+        def get_compiled_query(self, model_alias, **kwargs):
+            captured["model_alias"] = model_alias
+            captured["selectors"] = kwargs
+            return "select 1 as answer"
+
+    class _DatabricksStub:
+        def __init__(self, sql):
+            captured["sql"] = sql
+
+        def fetch_data(self):
+            return "ok"
+
+    monkeypatch.setattr(dbt_module, "DBTManifestConnector", _ManifestStub)
+    monkeypatch.setattr(dbt_module, "DatabricksConnector", _DatabricksStub)
+
+    connector = dbt_module.DBTDatabricksConnector(
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_eu",
+        model_package_name="pkg",
+        model_selector_name="metrics_eu",
+        package_url="https://github.com/org/repo.git",
+        project_dir="/tmp/workspace",
+        branch="main",
+        target="prod",
+    )
+
+    result = connector.fetch_data()
+
+    assert result == "ok"
+    assert captured["sql"] == "select 1 as answer"
+    assert captured["model_alias"] == "metrics_model"
+    assert captured["selectors"] == {
+        "model_unique_id": "model.pkg.metrics_eu",
+        "model_package_name": "pkg",
+        "model_selector_name": "metrics_eu",
+    }
 
 
 def test_parallel_model_fetches_with_low_cache_do_not_delete_active_manifest(
