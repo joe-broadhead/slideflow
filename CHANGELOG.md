@@ -37,6 +37,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Safer first-line error extraction across CLI/connector paths to avoid empty-message indexing failures.
 - DBT manifest lookup now fails deterministically on alias collisions with actionable selector guidance.
 - DBT/data cache behavior hardened for concurrent builds to reduce duplicate compile/fetch work.
+- Registry module loading is now thread-safe during concurrent builds, preventing transient import-state collisions when multiple workers resolve registries at once.
+- Reusable workflow configuration now avoids invalid `secrets` expression usage in step-level conditions, preventing workflow-file validation failures on push events.
 
 ## [0.0.5] - 2026-02-21
 
