@@ -919,15 +919,17 @@ def test_databricks_connector_forwards_manifest_disambiguation_selectors(monkeyp
             captured["selectors"] = kwargs
             return "select 1 as answer"
 
-    class _DatabricksStub:
-        def __init__(self, sql):
-            captured["sql"] = sql
-
-        def fetch_data(self):
+    class _ExecutorStub:
+        def execute(self, sql_query):
+            captured["sql"] = sql_query
             return "ok"
 
     monkeypatch.setattr(dbt_module, "DBTManifestConnector", _ManifestStub)
-    monkeypatch.setattr(dbt_module, "DatabricksConnector", _DatabricksStub)
+    monkeypatch.setattr(
+        dbt_module.DBTDatabricksConnector,
+        "sql_executor_factory",
+        lambda: _ExecutorStub(),
+    )
 
     connector = dbt_module.DBTDatabricksConnector(
         model_alias="metrics_model",

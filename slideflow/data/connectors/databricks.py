@@ -47,7 +47,7 @@ import pandas as pd
 from databricks import sql
 from pydantic import ConfigDict, Field
 
-from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
+from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.utilities.logging import (
     get_logger,
     log_api_operation,
@@ -198,6 +198,14 @@ class DatabricksConnector(DataConnector):
                 query_length=len(self.query),
             )
             raise
+
+
+class DatabricksSQLExecutor(SQLExecutor):
+    """SQL executor that runs queries against Databricks warehouses."""
+
+    def execute(self, sql_query: str) -> pd.DataFrame:
+        """Execute SQL via DatabricksConnector and return DataFrame results."""
+        return DatabricksConnector(sql_query).fetch_data()
 
 
 class DatabricksSourceConfig(BaseSourceConfig):

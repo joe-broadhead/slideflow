@@ -282,6 +282,25 @@ def test_databricks_connector_fetch_logs_failure(monkeypatch):
     assert logs and logs[-1][0][2] is False
 
 
+def test_databricks_sql_executor_delegates_to_databricks_connector(monkeypatch):
+    captured = {}
+
+    class _ConnectorStub:
+        def __init__(self, query):
+            captured["query"] = query
+
+        def fetch_data(self):
+            return pd.DataFrame({"value": [42]})
+
+    monkeypatch.setattr(databricks_module, "DatabricksConnector", _ConnectorStub)
+
+    executor = databricks_module.DatabricksSQLExecutor()
+    result = executor.execute("SELECT 42")
+
+    assert captured["query"] == "SELECT 42"
+    assert result.to_dict(orient="records") == [{"value": 42}]
+
+
 def test_provider_result_models_and_factory_registration():
     result = ProviderPresentationResult(
         presentation_id="p1",

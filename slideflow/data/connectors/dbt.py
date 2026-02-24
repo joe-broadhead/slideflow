@@ -58,7 +58,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Literal, Optional, Type
+from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Type
 
 import pandas as pd
 from dbt.cli.main import dbtRunner
@@ -66,8 +66,8 @@ from git import Repo
 from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.constants import Defaults
-from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
-from slideflow.data.connectors.databricks import DatabricksConnector
+from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
+from slideflow.data.connectors.databricks import DatabricksSQLExecutor
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
 
@@ -1061,6 +1061,7 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
     compile: bool = Defaults.DBT_COMPILE
     profiles_dir: Optional[str] = None
     _manifest_connector: Optional[DBTManifestConnector] = None
+    sql_executor_factory: ClassVar[Callable[[], SQLExecutor]] = DatabricksSQLExecutor
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -1111,7 +1112,7 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
         )
         if not sql_text:
             raise DataSourceError(f"No compiled model '{self.model_alias}'")
-        return DatabricksConnector(sql_text).fetch_data()
+        return type(self).sql_executor_factory().execute(sql_text)
 
 
 class DBTDatabricksSourceConfig(BaseSourceConfig):

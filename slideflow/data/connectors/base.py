@@ -170,6 +170,19 @@ class DataConnector(ABC):
         self.disconnect()
 
 
+class SQLExecutor(ABC):
+    """Abstract SQL execution interface for warehouse backends.
+
+    Implementations execute SQL text against a specific backend and return
+    results as a pandas DataFrame.
+    """
+
+    @abstractmethod
+    def execute(self, sql_query: str) -> pd.DataFrame:
+        """Execute SQL and return the resulting DataFrame."""
+        ...
+
+
 class BaseSourceConfig(BaseModel):
     """Base configuration model for data sources in Slideflow.
 

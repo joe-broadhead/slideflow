@@ -88,11 +88,13 @@ from slideflow.data.connectors import (
     CSVSourceConfig,
     DatabricksConnector,
     DatabricksSourceConfig,
+    DatabricksSQLExecutor,
     DataConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
     JSONConnector,
     JSONSourceConfig,
+    SQLExecutor,
 )
 from slideflow.data.connectors.connect import DataSourceConfig
 
@@ -102,12 +104,14 @@ __all__ = [
     "DataSourceConfig",
     # Plus all connector exports from connectors/__init__.py
     "DataConnector",
+    "SQLExecutor",
     "BaseSourceConfig",
     "CSVConnector",
     "CSVSourceConfig",
     "JSONConnector",
     "JSONSourceConfig",
     "DatabricksConnector",
+    "DatabricksSQLExecutor",
     "DatabricksSourceConfig",
     "DBTDatabricksConnector",
     "DBTDatabricksSourceConfig",
