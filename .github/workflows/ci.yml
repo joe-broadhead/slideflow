@@ -23,7 +23,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Lint GitHub workflows
-        uses: rhysd/actionlint@v1
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
+            | bash -s -- -b "${RUNNER_TEMP}/bin"
+          "${RUNNER_TEMP}/bin/actionlint"
 
       - name: Set up Python
         uses: actions/setup-python@v5
