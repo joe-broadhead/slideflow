@@ -114,6 +114,12 @@ on:
       DBT_ENV_SECRET_GIT_CREDENTIAL:
         description: "Optional git credential for dbt deps private package clones"
         required: false
+      BIGQUERY_PROJECT:
+        description: "Optional BigQuery project id fallback for warehouse.type=bigquery"
+        required: false
+      GOOGLE_APPLICATION_CREDENTIALS_JSON:
+        description: "Optional Google service-account JSON to write as ADC credentials file"
+        required: false
     outputs:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
@@ -142,6 +148,7 @@ jobs:
       DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }}
       DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN || secrets.DBT_GIT_TOKEN }}
       DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL || secrets.DBT_ACCESS_TOKEN || secrets.DBT_GIT_TOKEN }}
+      BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
       doctor_result_json: ${{ steps.extract_json.outputs.doctor_result_json }}
@@ -180,6 +187,14 @@ jobs:
         if: ${{ inputs.run-pip-check }}
         run: |
           python -m pip check
+
+      - name: Configure optional Google application credentials
+        if: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON != '' }}
+        run: |
+          set -euo pipefail
+          creds_file="${RUNNER_TEMP}/google-application-credentials.json"
+          printf '%s' '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > "$creds_file"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$creds_file" >> "$GITHUB_ENV"
 
       - name: Validate and build
         id: run_build

@@ -1171,7 +1171,7 @@ def test_composable_dbt_source_config_fetch_data_routes_and_caches(monkeypatch):
 
 
 def test_composable_dbt_source_config_rejects_unknown_warehouse():
-    with pytest.raises(ValidationError, match="Input should be 'databricks'"):
+    with pytest.raises(ValidationError, match="Input should be"):
         dbt_module.DBTSourceConfig(
             name="metrics",
             type="dbt",

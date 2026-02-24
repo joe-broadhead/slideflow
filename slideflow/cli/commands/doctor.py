@@ -91,7 +91,9 @@ def _local_environment_checks() -> List[Dict[str, Any]]:
             _check("kaleido_import", True, "kaleido import succeeded", "error")
         )
     except Exception as error:
-        checks.append(_check("kaleido_import", False, _first_error_line(error), "error"))
+        checks.append(
+            _check("kaleido_import", False, _first_error_line(error), "error")
+        )
 
     try:
         import plotly  # type: ignore[import-untyped]  # noqa: F401

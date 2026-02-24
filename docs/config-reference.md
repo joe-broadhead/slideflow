@@ -215,6 +215,32 @@ warehouse:
   type: "databricks"
 ```
 
+Composable warehouse options:
+
+- `warehouse.type`: `databricks` or `bigquery`
+- `warehouse.project_id`: BigQuery project id override
+- `warehouse.location`: optional warehouse location/region
+- `warehouse.credentials_path`: optional path to BigQuery service-account JSON
+- `warehouse.credentials_json`: optional inline service-account JSON payload
+
+BigQuery variant example:
+
+```yaml
+type: "dbt"
+name: "dbt_model_bigquery"
+model_alias: "revenue_model"
+dbt:
+  package_url: "https://$GIT_TOKEN@github.com/org/repo.git"
+  project_dir: "/tmp/dbt_project"
+  branch: "main"
+  target: "prod"
+warehouse:
+  type: "bigquery"
+  project_id: "my-gcp-project"
+  location: "US"
+  credentials_path: "/path/to/service-account.json"
+```
+
 ### Legacy dbt on Databricks (`databricks_dbt`)
 
 ```yaml

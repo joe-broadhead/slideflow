@@ -50,6 +50,10 @@ Available Configurations:
 """
 
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
+from slideflow.data.connectors.bigquery import (
+    BigQueryConnector,
+    BigQuerySQLExecutor,
+)
 from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.data.connectors.csv import CSVConnector, CSVSourceConfig
 from slideflow.data.connectors.databricks import (
@@ -58,6 +62,7 @@ from slideflow.data.connectors.databricks import (
     DatabricksSQLExecutor,
 )
 from slideflow.data.connectors.dbt import (
+    DBTBigQueryConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
     DBTProjectConfig,
@@ -70,6 +75,8 @@ __all__ = [
     "DataConnector",
     "SQLExecutor",
     "BaseSourceConfig",
+    "BigQueryConnector",
+    "BigQuerySQLExecutor",
     "CSVConnector",
     "CSVSourceConfig",
     "JSONConnector",
@@ -77,6 +84,7 @@ __all__ = [
     "DatabricksConnector",
     "DatabricksSQLExecutor",
     "DatabricksSourceConfig",
+    "DBTBigQueryConnector",
     "DBTDatabricksConnector",
     "DBTDatabricksSourceConfig",
     "DBTProjectConfig",

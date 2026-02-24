@@ -116,6 +116,8 @@ from slideflow.core.registry import (
 # Core data functionality
 from slideflow.data import (
     BaseSourceConfig,
+    BigQueryConnector,
+    BigQuerySQLExecutor,
     CSVConnector,
     CSVSourceConfig,
     DatabricksConnector,
@@ -124,6 +126,7 @@ from slideflow.data import (
     DataConnector,
     DataSourceCache,
     DataSourceConfig,
+    DBTBigQueryConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
     DBTProjectConfig,
@@ -182,6 +185,8 @@ __all__ = [
     "DataConnector",
     "SQLExecutor",
     "BaseSourceConfig",
+    "BigQueryConnector",
+    "BigQuerySQLExecutor",
     "CSVConnector",
     "CSVSourceConfig",
     "JSONConnector",
@@ -189,6 +194,7 @@ __all__ = [
     "DatabricksConnector",
     "DatabricksSQLExecutor",
     "DatabricksSourceConfig",
+    "DBTBigQueryConnector",
     "DBTDatabricksConnector",
     "DBTDatabricksSourceConfig",
     "DBTProjectConfig",

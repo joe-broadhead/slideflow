@@ -45,6 +45,8 @@ jobs:
       DBT_GIT_TOKEN: ${{ secrets.DBT_GIT_TOKEN }} # optional; for private dbt/databricks_dbt repos
       DBT_ACCESS_TOKEN: ${{ secrets.DBT_ACCESS_TOKEN }} # optional; falls back to DBT_GIT_TOKEN in reusable workflow
       DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL }} # optional; falls back to DBT_ACCESS_TOKEN, then DBT_GIT_TOKEN
+      BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }} # optional; for dbt warehouse.type=bigquery
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }} # optional; writes ADC file in reusable workflow
     with:
       config-file: config/weekly_exec_report.yml
       registry-files: registries/base_registry.py
@@ -72,6 +74,8 @@ Supported reusable-workflow secret mappings:
 - `DBT_GIT_TOKEN` (optional; used when `dbt` or `databricks_dbt` `package_url` includes `$DBT_GIT_TOKEN`)
 - `DBT_ACCESS_TOKEN` (optional; if omitted, reusable workflow falls back to `DBT_GIT_TOKEN`)
 - `DBT_ENV_SECRET_GIT_CREDENTIAL` (optional; if omitted, reusable workflow falls back to `DBT_ACCESS_TOKEN`, then `DBT_GIT_TOKEN`)
+- `BIGQUERY_PROJECT` (optional; project id fallback for `warehouse.type: bigquery`)
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` (optional; service-account JSON used to create `GOOGLE_APPLICATION_CREDENTIALS` file)
 
 ### Passing machine-readable outputs to downstream jobs
 
@@ -130,6 +134,11 @@ If using Databricks connectors, set:
 If using `dbt` or `databricks_dbt`, also ensure Git token env vars used in `package_url` are available.  
 If your dbt packages rely on `env_var('DBT_ENV_SECRET_GIT_CREDENTIAL')`, set `DBT_ENV_SECRET_GIT_CREDENTIAL` (or rely on the reusable-workflow fallback chain).
 
+If using `dbt` with `warehouse.type: bigquery`, also ensure:
+
+- BigQuery runtime dependencies are installed (`pip install "slideflow-presentations[bigquery]"`), and
+- project/auth settings are available via config and/or env (`BIGQUERY_PROJECT`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`).
+
 Private dbt repo example:
 
 ```yaml
@@ -141,6 +150,18 @@ data_source:
     project_dir: /tmp/dbt_project
   warehouse:
     type: databricks
+
+# BigQuery variant
+data_source:
+  type: dbt
+  model_alias: monthly_revenue_by_region
+  dbt:
+    package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+    project_dir: /tmp/dbt_project
+  warehouse:
+    type: bigquery
+    project_id: my-gcp-project
+    location: US
 ```
 
 ## Cloud Run
