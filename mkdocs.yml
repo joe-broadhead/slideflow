@@ -106,6 +106,7 @@ nav:
   - How-To:
       - Google Slides Provider: providers/google-slides.md
       - Data Connectors: data-connectors.md
+      - DBT Migration: dbt-migration.md
       - Data Transforms: data-transforms.md
       - AI Providers: ai-providers.md
       - Deployments: deployments.md

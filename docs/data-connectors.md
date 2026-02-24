@@ -10,6 +10,9 @@ SlideFlow supports five connector types for chart/replacement data sources:
 
 Use these in any `data_source` block for charts or replacements.
 
+For a step-by-step migration from legacy `databricks_dbt` to composable
+`dbt`, see [DBT Migration Guide](dbt-migration.md).
+
 ## Connector Matrix
 
 | Type | Best for | Requires network | Required env vars |
@@ -115,6 +118,11 @@ Behavior highlights:
   project root, SlideFlow auto-uses that project-root profiles file.
 - Compile/dependency work for identical manifest cache keys is deduplicated
   across concurrent presentation threads in a single run.
+- If multiple dbt nodes share `model_alias`, set one of:
+  - `model_unique_id`
+  - `model_package_name`
+  - `model_selector_name`
+  to avoid ambiguity errors.
 
 ## dbt on BigQuery (`dbt`)
 
@@ -202,4 +210,5 @@ DBT compile/cache tuning env vars:
 - File connector errors: check file existence and relative path assumptions.
 - Databricks auth errors: verify all three Databricks env vars.
 - dbt model not found: check `model_alias`, `branch`, and `target`.
+- dbt alias ambiguity: add `model_unique_id`, `model_package_name`, or `model_selector_name`.
 - dbt Git clone fails: verify token variable in `package_url` and repo access.
