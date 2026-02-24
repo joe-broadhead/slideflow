@@ -987,7 +987,9 @@ class DBTManifestConnector(BaseModel, DataConnector):
                 return full.read_text()
 
             logger.warning(
-                "Missing compiled file for %s: %s", selected.alias, selected.compiled_path
+                "Missing compiled file for %s: %s",
+                selected.alias,
+                selected.compiled_path,
             )
             return None
 
