@@ -66,6 +66,10 @@ Frequent CI symptom:
 
 - `dbt compile failed: Path '/home/runner/.dbt' does not exist`
 
+Frequent dbt model-resolution symptom:
+
+- `Ambiguous dbt model alias '...'`
+
 Fixes:
 
 - set `dbt.profiles_dir` in your `dbt` source config (or `profiles_dir` in legacy `databricks_dbt`), or
@@ -73,6 +77,12 @@ Fixes:
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.
+
+If alias ambiguity occurs, add one of these selectors in your source config:
+
+- `model_unique_id` (most specific)
+- `model_package_name`
+- `model_selector_name`
 
 For BigQuery DBT execution, ensure at least one project-id source is available:
 

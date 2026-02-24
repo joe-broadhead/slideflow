@@ -215,6 +215,12 @@ warehouse:
   type: "databricks"
 ```
 
+Optional alias disambiguation fields for `dbt`:
+
+- `model_unique_id` (most specific)
+- `model_package_name`
+- `model_selector_name` (`node.name` in manifest)
+
 Composable warehouse options:
 
 - `warehouse.type`: `databricks` or `bigquery`
@@ -254,6 +260,9 @@ target: "prod"
 vars:
   as_of_date: "2026-02-18"
 ```
+
+Migration is non-breaking and optional. For side-by-side mapping and step-by-step
+migration, see [DBT Migration Guide](dbt-migration.md).
 
 For full connector behavior and runtime requirements, see [Data Connectors](data-connectors.md).
 
