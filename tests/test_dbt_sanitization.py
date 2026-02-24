@@ -20,6 +20,8 @@ def _reset_dbt_caches() -> None:
     dbt_module._compilation_failures.clear()
     dbt_module._compiled_projects_in_use.clear()
     dbt_module._pending_cleanup_dirs.clear()
+    dbt_module._manifest_index_cache.clear()
+    dbt_module._manifest_index_inflight.clear()
 
 
 def test_sanitize_git_url_redacts_embedded_credentials():
@@ -538,6 +540,161 @@ def test_manifest_connector_single_flight_deduplicates_concurrent_manifest_reads
     assert clone_calls == 1
     assert compile_calls == 1
     assert results == ["select 1 as answer"] * 4
+
+
+def test_manifest_lookup_ambiguous_alias_requires_disambiguation(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "us.sql").write_text("select 'US' as country")
+        (clone_dir / "target" / "eu.sql").write_text("select 'EU' as country")
+        manifest = {
+            "nodes": {
+                "model.pkg_a.metrics_us": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "package_name": "pkg_a",
+                    "name": "metrics_us",
+                    "compiled_path": "target/us.sql",
+                },
+                "model.pkg_b.metrics_eu": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "package_name": "pkg_b",
+                    "name": "metrics_eu",
+                    "compiled_path": "target/eu.sql",
+                },
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    with pytest.raises(DataSourceError, match="Ambiguous dbt model alias"):
+        connector.get_compiled_query("metrics_model")
+
+
+def test_manifest_lookup_supports_alias_disambiguation_selectors(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "us.sql").write_text("select 'US' as country")
+        (clone_dir / "target" / "eu.sql").write_text("select 'EU' as country")
+        manifest = {
+            "nodes": {
+                "model.pkg_a.metrics_us": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "package_name": "pkg_a",
+                    "name": "metrics_us",
+                    "compiled_path": "target/us.sql",
+                },
+                "model.pkg_b.metrics_eu": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "package_name": "pkg_b",
+                    "name": "metrics_eu",
+                    "compiled_path": "target/eu.sql",
+                },
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    by_unique_id = connector.get_compiled_query(
+        "metrics_model", model_unique_id="model.pkg_b.metrics_eu"
+    )
+    assert by_unique_id == "select 'EU' as country"
+
+    by_package_name = connector.get_compiled_query(
+        "metrics_model", model_package_name="pkg_a"
+    )
+    assert by_package_name == "select 'US' as country"
+
+    by_model_name = connector.get_compiled_query(
+        "metrics_model", model_selector_name="metrics_eu"
+    )
+    assert by_model_name == "select 'EU' as country"
+
+
+def test_manifest_lookup_reuses_manifest_index_for_repeated_queries(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    load_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "compiled.sql").write_text("select 1 as answer")
+        manifest = {
+            "nodes": {
+                "model.project.metrics": {
+                    "resource_type": "model",
+                    "alias": "metrics_model",
+                    "compiled_path": "target/compiled.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    original_loader = dbt_module._load_manifest_index
+
+    def _counting_loader(clone_dir):
+        nonlocal load_calls
+        load_calls += 1
+        return original_loader(clone_dir)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    monkeypatch.setattr(dbt_module, "_load_manifest_index", _counting_loader)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    first = connector.get_compiled_query("metrics_model")
+    second = connector.get_compiled_query("metrics_model")
+
+    assert first == "select 1 as answer"
+    assert second == "select 1 as answer"
+    assert load_calls == 1
 
 
 def test_parallel_model_fetches_with_low_cache_do_not_delete_active_manifest(
