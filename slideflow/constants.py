@@ -160,6 +160,7 @@ class Defaults:
     # Cache defaults
     CACHE_MAX_SIZE = 50
     CACHE_TTL_SECONDS = 3600  # 1 hour
+    DATA_SOURCE_CACHE_MAX_ENTRIES = 500
 
     # Concurrent processing
     DEFAULT_MAX_WORKERS = 10
@@ -328,6 +329,9 @@ class Environment:
     DATABRICKS_HOST = "DATABRICKS_HOST"
     DATABRICKS_HTTP_PATH = "DATABRICKS_HTTP_PATH"
     DATABRICKS_ACCESS_TOKEN = "DATABRICKS_ACCESS_TOKEN"
+
+    # SlideFlow cache/runtime tuning
+    SLIDEFLOW_DATA_CACHE_MAX_ENTRIES = "SLIDEFLOW_DATA_CACHE_MAX_ENTRIES"
 
     # General
     DEBUG = "DEBUG"
