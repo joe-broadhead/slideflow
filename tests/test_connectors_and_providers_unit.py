@@ -11,6 +11,7 @@ import slideflow.data.connectors.base as base_connectors_module
 import slideflow.data.connectors.databricks as databricks_module
 import slideflow.presentations.providers.factory as provider_factory_module
 import slideflow.presentations.providers.google_slides as google_provider_module
+from slideflow.constants import Defaults
 from slideflow.presentations.config import ProviderConfig
 from slideflow.presentations.providers.base import (
     PresentationProvider,
@@ -18,7 +19,7 @@ from slideflow.presentations.providers.base import (
     ProviderPresentationResult,
     ProviderSlideResult,
 )
-from slideflow.utilities.exceptions import ConfigurationError
+from slideflow.utilities.exceptions import ConfigurationError, DataSourceError
 
 
 class DummyConnector(base_connectors_module.DataConnector):
@@ -236,6 +237,17 @@ def test_databricks_connector_connect_disconnect_and_fetch(monkeypatch):
     assert connector.connect() is fake_conn
     assert connector.connect() is fake_conn  # cached connection reuse
     assert len(connect_calls) == 1
+    assert connect_calls[0]["_socket_timeout"] == Defaults.DATABRICKS_SOCKET_TIMEOUT_S
+    assert (
+        connect_calls[0]["_retry_stop_after_attempts_count"]
+        == Defaults.DATABRICKS_RETRY_MAX_ATTEMPTS
+    )
+    assert (
+        connect_calls[0]["_retry_stop_after_attempts_duration"]
+        == Defaults.DATABRICKS_RETRY_MAX_DURATION_S
+    )
+    assert connect_calls[0]["_retry_delay_min"] == Defaults.DATABRICKS_RETRY_DELAY_MIN_S
+    assert connect_calls[0]["_retry_delay_max"] == Defaults.DATABRICKS_RETRY_DELAY_MAX_S
 
     result = connector.fetch_data()
     assert len(result) == 2
@@ -245,6 +257,50 @@ def test_databricks_connector_connect_disconnect_and_fetch(monkeypatch):
     connector.disconnect()
     assert fake_conn.closed is True
     assert connector._connection is None
+
+
+def test_databricks_connector_connect_fails_fast_with_missing_env(monkeypatch):
+    monkeypatch.delenv("DATABRICKS_HOST", raising=False)
+    monkeypatch.delenv("DATABRICKS_HTTP_PATH", raising=False)
+    monkeypatch.delenv("DATABRICKS_ACCESS_TOKEN", raising=False)
+
+    connector = databricks_module.DatabricksConnector("SELECT 1")
+
+    with pytest.raises(DataSourceError, match="Missing required environment variable"):
+        connector.connect()
+
+
+def test_databricks_connector_applies_explicit_retry_and_timeout_overrides(monkeypatch):
+    connect_calls = []
+
+    class FakeConnection:
+        def close(self):
+            return None
+
+    def fake_connect(**kwargs):
+        connect_calls.append(kwargs)
+        return FakeConnection()
+
+    monkeypatch.setattr(databricks_module.sql, "connect", fake_connect)
+    monkeypatch.setenv("DATABRICKS_HOST", "host")
+    monkeypatch.setenv("DATABRICKS_HTTP_PATH", "http-path")
+    monkeypatch.setenv("DATABRICKS_ACCESS_TOKEN", "token")
+
+    connector = databricks_module.DatabricksConnector(
+        "SELECT 1",
+        socket_timeout_s=30.0,
+        retry_max_attempts=5,
+        retry_max_duration_s=120.0,
+        retry_delay_min_s=0.5,
+        retry_delay_max_s=5.0,
+    )
+    connector.connect()
+
+    assert connect_calls[0]["_socket_timeout"] == 30.0
+    assert connect_calls[0]["_retry_stop_after_attempts_count"] == 5
+    assert connect_calls[0]["_retry_stop_after_attempts_duration"] == 120.0
+    assert connect_calls[0]["_retry_delay_min"] == 0.5
+    assert connect_calls[0]["_retry_delay_max"] == 5.0
 
 
 def test_databricks_connector_fetch_logs_failure(monkeypatch):
@@ -276,10 +332,38 @@ def test_databricks_connector_fetch_logs_failure(monkeypatch):
     connector = databricks_module.DatabricksConnector("SELECT fail")
     monkeypatch.setattr(connector, "connect", lambda: FailingConnection())
 
-    with pytest.raises(RuntimeError, match="boom"):
+    with pytest.raises(DataSourceError, match=r"databricks\[query\]"):
         connector.fetch_data()
 
     assert logs and logs[-1][0][2] is False
+
+
+def test_databricks_connector_fetch_classifies_auth_errors(monkeypatch):
+    class AuthFailingCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, _query):
+            raise RuntimeError("invalid access token")
+
+    class AuthFailingConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return AuthFailingCursor()
+
+    connector = databricks_module.DatabricksConnector("SELECT fail")
+    monkeypatch.setattr(connector, "connect", lambda: AuthFailingConnection())
+
+    with pytest.raises(DataSourceError, match=r"databricks\[authentication\]"):
+        connector.fetch_data()
 
 
 def test_databricks_sql_executor_delegates_to_databricks_connector(monkeypatch):

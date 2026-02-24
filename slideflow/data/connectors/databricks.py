@@ -47,7 +47,9 @@ import pandas as pd
 from databricks import sql
 from pydantic import ConfigDict, Field
 
+from slideflow.constants import Defaults, Environment
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
+from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import (
     get_logger,
     log_api_operation,
@@ -55,6 +57,46 @@ from slideflow.utilities.logging import (
 )
 
 logger = get_logger(__name__)
+
+
+def _resolve_positive_float_from_env(env_var: str, default: float) -> float:
+    """Resolve a positive float from env with safe fallback."""
+    raw_value = os.getenv(env_var)
+    if raw_value is None:
+        return default
+    try:
+        parsed = float(raw_value)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _resolve_positive_int_from_env(env_var: str, default: int) -> int:
+    """Resolve a positive int from env with safe fallback."""
+    raw_value = os.getenv(env_var)
+    if raw_value is None:
+        return default
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _safe_error_message(error: Exception) -> str:
+    """Get a non-empty single-line error message."""
+    message = str(error).strip()
+    if not message:
+        return error.__class__.__name__
+    return message.splitlines()[0]
+
+
+class DatabricksConnectorError(DataSourceError):
+    """Typed Databricks connector failure with coarse category metadata."""
+
+    def __init__(self, category: str, message: str):
+        self.category = category
+        super().__init__(f"databricks[{category}] {message}")
 
 
 class DatabricksConnector(DataConnector):
@@ -79,7 +121,15 @@ class DatabricksConnector(DataConnector):
         ...     print(f"Query returned {len(data)} rows")
     """
 
-    def __init__(self, query: str) -> None:
+    def __init__(
+        self,
+        query: str,
+        socket_timeout_s: Optional[float] = None,
+        retry_max_attempts: Optional[int] = None,
+        retry_max_duration_s: Optional[float] = None,
+        retry_delay_min_s: Optional[float] = None,
+        retry_delay_max_s: Optional[float] = None,
+    ) -> None:
         """Initialize the Databricks connector.
 
         Args:
@@ -88,6 +138,103 @@ class DatabricksConnector(DataConnector):
         """
         self.query = query
         self._connection: Optional[Any] = None
+        self.socket_timeout_s = (
+            socket_timeout_s
+            if socket_timeout_s is not None
+            else _resolve_positive_float_from_env(
+                Environment.SLIDEFLOW_DATABRICKS_SOCKET_TIMEOUT_S,
+                Defaults.DATABRICKS_SOCKET_TIMEOUT_S,
+            )
+        )
+        self.retry_max_attempts = (
+            retry_max_attempts
+            if retry_max_attempts is not None
+            else _resolve_positive_int_from_env(
+                Environment.SLIDEFLOW_DATABRICKS_RETRY_MAX_ATTEMPTS,
+                Defaults.DATABRICKS_RETRY_MAX_ATTEMPTS,
+            )
+        )
+        self.retry_max_duration_s = (
+            retry_max_duration_s
+            if retry_max_duration_s is not None
+            else _resolve_positive_float_from_env(
+                Environment.SLIDEFLOW_DATABRICKS_RETRY_MAX_DURATION_S,
+                Defaults.DATABRICKS_RETRY_MAX_DURATION_S,
+            )
+        )
+        self.retry_delay_min_s = (
+            retry_delay_min_s
+            if retry_delay_min_s is not None
+            else _resolve_positive_float_from_env(
+                Environment.SLIDEFLOW_DATABRICKS_RETRY_DELAY_MIN_S,
+                Defaults.DATABRICKS_RETRY_DELAY_MIN_S,
+            )
+        )
+        self.retry_delay_max_s = (
+            retry_delay_max_s
+            if retry_delay_max_s is not None
+            else _resolve_positive_float_from_env(
+                Environment.SLIDEFLOW_DATABRICKS_RETRY_DELAY_MAX_S,
+                Defaults.DATABRICKS_RETRY_DELAY_MAX_S,
+            )
+        )
+        if self.retry_delay_max_s < self.retry_delay_min_s:
+            self.retry_delay_max_s = self.retry_delay_min_s
+
+    @staticmethod
+    def _categorize_error(error: Exception) -> str:
+        """Classify Databricks execution failures into stable categories."""
+        message = _safe_error_message(error).lower()
+        if any(
+            token in message
+            for token in (
+                "token",
+                "credential",
+                "authentication",
+                "unauthorized",
+                "forbidden",
+                "permission",
+            )
+        ):
+            return "authentication"
+        if "timeout" in message or "timed out" in message:
+            return "timeout"
+        if any(
+            token in message
+            for token in ("connect", "connection", "network", "dns", "unreachable")
+        ):
+            return "network"
+        return "query"
+
+    @staticmethod
+    def _get_databricks_credentials() -> tuple[str, str, str]:
+        """Read and validate required Databricks auth env vars."""
+        required = (
+            Environment.DATABRICKS_HOST,
+            Environment.DATABRICKS_HTTP_PATH,
+            Environment.DATABRICKS_ACCESS_TOKEN,
+        )
+        values: dict[str, str] = {}
+        missing: list[str] = []
+        for env_var in required:
+            value = os.getenv(env_var)
+            if value is None or not value.strip():
+                missing.append(env_var)
+                continue
+            values[env_var] = value
+
+        if missing:
+            missing_display = ", ".join(missing)
+            raise DatabricksConnectorError(
+                "configuration",
+                f"Missing required environment variable(s): {missing_display}",
+            )
+
+        return (
+            values[Environment.DATABRICKS_HOST],
+            values[Environment.DATABRICKS_HTTP_PATH],
+            values[Environment.DATABRICKS_ACCESS_TOKEN],
+        )
 
     def connect(self):
         """Establish connection to Databricks SQL warehouse.
@@ -113,11 +260,25 @@ class DatabricksConnector(DataConnector):
             >>> connection = connector.connect()
         """
         if self._connection is None:
-            self._connection = sql.connect(
-                server_hostname=os.getenv("DATABRICKS_HOST"),
-                http_path=os.getenv("DATABRICKS_HTTP_PATH"),
-                access_token=os.getenv("DATABRICKS_ACCESS_TOKEN"),
-            )
+            host, http_path, access_token = self._get_databricks_credentials()
+            try:
+                self._connection = sql.connect(
+                    server_hostname=host,
+                    http_path=http_path,
+                    access_token=access_token,
+                    _socket_timeout=self.socket_timeout_s,
+                    _retry_stop_after_attempts_count=self.retry_max_attempts,
+                    _retry_stop_after_attempts_duration=self.retry_max_duration_s,
+                    _retry_delay_min=self.retry_delay_min_s,
+                    _retry_delay_max=self.retry_delay_max_s,
+                )
+            except DatabricksConnectorError:
+                raise
+            except Exception as error:
+                raise DatabricksConnectorError(
+                    "connection",
+                    f"Failed to connect to Databricks ({_safe_error_message(error)})",
+                ) from error
         return self._connection
 
     def disconnect(self) -> None:
@@ -189,15 +350,23 @@ class DatabricksConnector(DataConnector):
                 return result_df
         except Exception as e:
             duration = time.time() - start_time
+            wrapped_error = (
+                e
+                if isinstance(e, DatabricksConnectorError)
+                else DatabricksConnectorError(
+                    self._categorize_error(e),
+                    f"Databricks query failed ({_safe_error_message(e)})",
+                )
+            )
             log_api_operation(
                 "databricks",
                 "sql_query",
                 False,
                 duration,
-                error=str(e),
+                error=str(wrapped_error),
                 query_length=len(self.query),
             )
-            raise
+            raise wrapped_error from e
 
 
 class DatabricksSQLExecutor(SQLExecutor):
@@ -263,6 +432,46 @@ class DatabricksSourceConfig(BaseSourceConfig):
     query: Annotated[
         str, Field(..., description="The SQL query to execute on Databricks")
     ]
+    socket_timeout_s: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            gt=0,
+            description="Optional Databricks socket timeout override in seconds",
+        ),
+    ] = None
+    retry_max_attempts: Annotated[
+        Optional[int],
+        Field(
+            default=None,
+            ge=1,
+            description="Optional retry-attempt cap override for transient Databricks failures",
+        ),
+    ] = None
+    retry_max_duration_s: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            gt=0,
+            description="Optional retry-duration cap override in seconds",
+        ),
+    ] = None
+    retry_delay_min_s: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            gt=0,
+            description="Optional minimum retry delay override in seconds",
+        ),
+    ] = None
+    retry_delay_max_s: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            gt=0,
+            description="Optional maximum retry delay override in seconds",
+        ),
+    ] = None
 
     connector_class: ClassVar[Type[DataConnector]] = DatabricksConnector
 
