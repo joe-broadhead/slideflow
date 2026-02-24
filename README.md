@@ -23,7 +23,7 @@
 
 **SlideFlow is a Python-based tool for generating beautiful, data-driven presentations directly from your data sources.**
 
-[Key Features](#-key-features) • [How It Works](#-how-it-works) • [Installation](#-installation) • [Getting Started](#-getting-started) • [CLI Usage](#-cli-usage) • [Configuration](#-configuration) • [Customization](#-customization) • [Contributing](#-contributing)
+[Key Features](#-key-features) • [How It Works](#-how-it-works) • [Installation](#-installation) • [Getting Started](#-getting-started) • [CLI Usage](#-cli-usage) • [Configuration](#-configuration) • [Customization](#-customization) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -37,6 +37,7 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 -   📊 **Connect Directly to Your Data:** Pull data from CSV files, JSON, Databricks, or even your dbt models. No more manual data exports.
 -   ⚡ **Automate Your Reporting:** Stop the manual work. Reduce errors and save time. Your presentations are always up-to-date with your latest data.
 -   🚀 **Scale Instantly:** Need to create a presentation for every customer, region, or product? Generate hundreds of personalized presentations at once from a single template.
+-   🤖 **Production Automation Ready:** Run scheduled builds in GitHub Actions with the reusable SlideFlow workflow and machine-readable JSON outputs.
 
 ---
 
@@ -191,6 +192,13 @@ function_registry = {
 ```
 
 You can then reference `format_as_usd` in your YAML configuration.
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, local quality gates,
+test expectations, and PR checklist.
 
 ---
 

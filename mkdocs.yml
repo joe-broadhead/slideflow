@@ -125,6 +125,7 @@ nav:
       - Release: release-process.md
       - Changelog: changelog.md
   - Development:
+      - Contributing: contributing.md
       - Compatibility Policy: compatibility-policy.md
       - CI & Quality: ci-quality.md
       - Agent Skills: agent-skills.md

@@ -6,6 +6,8 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "README.md"
+      - "CONTRIBUTING.md"
+      - "CHANGELOG.md"
   push:
     branches:
       - master
@@ -14,6 +16,8 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "README.md"
+      - "CONTRIBUTING.md"
+      - "CHANGELOG.md"
   workflow_dispatch:
 
 permissions:
