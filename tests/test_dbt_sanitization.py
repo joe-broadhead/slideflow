@@ -7,6 +7,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -993,6 +994,147 @@ def test_composable_dbt_source_config_resolves_to_databricks_connector():
     assert connector.vars == {"country": "US"}
     assert connector.compile is False
     assert connector.profiles_dir == "/tmp/profiles"
+
+
+def test_legacy_and_composable_dbt_configs_resolve_equivalent_connectors():
+    legacy = dbt_module.DBTDatabricksSourceConfig(
+        name="metrics_legacy",
+        type="databricks_dbt",
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_model",
+        model_package_name="pkg",
+        model_selector_name="metrics_model",
+        package_url="https://github.com/org/repo.git",
+        project_dir="/tmp/workspace",
+        profile_name="analytics",
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+        compile=False,
+        profiles_dir="/tmp/profiles",
+    )
+    composable = dbt_module.DBTSourceConfig(
+        name="metrics_composable",
+        type="dbt",
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_model",
+        model_package_name="pkg",
+        model_selector_name="metrics_model",
+        dbt={
+            "package_url": "https://github.com/org/repo.git",
+            "project_dir": "/tmp/workspace",
+            "profile_name": "analytics",
+            "branch": "main",
+            "target": "prod",
+            "vars": {"country": "US"},
+            "compile": False,
+            "profiles_dir": "/tmp/profiles",
+        },
+        warehouse={"type": "databricks"},
+    )
+
+    legacy_connector = legacy.get_connector()
+    composable_connector = composable.get_connector()
+
+    assert isinstance(legacy_connector, dbt_module.DBTDatabricksConnector)
+    assert isinstance(composable_connector, dbt_module.DBTDatabricksConnector)
+
+    parity_fields = (
+        "model_alias",
+        "model_unique_id",
+        "model_package_name",
+        "model_selector_name",
+        "package_url",
+        "project_dir",
+        "profile_name",
+        "branch",
+        "target",
+        "vars",
+        "compile",
+        "profiles_dir",
+    )
+    assert {field: getattr(legacy_connector, field) for field in parity_fields} == {
+        field: getattr(composable_connector, field) for field in parity_fields
+    }
+
+
+def test_legacy_and_composable_dbt_configs_fetch_with_runtime_parity(monkeypatch):
+    cache = get_data_cache()
+    cache.enable()
+    cache.clear()
+    connector_calls: list[dict[str, Any]] = []
+
+    def _fake_fetch(self):
+        connector_calls.append(
+            {
+                "model_alias": self.model_alias,
+                "model_unique_id": self.model_unique_id,
+                "model_package_name": self.model_package_name,
+                "model_selector_name": self.model_selector_name,
+                "package_url": self.package_url,
+                "project_dir": self.project_dir,
+                "profile_name": self.profile_name,
+                "branch": self.branch,
+                "target": self.target,
+                "vars": self.vars,
+                "compile": self.compile,
+                "profiles_dir": self.profiles_dir,
+            }
+        )
+        return pd.DataFrame({"value": [1], "source": ["dbt"]})
+
+    monkeypatch.setattr(dbt_module.DBTDatabricksConnector, "fetch_data", _fake_fetch)
+
+    legacy = dbt_module.DBTDatabricksSourceConfig(
+        name="metrics_legacy",
+        type="databricks_dbt",
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_model",
+        model_package_name="pkg",
+        model_selector_name="metrics_model",
+        package_url="https://github.com/org/repo.git",
+        project_dir="/tmp/workspace",
+        profile_name="analytics",
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+        compile=False,
+        profiles_dir="/tmp/profiles",
+    )
+    composable = dbt_module.DBTSourceConfig(
+        name="metrics_composable",
+        type="dbt",
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_model",
+        model_package_name="pkg",
+        model_selector_name="metrics_model",
+        dbt={
+            "package_url": "https://github.com/org/repo.git",
+            "project_dir": "/tmp/workspace",
+            "profile_name": "analytics",
+            "branch": "main",
+            "target": "prod",
+            "vars": {"country": "US"},
+            "compile": False,
+            "profiles_dir": "/tmp/profiles",
+        },
+        warehouse={"type": "databricks"},
+    )
+
+    legacy_first = legacy.fetch_data()
+    legacy_second = legacy.fetch_data()
+    composable_first = composable.fetch_data()
+    composable_second = composable.fetch_data()
+
+    assert legacy_first.to_dict(orient="records") == composable_first.to_dict(
+        orient="records"
+    )
+    assert legacy_first is legacy_second
+    assert composable_first is composable_second
+    assert len(connector_calls) == 2
+    assert connector_calls[0] == connector_calls[1]
+
+    cache.clear()
 
 
 def test_composable_dbt_source_config_fetch_data_routes_and_caches(monkeypatch):
