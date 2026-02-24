@@ -30,6 +30,7 @@ def test_data_source_cache_lifecycle_and_singleton_behavior():
     info = cache.get_cache_info()
     assert info["enabled"] is True
     assert info["size"] == 1
+    assert info["max_entries"] == cache.max_entries
     assert info["cached_sources"]
 
     cache.disable()
@@ -47,6 +48,116 @@ def test_data_source_cache_key_generation_is_order_stable():
     key_a = cache._generate_key("databricks", query="select 1", target="prod")
     key_b = cache._generate_key("databricks", target="prod", query="select 1")
     assert key_a == key_b
+
+
+def test_data_source_cache_key_generation_is_order_stable_for_nested_values():
+    cache = DataSourceCache()
+    key_a = cache._generate_key(
+        "dbt",
+        query="select 1",
+        vars={
+            "country": "US",
+            "filters": {"regions": ["NA", "EU"], "active": True},
+            "flags": {"b", "a"},
+        },
+    )
+    key_b = cache._generate_key(
+        "dbt",
+        vars={
+            "flags": {"a", "b"},
+            "filters": {"active": True, "regions": ["NA", "EU"]},
+            "country": "US",
+        },
+        query="select 1",
+    )
+    assert key_a == key_b
+
+
+def test_data_source_cache_key_generation_distinguishes_dict_key_types():
+    cache = DataSourceCache()
+    key_with_int = cache._generate_key(
+        "dbt",
+        vars={
+            "filters": {
+                "country": "US",
+                1: "int-key",
+            }
+        },
+    )
+    key_with_string = cache._generate_key(
+        "dbt",
+        vars={
+            "filters": {
+                "country": "US",
+                "1": "string-key",
+            }
+        },
+    )
+    assert key_with_int != key_with_string
+
+
+def test_data_source_cache_key_generation_distinguishes_tuple_from_list():
+    cache = DataSourceCache()
+    key_with_tuple = cache._generate_key(
+        "dbt",
+        vars={"dimensions": ("region", "segment")},
+    )
+    key_with_list = cache._generate_key(
+        "dbt",
+        vars={"dimensions": ["region", "segment"]},
+    )
+    assert key_with_tuple != key_with_list
+
+
+def test_data_source_cache_enforces_lru_entry_cap(monkeypatch):
+    monkeypatch.setenv(Environment.SLIDEFLOW_DATA_CACHE_MAX_ENTRIES, "2")
+    cache = get_data_cache()
+    cache.enable()
+    cache.clear()
+    original_max_entries = cache.max_entries
+    cache._max_entries = 2
+
+    try:
+        df_a = pd.DataFrame({"value": [1]})
+        df_b = pd.DataFrame({"value": [2]})
+        df_c = pd.DataFrame({"value": [3]})
+
+        cache.set(df_a, source_type="csv", file_path="a.csv")
+        cache.set(df_b, source_type="csv", file_path="b.csv")
+        assert cache.size == 2
+
+        # Touch a.csv so b.csv becomes least-recently-used.
+        assert cache.get("csv", file_path="a.csv") is df_a
+
+        cache.set(df_c, source_type="csv", file_path="c.csv")
+        assert cache.size == 2
+        assert cache.get("csv", file_path="a.csv") is df_a
+        assert cache.get("csv", file_path="b.csv") is None
+        assert cache.get("csv", file_path="c.csv") is df_c
+    finally:
+        cache._max_entries = original_max_entries
+        cache.clear()
+
+
+def test_data_source_cache_singleton_init_is_thread_safe():
+    DataSourceCache._instance = None
+
+    def create_cache_instance_id() -> int:
+        return id(DataSourceCache())
+
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        instance_ids = list(
+            executor.map(lambda _i: create_cache_instance_id(), range(64))
+        )
+
+    assert len(set(instance_ids)) == 1
+
+
+def test_data_source_cache_invalid_env_max_entries_falls_back(monkeypatch):
+    monkeypatch.setenv(Environment.SLIDEFLOW_DATA_CACHE_MAX_ENTRIES, "not-an-int")
+    cache = get_data_cache()
+    cache.enable()
+    assert cache.max_entries > 0
 
 
 def test_data_source_cache_get_or_load_deduplicates_concurrent_loads():

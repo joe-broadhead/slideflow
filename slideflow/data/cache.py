@@ -42,10 +42,27 @@ Functions:
 """
 
 import hashlib
+import json
+import os
 import threading
+from collections import OrderedDict
 from typing import Any, Callable, Dict, Optional
 
 import pandas as pd
+
+from slideflow.constants import Defaults, Environment
+
+
+def _resolve_data_cache_max_entries() -> int:
+    """Resolve cache entry cap from environment with safe fallback."""
+    raw_value = os.getenv(Environment.SLIDEFLOW_DATA_CACHE_MAX_ENTRIES)
+    if raw_value is None:
+        return Defaults.DATA_SOURCE_CACHE_MAX_ENTRIES
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return Defaults.DATA_SOURCE_CACHE_MAX_ENTRIES
+    return parsed if parsed > 0 else Defaults.DATA_SOURCE_CACHE_MAX_ENTRIES
 
 
 class DataSourceCache:
@@ -85,9 +102,11 @@ class DataSourceCache:
     """
 
     _instance: Optional["DataSourceCache"] = None
-    _cache: Dict[str, pd.DataFrame]
+    _instance_lock: threading.Lock = threading.Lock()
+    _cache: "OrderedDict[str, pd.DataFrame]"
     _inflight: Dict[str, threading.Event]
     _enabled: bool
+    _max_entries: int
     _lock: threading.RLock
 
     def __new__(cls) -> "DataSourceCache":
@@ -101,12 +120,89 @@ class DataSourceCache:
             The singleton DataSourceCache instance.
         """
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._cache = {}
-            cls._instance._inflight = {}
-            cls._instance._enabled = True
-            cls._instance._lock = threading.RLock()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._cache = OrderedDict()
+                    cls._instance._inflight = {}
+                    cls._instance._enabled = True
+                    cls._instance._max_entries = _resolve_data_cache_max_entries()
+                    cls._instance._lock = threading.RLock()
         return cls._instance
+
+    @staticmethod
+    def _stable_json(value: Any) -> str:
+        """Render a deterministic JSON string for normalized key fragments."""
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
+
+    @staticmethod
+    def _normalize_for_key(value: Any) -> Any:
+        """Normalize nested structures into a deterministic JSON-serializable form."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+
+        if isinstance(value, dict):
+            normalized_items = [
+                [
+                    DataSourceCache._normalize_for_key(key),
+                    DataSourceCache._normalize_for_key(inner),
+                ]
+                for key, inner in value.items()
+            ]
+            normalized_items.sort(
+                key=lambda item: DataSourceCache._stable_json(item[0])
+            )
+            return {"__dict__": normalized_items}
+
+        if isinstance(value, list):
+            return {
+                "__list__": [
+                    DataSourceCache._normalize_for_key(inner) for inner in value
+                ]
+            }
+
+        if isinstance(value, tuple):
+            return {
+                "__tuple__": [
+                    DataSourceCache._normalize_for_key(inner) for inner in value
+                ]
+            }
+
+        if isinstance(value, (set, frozenset)):
+            normalized_items = [
+                DataSourceCache._normalize_for_key(inner) for inner in value
+            ]
+            normalized_items = sorted(
+                normalized_items, key=lambda item: DataSourceCache._stable_json(item)
+            )
+            set_tag = "__frozenset__" if isinstance(value, frozenset) else "__set__"
+            return {set_tag: normalized_items}
+
+        if isinstance(value, bytes):
+            return {"__bytes__": value.hex()}
+
+        # pathlib.Path and similar os.PathLike values.
+        if hasattr(value, "__fspath__"):
+            return os.fspath(value)
+
+        if hasattr(value, "model_dump") and callable(value.model_dump):
+            try:
+                return DataSourceCache._normalize_for_key(value.model_dump())
+            except Exception:
+                pass
+
+        return repr(value)
+
+    def _enforce_size_limit_locked(self) -> None:
+        """Enforce max cache entries using LRU eviction. Caller must hold lock."""
+        while len(self._cache) > self._max_entries:
+            self._cache.popitem(last=False)
 
     def _generate_key(self, source_type: str, **kwargs) -> str:
         """Generate MD5 hash key from source type and parameters.
@@ -130,8 +226,14 @@ class DataSourceCache:
             >>> cache._generate_key("databricks", query="SELECT * FROM users")
             'f6e5d4c3b2a1...'
         """
-        parts = [source_type] + [f"{k}:{v}" for k, v in sorted(kwargs.items())]
-        return hashlib.md5("|".join(parts).encode()).hexdigest()
+        payload = {
+            "source_type": source_type,
+            "kwargs": DataSourceCache._normalize_for_key(kwargs),
+        }
+        canonical_payload = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
+        return hashlib.md5(canonical_payload.encode("utf-8")).hexdigest()
 
     def get(self, source_type: str, **kwargs) -> Optional[pd.DataFrame]:
         """Retrieve a DataFrame from the cache if it exists.
@@ -161,6 +263,9 @@ class DataSourceCache:
         with self._lock:
             # guard the lookup
             df = self._cache.get(key)
+            if df is not None:
+                # LRU: move most recently used key to the end.
+                self._cache.move_to_end(key)
         return df
 
     def set(self, data: pd.DataFrame, source_type: str, **kwargs) -> None:
@@ -191,6 +296,8 @@ class DataSourceCache:
             # Store reference instead of copy - safe since cache lifecycle
             # is contained within a single build operation
             self._cache[key] = data
+            self._cache.move_to_end(key)
+            self._enforce_size_limit_locked()
 
     def get_or_load(
         self, source_type: str, loader: Callable[[], pd.DataFrame], **kwargs
@@ -217,6 +324,7 @@ class DataSourceCache:
             with self._lock:
                 cached = self._cache.get(key)
                 if cached is not None:
+                    self._cache.move_to_end(key)
                     return cached
 
                 pending = self._inflight.get(key)
@@ -240,6 +348,8 @@ class DataSourceCache:
                 with self._lock:
                     if self._enabled:
                         self._cache[key] = data
+                        self._cache.move_to_end(key)
+                        self._enforce_size_limit_locked()
                     event = self._inflight.pop(key, None)
                     if event is not None:
                         event.set()
@@ -290,6 +400,7 @@ class DataSourceCache:
         """
         with self._lock:
             self._enabled = True
+            self._max_entries = _resolve_data_cache_max_entries()
 
     @property
     def is_enabled(self) -> bool:
@@ -320,6 +431,12 @@ class DataSourceCache:
         with self._lock:
             return len(self._cache)
 
+    @property
+    def max_entries(self) -> int:
+        """Configured maximum number of cache entries."""
+        with self._lock:
+            return self._max_entries
+
     def get_cache_info(self) -> Dict[str, Any]:
         """Get comprehensive information about the cache state.
 
@@ -341,6 +458,7 @@ class DataSourceCache:
             return {
                 "enabled": self._enabled,
                 "size": len(self._cache),
+                "max_entries": self._max_entries,
                 "cached_sources": list(self._cache.keys()),
             }
 
