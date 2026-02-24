@@ -55,6 +55,7 @@ import importlib
 import importlib.util
 import pkgutil
 import sys
+import threading
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable, List, Mapping, Sequence
@@ -63,6 +64,8 @@ import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
 from slideflow.utilities.exceptions import ConfigurationError
+
+_registry_load_lock = threading.RLock()
 
 
 def render_params(obj: Any, params: Mapping[str, str]) -> Any:
@@ -192,43 +195,52 @@ def load_registry_from_path(registry_path: Path) -> dict[str, Callable]:
     full_name = f"{package}.{module_name}"
     parent_path = str(path.parent.parent)
     package_prefix = f"{package}."
-    original_sys_path = list(sys.path)
-    original_package_modules = {
-        name: module
-        for name, module in sys.modules.items()
-        if name == package or name.startswith(package_prefix)
-    }
+    # Registry loading temporarily mutates global import state (`sys.path`,
+    # `sys.modules`) to support relative imports from the target package.
+    # Serialize this critical section so concurrent builds cannot corrupt import
+    # state for each other.
+    with _registry_load_lock:
+        original_sys_path = list(sys.path)
+        original_package_modules = {
+            name: module
+            for name, module in sys.modules.items()
+            if name == package or name.startswith(package_prefix)
+        }
 
-    # Ensure the registry's parent path has highest precedence while loading.
-    sys.path[:] = [parent_path] + [entry for entry in sys.path if entry != parent_path]
+        # Ensure the registry's parent path has highest precedence while loading.
+        sys.path[:] = [parent_path] + [
+            entry for entry in sys.path if entry != parent_path
+        ]
 
-    # Remove potentially conflicting cached modules and restore them after load.
-    for name in list(sys.modules):
-        if name == package or name.startswith(package_prefix):
-            sys.modules.pop(name, None)
-
-    try:
-        spec = importlib.util.spec_from_file_location(full_name, path)
-        if spec is None or spec.loader is None:
-            raise ConfigurationError(f"Unable to load module specification from {path}")
-
-        module = importlib.util.module_from_spec(spec)
-        module.__package__ = package
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
-    except ConfigurationError:
-        raise
-    except Exception as e:
-        raise ConfigurationError(
-            f"Failed to load registry module from {path}: {e}"
-        ) from e
-    finally:
-        sys.path[:] = original_sys_path
-
-        # Purge transient imports from registry loading, then restore prior state.
+        # Remove potentially conflicting cached modules and restore them after load.
         for name in list(sys.modules):
             if name == package or name.startswith(package_prefix):
                 sys.modules.pop(name, None)
-        sys.modules.update(original_package_modules)
+
+        try:
+            spec = importlib.util.spec_from_file_location(full_name, path)
+            if spec is None or spec.loader is None:
+                raise ConfigurationError(
+                    f"Unable to load module specification from {path}"
+                )
+
+            module = importlib.util.module_from_spec(spec)
+            module.__package__ = package
+            spec.loader.exec_module(module)  # type: ignore[union-attr]
+        except ConfigurationError:
+            raise
+        except Exception as e:
+            raise ConfigurationError(
+                f"Failed to load registry module from {path}: {e}"
+            ) from e
+        finally:
+            sys.path[:] = original_sys_path
+
+            # Purge transient imports from registry loading, then restore prior state.
+            for name in list(sys.modules):
+                if name == package or name.startswith(package_prefix):
+                    sys.modules.pop(name, None)
+            sys.modules.update(original_package_modules)
 
     registry = getattr(module, "function_registry", None)
     if not isinstance(registry, dict):
