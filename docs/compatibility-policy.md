@@ -25,7 +25,7 @@ SlideFlow follows a feature-preservation policy for this program of work.
 Compatibility checks must continue to cover:
 
 - CLI command and option availability
-- Data connectors (`csv`, `json`, `databricks`, `dbt`, `databricks_dbt`)
+- Data connectors (`csv`, `json`, `databricks`, `duckdb`, `dbt`, `databricks_dbt`)
 - Replacements (`text`, `table`, `ai_text`)
 - Charts (`plotly_go`, `custom`, `template`)
 - Template engine and registry resolution behavior

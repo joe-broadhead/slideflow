@@ -63,12 +63,13 @@ from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Type
 import pandas as pd
 from dbt.cli.main import dbtRunner
 from git import Repo
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.data.connectors.bigquery import BigQuerySQLExecutor
 from slideflow.data.connectors.databricks import DatabricksSQLExecutor
+from slideflow.data.connectors.duckdb import DuckDBSQLExecutor
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
 
@@ -1174,6 +1175,62 @@ class DBTBigQueryConnector(BaseModel, DataConnector):
         return executor.execute(sql_text)
 
 
+class DBTDuckDBConnector(BaseModel, DataConnector):
+    """Connector that combines DBT model compilation with DuckDB execution."""
+
+    model_alias: str
+    model_unique_id: Optional[str] = None
+    model_package_name: Optional[str] = None
+    model_selector_name: Optional[str] = None
+    package_url: str
+    project_dir: str
+    profile_name: Optional[str] = None
+    branch: Optional[str] = None
+    target: str = Defaults.DBT_TARGET
+    vars: Optional[dict[str, Any]] = None
+    compile: bool = Defaults.DBT_COMPILE
+    profiles_dir: Optional[str] = None
+    database: str
+    read_only: bool = True
+    file_search_path: Optional[str | list[str]] = None
+    _manifest_connector: Optional[DBTManifestConnector] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
+        self._manifest_connector = DBTManifestConnector(
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            compile=self.compile,
+            profile_name=self.profile_name,
+        )
+
+    def fetch_data(self) -> pd.DataFrame:
+        """Compile DBT model and execute the resulting SQL on DuckDB."""
+        if self._manifest_connector is None:
+            raise DataSourceError("DBT manifest connector is not initialized.")
+        sql_text = self._manifest_connector.get_compiled_query(
+            self.model_alias,
+            model_unique_id=self.model_unique_id,
+            model_package_name=self.model_package_name,
+            model_selector_name=self.model_selector_name,
+        )
+        if not sql_text:
+            raise DataSourceError(f"No compiled model '{self.model_alias}'")
+
+        executor = DuckDBSQLExecutor(
+            database=self.database,
+            read_only=self.read_only,
+            file_search_path=self.file_search_path,
+        )
+        return executor.execute(sql_text)
+
+
 class DBTDatabricksSourceConfig(BaseSourceConfig):
     """Configuration model for DBT models executed on Databricks.
 
@@ -1293,7 +1350,7 @@ class DBTProjectConfig(BaseModel):
 class DBTWarehouseConfig(BaseModel):
     """Warehouse execution backend for composable DBT sources."""
 
-    type: Literal["databricks", "bigquery"] = Field(
+    type: Literal["databricks", "bigquery", "duckdb"] = Field(
         "databricks", description="Warehouse backend type"
     )
     project_id: Optional[str] = Field(
@@ -1324,8 +1381,34 @@ class DBTWarehouseConfig(BaseModel):
             "when warehouse.type is 'bigquery'."
         ),
     )
+    database: Optional[str] = Field(
+        None,
+        description=(
+            "DuckDB database path (or ':memory:'). Required when "
+            "warehouse.type is 'duckdb'."
+        ),
+    )
+    read_only: bool = Field(
+        True,
+        description="Open DuckDB connection in read-only mode when using duckdb.",
+    )
+    file_search_path: Optional[str | list[str]] = Field(
+        None,
+        description=(
+            "Optional DuckDB file_search_path setting for resolving relative files "
+            "when warehouse.type is 'duckdb'."
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _validate_duckdb_required_fields(self):
+        if self.type == "duckdb" and not self.database:
+            raise ValueError(
+                "warehouse.database is required when warehouse.type is 'duckdb'."
+            )
+        return self
 
 
 class DBTSourceConfig(BaseSourceConfig):
@@ -1390,5 +1473,23 @@ class DBTSourceConfig(BaseSourceConfig):
                 location=self.warehouse.location,
                 credentials_json=self.warehouse.credentials_json,
                 credentials_path=self.warehouse.credentials_path,
+            )
+        if self.warehouse.type == "duckdb":
+            return DBTDuckDBConnector(
+                model_alias=self.model_alias,
+                model_unique_id=self.model_unique_id,
+                model_package_name=self.model_package_name,
+                model_selector_name=self.model_selector_name,
+                package_url=self.dbt.package_url,
+                project_dir=self.dbt.project_dir,
+                profile_name=self.dbt.profile_name,
+                branch=self.dbt.branch,
+                target=self.dbt.target,
+                vars=self.dbt.vars,
+                compile=self.dbt.compile,
+                profiles_dir=self.dbt.profiles_dir,
+                database=self.warehouse.database or ":memory:",
+                read_only=self.warehouse.read_only,
+                file_search_path=self.warehouse.file_search_path,
             )
         raise DataSourceError(f"Unsupported DBT warehouse type '{self.warehouse.type}'")

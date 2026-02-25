@@ -6,7 +6,7 @@ SlideFlow generates Google Slides decks from structured YAML, data sources, and 
 
 - Declarative presentation builds via `slideflow build`
 - Fast preflight validation via `slideflow validate`
-- Data connectors for CSV, JSON, Databricks SQL, and dbt-on-Databricks
+- Data connectors for CSV, JSON, Databricks SQL, DuckDB SQL, and dbt warehouses
 - Dynamic replacements (`text`, `table`, `ai_text`)
 - Charts via Plotly graph objects, reusable templates, or custom Python functions
 - Batch deck generation with `--params-path` for high-volume reporting

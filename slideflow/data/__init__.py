@@ -72,7 +72,8 @@ Available Data Sources:
     - CSV files: Simple file-based tabular data
     - JSON files: Structured data with various orientations
     - Databricks: SQL queries against Databricks warehouses
-    - DBT models: Compiled transformations with Databricks execution
+    - DuckDB: SQL queries against local/in-memory DuckDB databases
+    - DBT models: Compiled transformations with warehouse execution
 
 Components:
     DataSourceCache: Thread-safe singleton cache for DataFrame storage
@@ -95,9 +96,13 @@ from slideflow.data.connectors import (
     DBTBigQueryConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
+    DBTDuckDBConnector,
     DBTProjectConfig,
     DBTSourceConfig,
     DBTWarehouseConfig,
+    DuckDBConnector,
+    DuckDBSourceConfig,
+    DuckDBSQLExecutor,
     JSONConnector,
     JSONSourceConfig,
     SQLExecutor,
@@ -121,8 +126,12 @@ __all__ = [
     "DatabricksConnector",
     "DatabricksSQLExecutor",
     "DatabricksSourceConfig",
+    "DuckDBConnector",
+    "DuckDBSQLExecutor",
+    "DuckDBSourceConfig",
     "DBTBigQueryConnector",
     "DBTDatabricksConnector",
+    "DBTDuckDBConnector",
     "DBTDatabricksSourceConfig",
     "DBTProjectConfig",
     "DBTWarehouseConfig",

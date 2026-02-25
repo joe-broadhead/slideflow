@@ -43,6 +43,7 @@ Supported Data Source Types:
     - "csv": CSV file data sources
     - "json": JSON file data sources
     - "databricks": Databricks SQL warehouse connections
+    - "duckdb": DuckDB SQL connections
     - "databricks_dbt": Legacy DBT models in Databricks
     - "dbt": Composable DBT source with explicit warehouse block
 """
@@ -54,6 +55,7 @@ from pydantic import Field
 from slideflow.data.connectors.csv import CSVSourceConfig
 from slideflow.data.connectors.databricks import DatabricksSourceConfig
 from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig, DBTSourceConfig
+from slideflow.data.connectors.duckdb import DuckDBSourceConfig
 from slideflow.data.connectors.json import JSONSourceConfig
 
 DataSourceConfig = Annotated[
@@ -61,6 +63,7 @@ DataSourceConfig = Annotated[
         CSVSourceConfig,
         JSONSourceConfig,
         DatabricksSourceConfig,
+        DuckDBSourceConfig,
         DBTDatabricksSourceConfig,
         DBTSourceConfig,
     ],
@@ -76,6 +79,7 @@ The union includes all currently supported data source types:
 - CSVSourceConfig: For CSV file data sources
 - JSONSourceConfig: For JSON file data sources  
 - DatabricksSourceConfig: For Databricks SQL warehouse connections
+- DuckDBSourceConfig: For DuckDB SQL sources
 - DBTDatabricksSourceConfig: For DBT models in Databricks
 - DBTSourceConfig: For composable DBT + warehouse configurations
 
