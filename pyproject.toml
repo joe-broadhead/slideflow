@@ -36,6 +36,7 @@ requires-python = ">=3.12"
 [project.optional-dependencies]
 ai = ["openai", "google-genai"]
 bigquery = ["google-cloud-bigquery", "dbt-bigquery"]
+duckdb = ["duckdb", "dbt-duckdb"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",

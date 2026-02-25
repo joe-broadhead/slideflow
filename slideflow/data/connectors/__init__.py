@@ -40,12 +40,14 @@ Available Connectors:
     - CSVConnector: For CSV file data sources
     - JSONConnector: For JSON file data sources
     - DatabricksConnector: For Databricks SQL warehouse connections
+    - DuckDBConnector: For DuckDB SQL connections
     - DBTDatabricksConnector: For DBT models in Databricks
 
 Available Configurations:
     - CSVSourceConfig: Configuration for CSV files
     - JSONSourceConfig: Configuration for JSON files
     - DatabricksSourceConfig: Configuration for Databricks connections
+    - DuckDBSourceConfig: Configuration for DuckDB connections
     - DBTDatabricksSourceConfig: Configuration for DBT models
 """
 
@@ -65,9 +67,15 @@ from slideflow.data.connectors.dbt import (
     DBTBigQueryConnector,
     DBTDatabricksConnector,
     DBTDatabricksSourceConfig,
+    DBTDuckDBConnector,
     DBTProjectConfig,
     DBTSourceConfig,
     DBTWarehouseConfig,
+)
+from slideflow.data.connectors.duckdb import (
+    DuckDBConnector,
+    DuckDBSourceConfig,
+    DuckDBSQLExecutor,
 )
 from slideflow.data.connectors.json import JSONConnector, JSONSourceConfig
 
@@ -84,8 +92,12 @@ __all__ = [
     "DatabricksConnector",
     "DatabricksSQLExecutor",
     "DatabricksSourceConfig",
+    "DuckDBConnector",
+    "DuckDBSQLExecutor",
+    "DuckDBSourceConfig",
     "DBTBigQueryConnector",
     "DBTDatabricksConnector",
+    "DBTDuckDBConnector",
     "DBTDatabricksSourceConfig",
     "DBTProjectConfig",
     "DBTWarehouseConfig",

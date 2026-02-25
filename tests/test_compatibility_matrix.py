@@ -12,6 +12,7 @@ from slideflow.data.connectors import (
     DataSourceConfig,
     DBTDatabricksSourceConfig,
     DBTSourceConfig,
+    DuckDBSourceConfig,
     JSONSourceConfig,
 )
 from slideflow.presentations.charts import (
@@ -59,6 +60,14 @@ def test_cli_commands_remain_available():
                 "query": "SELECT 1",
             },
             DatabricksSourceConfig,
+        ),
+        (
+            {
+                "type": "duckdb",
+                "name": "source_duckdb",
+                "query": "SELECT 1",
+            },
+            DuckDBSourceConfig,
         ),
         (
             {

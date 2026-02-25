@@ -212,6 +212,19 @@ Optional per-source runtime tuning fields:
 - `retry_delay_min_s`
 - `retry_delay_max_s`
 
+### DuckDB SQL
+
+```yaml
+type: "duckdb"
+name: "local_duckdb_query"
+database: "/tmp/analytics.duckdb" # optional; defaults to ':memory:'
+read_only: true # optional; defaults to true
+file_search_path: # optional; list or comma-separated string
+  - "/tmp/data"
+  - "/tmp/snapshots"
+query: "SELECT * FROM sales_summary"
+```
+
 ### dbt on Databricks (composable, preferred)
 
 ```yaml
@@ -237,11 +250,14 @@ Optional alias disambiguation fields for `dbt`:
 
 Composable warehouse options:
 
-- `warehouse.type`: `databricks` or `bigquery`
+- `warehouse.type`: `databricks`, `bigquery`, or `duckdb`
 - `warehouse.project_id`: BigQuery project id override
 - `warehouse.location`: optional warehouse location/region
 - `warehouse.credentials_path`: optional path to BigQuery service-account JSON
 - `warehouse.credentials_json`: optional inline service-account JSON payload
+- `warehouse.database`: required for DuckDB warehouse (file path or `:memory:`)
+- `warehouse.read_only`: optional DuckDB read-only mode (default `true`)
+- `warehouse.file_search_path`: optional DuckDB file search path (list or comma-separated string)
 
 BigQuery variant example:
 
@@ -259,6 +275,26 @@ warehouse:
   project_id: "my-gcp-project"
   location: "US"
   credentials_path: "/path/to/service-account.json"
+
+DuckDB variant example:
+
+```yaml
+type: "dbt"
+name: "dbt_model_duckdb"
+model_alias: "revenue_model"
+dbt:
+  package_url: "https://$GIT_TOKEN@github.com/org/repo.git"
+  project_dir: "/tmp/dbt_project"
+  branch: "main"
+  target: "prod"
+warehouse:
+  type: "duckdb"
+  database: "/tmp/warehouse.duckdb"
+  read_only: true
+  file_search_path:
+    - "/tmp/dbt_project"
+    - "/tmp/data"
+```
 ```
 
 ### Legacy dbt on Databricks (`databricks_dbt`)

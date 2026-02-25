@@ -104,7 +104,7 @@ that mode so you can validate the slides visually.
 Compatibility tests assert support remains in place for:
 
 - CLI commands/options (`slideflow build`, `slideflow validate`)
-- connectors (`csv`, `json`, `databricks`, `dbt`, `databricks_dbt`)
+- connectors (`csv`, `json`, `databricks`, `duckdb`, `dbt`, `databricks_dbt`)
 - replacements (`text`, `table`, `ai_text`)
 - charts (`plotly_go`, `custom`, `template`)
 - template/registry loading paths

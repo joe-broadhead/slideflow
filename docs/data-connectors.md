@@ -1,10 +1,11 @@
 # Data Connectors
 
-SlideFlow supports five connector types for chart/replacement data sources:
+SlideFlow supports six connector types for chart/replacement data sources:
 
 - `csv`
 - `json`
 - `databricks`
+- `duckdb`
 - `dbt` (composable, preferred)
 - `databricks_dbt` (legacy, still supported)
 
@@ -20,7 +21,8 @@ For a step-by-step migration from legacy `databricks_dbt` to composable
 | `csv` | local tabular files | no | none |
 | `json` | local API exports/events | no | none |
 | `databricks` | direct warehouse SQL | yes | `DATABRICKS_HOST`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_ACCESS_TOKEN` |
-| `dbt` | dbt model SQL executed on Databricks or BigQuery (composable config) | yes | Databricks env vars or BigQuery project/auth env vars (+ Git token env if needed) |
+| `duckdb` | direct local/in-memory SQL | no | none |
+| `dbt` | dbt model SQL executed on Databricks, BigQuery, or DuckDB (composable config) | yes/no (depends on warehouse and dbt repo) | Databricks env vars, BigQuery project/auth env vars, or none for local DuckDB (+ Git token env if needed) |
 | `databricks_dbt` | dbt model SQL executed on Databricks | yes | same Databricks env vars (+ Git token env if needed) |
 
 ## CSV
@@ -97,6 +99,28 @@ Tips:
 - Keep SQL deterministic for reporting workflows.
 - Limit columns to what chart/replacement logic needs.
 - Prefer validated parameter substitution (`{quarter}` from batch params) over string concatenation.
+
+## DuckDB SQL
+
+```yaml
+data_source:
+  type: "duckdb"
+  name: "local_duckdb_query"
+  database: "/tmp/analytics.duckdb" # optional; defaults to ':memory:'
+  read_only: true # optional; defaults to true
+  file_search_path: # optional; used for relative file references in DuckDB
+    - "/tmp/data"
+    - "/tmp/snapshots"
+  query: |
+    SELECT * FROM sales_summary
+```
+
+Notes:
+
+- Install DuckDB runtime deps:
+  `pip install "slideflow-presentations[duckdb]"`.
+- `file_search_path` can be a list or a comma-separated string.
+- If `file_search_path` is omitted, DuckDB uses its default file search behavior.
 
 ## dbt on Databricks (`dbt`, preferred)
 
@@ -179,6 +203,30 @@ BigQuery runtime options:
   - `warehouse.credentials_json`, or
   - Application Default Credentials (for example `GOOGLE_APPLICATION_CREDENTIALS`).
 
+## dbt on DuckDB (`dbt`)
+
+This connector shape compiles a dbt project, resolves a model's compiled SQL,
+then executes it on DuckDB.
+
+```yaml
+data_source:
+  type: "dbt"
+  name: "dbt_model_duckdb"
+  model_alias: "monthly_revenue_by_region"
+  dbt:
+    package_url: "https://$GIT_TOKEN@github.com/org/analytics-dbt.git"
+    project_dir: "/tmp/dbt_project_workspace"
+    branch: "main"
+    target: "prod"
+  warehouse:
+    type: "duckdb"
+    database: "/tmp/warehouse.duckdb" # required for dbt+duckdb
+    read_only: true # optional; defaults to true
+    file_search_path: # optional
+      - "/tmp/dbt_project_workspace"
+      - "/tmp/data"
+```
+
 ## Legacy dbt on Databricks (`databricks_dbt`)
 
 This legacy shape is still fully supported for backward compatibility.
@@ -216,7 +264,7 @@ Cache/compile tuning env vars:
 ## Recommended Workflow
 
 1. Start with local `csv`/`json` while designing charts and replacements.
-2. Move to `databricks` once schema and logic are stable.
+2. Move to `duckdb` or `databricks` once schema and logic are stable.
 3. Move to `dbt` when business logic should live in dbt models (`databricks_dbt` remains supported as legacy syntax).
 4. Run `slideflow validate` before `slideflow build` in CI/CD.
 
