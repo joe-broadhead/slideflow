@@ -7,11 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-02-26
+
 ### Added
 
 - Additive composable DBT connector config (`type: dbt`) with nested `dbt` + `warehouse` blocks.
 - Warehouse execution abstraction for DBT-compiled SQL and pluggable warehouse backends.
 - BigQuery SQL executor support for composable DBT sources (`warehouse.type: bigquery`).
+- DuckDB connector support and DBT DuckDB warehouse routing (`warehouse.type: duckdb`).
 - Deterministic DBT manifest model resolution index with explicit disambiguation selectors:
   - `model_unique_id`
   - `model_package_name`
@@ -19,6 +22,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Bounded data-source cache controls via `SLIDEFLOW_DATA_CACHE_MAX_ENTRIES`.
 - Dedicated DBT migration guide with side-by-side legacy/composable examples and explicit selector disambiguation guidance.
 - NumPy/Pandas ABI compatibility checker script (`scripts/ci/check_numpy_binary_compatibility.py`) enforced in CI/release workflows.
+- Actionlint CI validation for GitHub workflow syntax/runtime safety checks.
 
 ### Changed
 
@@ -35,10 +39,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Safer first-line error extraction across CLI/connector paths to avoid empty-message indexing failures.
+- Safer CLI command option defaults for both CLI and programmatic invocation paths.
 - DBT manifest lookup now fails deterministically on alias collisions with actionable selector guidance.
 - DBT/data cache behavior hardened for concurrent builds to reduce duplicate compile/fetch work.
 - Registry module loading is now thread-safe during concurrent builds, preventing transient import-state collisions when multiple workers resolve registries at once.
 - Reusable workflow configuration now avoids invalid `secrets` expression usage in step-level conditions, preventing workflow-file validation failures on push events.
+- Reusable workflow trigger/input parsing validation hardened for safer dispatch and caller compatibility.
 
 ## [0.0.5] - 2026-02-21
 
