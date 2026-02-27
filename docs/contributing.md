@@ -46,6 +46,15 @@ python -m mkdocs build --strict
 3. Keep compatibility for existing users unless a breaking change is explicitly planned.
 4. Update `CHANGELOG.md` for user-visible changes.
 
+## Dependency constraints policy
+
+- Keep runtime dependency constraints bounded (`min` + `max major/minor`) in
+  `pyproject.toml`.
+- Keep dbt adapter compatibility aligned with the supported `dbt-core` train.
+- Add explicit minimum versions for security-sensitive packages when needed.
+- When changing constraints, run `python -m pip check` and the relevant test
+  suites before opening a PR.
+
 ## Additional references
 
 - Root contributing guide: [`CONTRIBUTING.md`](https://github.com/joe-broadhead/slideflow/blob/master/CONTRIBUTING.md)

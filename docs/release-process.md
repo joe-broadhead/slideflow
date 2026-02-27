@@ -66,9 +66,15 @@ python -m pip install -e ".[docs]"
 mkdocs build --strict
 ```
 
-4. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
-5. Create release branch `release/vX.Y.Z`.
-6. Push and monitor `CI`, `Docs`, and `Release` workflows.
+4. Verify dependency constraints are still within policy:
+
+- runtime dependencies have explicit upper bounds
+- dbt adapters remain compatible with the supported `dbt-core` range
+- security-sensitive dependency minimums are preserved
+
+5. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
+6. Create release branch `release/vX.Y.Z`.
+7. Push and monitor `CI`, `Docs`, and `Release` workflows.
 
 ## PyPI trusted publishing setup
 
