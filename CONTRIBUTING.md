@@ -26,7 +26,7 @@ python -m pytest -q
 Docs validation:
 
 ```bash
-uv sync --extra docs --locked
+uv sync --extra docs --extra dev --extra ai --locked
 uv run mkdocs build --strict
 ```
 
