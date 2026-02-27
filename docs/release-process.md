@@ -8,7 +8,7 @@ Release branches must follow:
 
 Example:
 
-- `release/v0.0.5`
+- `release/vX.Y.Z`
 
 ## Automated release flow
 
@@ -55,6 +55,7 @@ PyPI package identity:
 3. Ensure docs build cleanly:
 
 ```bash
+uv sync --extra docs --extra dev --extra ai --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check
@@ -63,8 +64,7 @@ python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 pytest -q
-python -m pip install -e ".[docs]"
-mkdocs build --strict
+uv run mkdocs build --strict
 ```
 
 4. Verify dependency constraints are still within policy:

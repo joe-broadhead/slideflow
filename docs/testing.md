@@ -34,8 +34,10 @@
 ## Local commands
 
 ```bash
+uv sync --extra dev --extra ai --locked
 source .venv/bin/activate
-python -m pip check
+uv lock --check
+uv pip check
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
@@ -85,7 +87,7 @@ that mode so you can validate the slides visually.
 ## CI quality gates
 
 - CI enforces version consistency checks.
-- CI enforces dependency consistency via `pip check`.
+- CI enforces dependency consistency via `uv lock --check` and `uv pip check`.
 - CI enforces coverage floor (`--cov-fail-under=80`) on unit tests (`not integration and not e2e`).
 - CI runs dedicated integration and e2e marker suites in separate steps.
 - Distribution artifacts are built for every CI run.
