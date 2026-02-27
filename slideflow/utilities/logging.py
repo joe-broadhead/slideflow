@@ -443,4 +443,6 @@ def log_api_operation(
     logger.log(level, " ".join(message_parts))
 
 
-setup_logging()
+# Logging is intentionally not configured at import time.
+# CLI entrypoints (and embedding applications) should call setup_logging()
+# explicitly to control levels/format/handlers.

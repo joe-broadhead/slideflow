@@ -1,9 +1,11 @@
+import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
 import slideflow.cli.main as cli_main_module
 import slideflow.cli.theme as theme_module
 import slideflow.cli.utils as cli_utils_module
+import slideflow.utilities.logging as logging_module
 
 
 def _sample_presentation_config():
@@ -76,22 +78,54 @@ def test_theme_validation_error_verbose_includes_full_message(monkeypatch):
 
 
 def test_cli_utils_helpers_emit_summary_and_error(monkeypatch):
-    calls = []
+    header_calls = []
+    summary_calls = []
+    error_calls = []
+
     monkeypatch.setattr(
-        cli_utils_module.console, "print", lambda *a, **k: calls.append((a, k))
+        cli_utils_module.theme,
+        "print_validation_header",
+        lambda config_file: header_calls.append(config_file),
+    )
+    monkeypatch.setattr(
+        cli_utils_module.theme,
+        "print_config_summary",
+        lambda config: summary_calls.append(config),
+    )
+    monkeypatch.setattr(
+        cli_utils_module.theme,
+        "print_error",
+        lambda error_msg, verbose=False, error_code=None: error_calls.append(
+            (error_msg, verbose, error_code)
+        ),
     )
 
+    config = _sample_presentation_config()
     cli_utils_module.print_validation_header(Path("config.yml"))
-    cli_utils_module.print_config_summary(_sample_presentation_config())
+    cli_utils_module.print_config_summary(config)
     cli_utils_module.handle_validation_error(RuntimeError("simple error"))
     cli_utils_module.handle_validation_error(RuntimeError("line1\nline2"), verbose=True)
 
-    rendered = [str(args[0]) for args, _ in calls if args]
-    assert calls
-    assert any("Summary" in entry for entry in rendered)
-    assert any("Presentation: Demo Deck" in entry for entry in rendered)
-    assert any("simple error" in entry for entry in rendered)
-    assert any("line1\nline2" in entry for entry in rendered)
+    assert header_calls == ["config.yml"]
+    assert summary_calls == [config]
+    assert len(error_calls) == 2
+    assert str(error_calls[0][0]) == "simple error"
+    assert error_calls[0][1] is False
+    assert str(error_calls[1][0]) == "line1\nline2"
+    assert error_calls[1][1] is True
+
+
+def test_logging_module_import_does_not_auto_configure_basic_config(monkeypatch):
+    basic_config_calls = []
+    monkeypatch.setattr(
+        logging_module.logging,
+        "basicConfig",
+        lambda *args, **kwargs: basic_config_calls.append((args, kwargs)),
+    )
+
+    importlib.reload(logging_module)
+
+    assert basic_config_calls == []
 
 
 def test_main_sets_log_level_and_prints_banner_only_without_subcommand(monkeypatch):
