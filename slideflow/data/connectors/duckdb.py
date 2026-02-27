@@ -11,16 +11,8 @@ import pandas as pd
 from pydantic import ConfigDict, Field
 
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
+from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
-
-
-def _safe_error_message(error: Exception) -> str:
-    """Get a non-empty single-line error message."""
-    message = str(error).strip()
-    if not message:
-        return error.__class__.__name__
-    first_line, _sep, _rest = message.partition("\n")
-    return first_line.strip() or error.__class__.__name__
 
 
 def _normalize_file_search_path(
@@ -98,7 +90,7 @@ class DuckDBConnector(DataConnector):
                 raise DuckDBConnectorError(
                     "connection",
                     "Failed to initialize DuckDB connection "
-                    f"({_safe_error_message(error)})",
+                    f"({safe_error_line(error)})",
                 ) from error
         return self._connection
 
@@ -148,8 +140,7 @@ class DuckDBConnector(DataConnector):
         except Exception as error:
             raise DuckDBConnectorError(
                 "configuration",
-                "Failed to set DuckDB file_search_path "
-                f"({_safe_error_message(error)})",
+                "Failed to set DuckDB file_search_path " f"({safe_error_line(error)})",
             ) from error
         self._file_search_path_applied = True
 
@@ -165,7 +156,7 @@ class DuckDBConnector(DataConnector):
         except Exception as error:
             raise DuckDBConnectorError(
                 "query",
-                f"Failed to execute DuckDB query ({_safe_error_message(error)})",
+                f"Failed to execute DuckDB query ({safe_error_line(error)})",
             ) from error
 
 

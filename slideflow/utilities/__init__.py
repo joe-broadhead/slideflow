@@ -54,6 +54,7 @@ Performance Features:
 
 from slideflow.utilities.config import ConfigLoader
 from slideflow.utilities.data_transforms import apply_data_transforms
+from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import (
     APIError,
     APIRateLimitError,
@@ -78,6 +79,7 @@ from slideflow.utilities.logging import (
 __all__ = [
     "ConfigLoader",
     "apply_data_transforms",
+    "safe_error_line",
     "SlideFlowError",
     "ConfigurationError",
     "DataSourceError",

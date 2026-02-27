@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import pytest
 
+import slideflow.data.cache as data_cache_module
 import slideflow.utilities.rate_limiter as rate_limiter_module
 from slideflow.constants import Environment
 from slideflow.data.cache import DataSourceCache, get_data_cache
@@ -107,6 +108,30 @@ def test_data_source_cache_key_generation_distinguishes_tuple_from_list():
         vars={"dimensions": ["region", "segment"]},
     )
     assert key_with_tuple != key_with_list
+
+
+def test_data_source_cache_logs_model_dump_normalization_failures(monkeypatch):
+    cache = DataSourceCache()
+    debug_calls = []
+    monkeypatch.setattr(
+        data_cache_module.logger,
+        "debug",
+        lambda *args, **kwargs: debug_calls.append((args, kwargs)),
+    )
+
+    class BrokenDump:
+        def model_dump(self):
+            raise RuntimeError("boom")
+
+        def __repr__(self):
+            return "<BrokenDump>"
+
+    key = cache._generate_key("dbt", vars={"broken": BrokenDump()})
+
+    assert key
+    assert debug_calls
+    first_args = debug_calls[0][0]
+    assert "model_dump failed" in first_args[0]
 
 
 def test_data_source_cache_enforces_lru_entry_cap(monkeypatch):

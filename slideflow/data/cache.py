@@ -51,6 +51,10 @@ from typing import Any, Callable, Dict, Optional
 import pandas as pd
 
 from slideflow.constants import Defaults, Environment
+from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _resolve_data_cache_max_entries() -> int:
@@ -194,8 +198,13 @@ class DataSourceCache:
         if hasattr(value, "model_dump") and callable(value.model_dump):
             try:
                 return DataSourceCache._normalize_for_key(value.model_dump())
-            except Exception:
-                pass
+            except Exception as error:
+                logger.debug(
+                    "Data cache key normalization: model_dump failed (%s); "
+                    "falling back to repr().",
+                    safe_error_line(error),
+                    exc_info=True,
+                )
 
         return repr(value)
 
