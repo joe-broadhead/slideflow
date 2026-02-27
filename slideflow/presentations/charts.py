@@ -68,7 +68,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from slideflow.builtins.template_engine import get_template_engine
-from slideflow.constants import FileExtensions, GoogleSlides
+from slideflow.constants import FileExtensions, GoogleSlides, Timing
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 from slideflow.presentations.positioning import safe_eval_expression
 from slideflow.presentations.providers.google_slides import _get_rate_limiter
@@ -139,7 +139,12 @@ def _plotly_to_image(
 
         # Reuse a single sync server per process to avoid repeatedly spawning
         # browser processes for each chart export.
-        kaleido.start_sync_server(n=1, timeout=90, headless=True, silence_warnings=True)
+        kaleido.start_sync_server(
+            n=1,
+            timeout=Timing.CHART_EXPORT_KALEIDO_START_TIMEOUT_S,
+            headless=True,
+            silence_warnings=True,
+        )
 
         # Force headless browser execution so local desktop runs avoid visible windows
         # and orchestrated runs remain deterministic.
@@ -160,12 +165,13 @@ def _plotly_to_image(
 def _execute_with_retry(func, *args, **kwargs):
     """
     Executes a function with a retry mechanism.
-    It will first try to generate a graph and wait 30 seconds.
-    If the process does not answer it will restart it with a 60 seconds timeout,
-    then 90 seconds. If it doesn't work at the end it will raise ChartGenerationError.
+
+    The timeout sequence is configured via ``Timing.CHART_EXPORT_RETRY_TIMEOUTS_S``.
+    If execution times out, the chart export worker is reset before retrying.
+    If all retries are exhausted, raises ChartGenerationError.
     """
     execution_id = uuid.uuid4().hex[:8]
-    timeouts = [30, 60, 90]
+    timeouts = Timing.CHART_EXPORT_RETRY_TIMEOUTS_S
     for i, timeout in enumerate(timeouts):
         executor = _get_chart_export_executor()
         try:

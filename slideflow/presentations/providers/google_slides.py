@@ -77,7 +77,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from pydantic import Field
 
-from slideflow.constants import Environment, GoogleSlides
+from slideflow.constants import Environment, GoogleSlides, Timing
 from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
@@ -718,7 +718,8 @@ class GoogleSlidesProvider(PresentationProvider):
                 )
             )
 
-            time.sleep(2)
+            if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
+                time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
 
             public_url = f"https://drive.google.com/uc?id={file_id}"
             duration = time.time() - start_time

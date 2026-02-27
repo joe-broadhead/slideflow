@@ -22,6 +22,7 @@ Key Constant Categories:
     - ErrorMessages: Standardized error message templates
     - Cache: Caching system configuration and operation types
     - Concurrency: Concurrent processing settings and limits
+    - Timing: Centralized retry/sleep/backoff defaults across workflows
     - Validation: Data validation thresholds and patterns
     - Environment: Environment variable names for external integrations
     - Status: Operation status indicators and state definitions
@@ -298,6 +299,33 @@ class Concurrency:
     DEFAULT_TIMEOUT_SECONDS = 30
     MAX_WORKERS_DEFAULT = 10
     THREAD_NAME_PREFIX = "slideflow-worker"
+
+
+class Timing:
+    """Timing and retry/backoff constants for runtime workflows.
+
+    These values centralize non-functional timing controls used in build,
+    chart export, and provider operations. Defaults preserve current behavior
+    while making tuning explicit and discoverable.
+    """
+
+    # Build command progress pacing and worker selection
+    BUILD_PROGRESS_DELAY_INITIAL_S = 0.5
+    BUILD_PROGRESS_DELAY_STEP_S = 0.3
+    BUILD_MAX_WORKERS_DEFAULT = 5
+
+    # Chart export process behavior
+    CHART_EXPORT_KALEIDO_START_TIMEOUT_S = 90
+    CHART_EXPORT_RETRY_TIMEOUTS_S = (30, 60, 90)
+
+    # Presentation chart and replacement pacing
+    PRESENTATION_CHART_MAX_RETRIES = 3
+    PRESENTATION_CHART_RETRY_DELAY_S = 3.0
+    PRESENTATION_CHART_RETRY_BACKOFF_MULTIPLIER = 1.0
+    PRESENTATION_TABLE_REPLACEMENT_DELAY_S = 1.0
+
+    # Google Drive permission propagation wait after upload
+    GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S = 2.0
 
 
 class Validation:

@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 import slideflow.presentations.charts as charts_module
-from slideflow.constants import GoogleSlides
+from slideflow.constants import GoogleSlides, Timing
 from slideflow.utilities.exceptions import ChartGenerationError
 
 
@@ -140,6 +140,47 @@ def test_execute_with_retry_raises_after_all_timeouts(monkeypatch):
     assert reset_calls == [True, True, True]
 
 
+def test_execute_with_retry_uses_configured_timeout_sequence(monkeypatch):
+    class _FutureTimeout:
+        def __init__(self) -> None:
+            self.timeouts: List[int] = []
+
+        def result(self, timeout: int) -> bytes:
+            self.timeouts.append(timeout)
+            raise TimeoutError()
+
+    class _Executor:
+        def __init__(self, future: _FutureTimeout) -> None:
+            self.future = future
+
+        def submit(self, func, *args, **kwargs):
+            return self.future
+
+    future = _FutureTimeout()
+    executor = _Executor(future)
+    reset_calls: List[bool] = []
+
+    monkeypatch.setattr(
+        charts_module,
+        "_get_chart_export_executor",
+        lambda: executor,
+    )
+    monkeypatch.setattr(
+        charts_module, "_reset_chart_export_executor", lambda: reset_calls.append(True)
+    )
+    monkeypatch.setattr(
+        charts_module.Timing,
+        "CHART_EXPORT_RETRY_TIMEOUTS_S",
+        (1, 2, 3),
+    )
+
+    with pytest.raises(ChartGenerationError, match="failed after all retries"):
+        charts_module._execute_with_retry(lambda: b"unused")
+
+    assert future.timeouts == [1, 2, 3]
+    assert reset_calls == [True, True, True]
+
+
 def test_plotly_to_image_without_scale_omits_scale_option(monkeypatch):
     calls: Dict[str, Any] = {}
 
@@ -164,6 +205,9 @@ def test_plotly_to_image_without_scale_omits_scale_option(monkeypatch):
 
     assert rendered == b"ok"
     assert calls["opts"] == {"format": "png", "width": 200, "height": 100}
+    assert (
+        calls["server_kwargs"]["timeout"] == Timing.CHART_EXPORT_KALEIDO_START_TIMEOUT_S
+    )
 
 
 def test_base_chart_validation_fetch_transform_and_upload(monkeypatch):
