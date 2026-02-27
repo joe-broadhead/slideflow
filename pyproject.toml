@@ -83,7 +83,7 @@ check_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --strict-markers"
 testpaths = ["tests"]
 markers = [
     "integration: integration tests that may hit external systems",
