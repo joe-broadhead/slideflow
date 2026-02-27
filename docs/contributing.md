@@ -21,6 +21,8 @@ python -m mypy slideflow
 python -m pytest -q
 ```
 
+CI runs this baseline across Python 3.12 and 3.13.
+
 Optional marker suites:
 
 ```bash

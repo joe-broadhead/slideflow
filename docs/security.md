@@ -55,6 +55,20 @@ The repository includes a dedicated `Audit` workflow that runs:
 
 Both reports are uploaded as artifacts for triage.
 
+Audit enforcement policy:
+
+- Audit findings are advisory for all events (pull requests, pushes, schedules).
+- Findings are surfaced as warnings and uploaded artifacts for triage follow-up.
+- Audit workflow is intentionally non-blocking until baseline findings are
+  reduced and a blocking threshold policy is adopted.
+
+Action pinning policy:
+
+- GitHub-maintained actions are version-pinned by major (`@vN`) and updated
+  intentionally.
+- Third-party actions follow the same major-version pinning policy with periodic
+  review during release prep.
+
 ## PyPI trusted publishing (recommended)
 
 Use OIDC trusted publishing instead of API tokens.

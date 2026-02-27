@@ -9,6 +9,9 @@ on:
       - "release/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -78,7 +81,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-xml
+          name: coverage-xml-${{ matrix.python-version }}
           path: coverage.xml
           if-no-files-found: ignore
 
