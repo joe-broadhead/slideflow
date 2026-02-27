@@ -19,15 +19,12 @@ Example:
     >>> replacements = dataframe_to_replacement_object(df, 'PRODUCTS_')
     >>> # Returns:
     >>> # {
-    >>> #     '{{PRODUCTS_1,1}}': 'Product',
-    >>> #     '{{PRODUCTS_1,2}}': 'Sales',
-    >>> #     '{{PRODUCTS_1,3}}': 'Growth',
-    >>> #     '{{PRODUCTS_2,1}}': 'Widget',
-    >>> #     '{{PRODUCTS_2,2}}': 125.5,
-    >>> #     '{{PRODUCTS_2,3}}': 15.3,
-    >>> #     '{{PRODUCTS_3,1}}': 'Gadget',
-    >>> #     '{{PRODUCTS_3,2}}': 89.2,
-    >>> #     '{{PRODUCTS_3,3}}': -5.1
+    >>> #     '{{PRODUCTS_1,1}}': 'Widget',
+    >>> #     '{{PRODUCTS_1,2}}': 125.5,
+    >>> #     '{{PRODUCTS_1,3}}': 15.3,
+    >>> #     '{{PRODUCTS_2,1}}': 'Gadget',
+    >>> #     '{{PRODUCTS_2,2}}': 89.2,
+    >>> #     '{{PRODUCTS_2,3}}': -5.1
     >>> # }
 """
 
@@ -43,7 +40,7 @@ def dataframe_to_replacement_object(df: pd.DataFrame, prefix: str = "") -> dict:
 
     The placeholder format follows the pattern {{prefix[row],[col]}} where:
     - prefix: Optional namespace string to group related replacements
-    - row: 1-based row index (includes column headers as row 1)
+    - row: 1-based row index for DataFrame values
     - col: 1-based column index
 
     This coordinate system allows templates to reference specific table
@@ -51,7 +48,6 @@ def dataframe_to_replacement_object(df: pd.DataFrame, prefix: str = "") -> dict:
 
     Args:
         df: Input DataFrame containing the tabular data to convert.
-            Column names become the first row of replacements.
         prefix: Optional string prefix for placeholder keys. Useful for
             namespacing when multiple tables are used in the same template.
             Should typically end with an underscore for readability.
@@ -73,12 +69,12 @@ def dataframe_to_replacement_object(df: pd.DataFrame, prefix: str = "") -> dict:
         >>> result = dataframe_to_replacement_object(df, 'SALES_')
         >>>
         >>> # Generated placeholders:
-        >>> # {{SALES_1,1}} = 'Quarter'  (column header)
-        >>> # {{SALES_1,2}} = 'Revenue'  (column header)
-        >>> # {{SALES_1,3}} = 'Growth'   (column header)
-        >>> # {{SALES_2,1}} = 'Q1'       (first data row)
-        >>> # {{SALES_2,2}} = 100        (first data row)
-        >>> # {{SALES_2,3}} = 5.2        (first data row)
+        >>> # {{SALES_1,1}} = 'Q1'       (first data row)
+        >>> # {{SALES_1,2}} = 100        (first data row)
+        >>> # {{SALES_1,3}} = 5.2        (first data row)
+        >>> # {{SALES_2,1}} = 'Q2'       (second data row)
+        >>> # {{SALES_2,2}} = 120        (second data row)
+        >>> # {{SALES_2,3}} = 8.1        (second data row)
         >>> # ... and so on
 
         Template usage:
@@ -91,7 +87,7 @@ def dataframe_to_replacement_object(df: pd.DataFrame, prefix: str = "") -> dict:
 
         >>> df = pd.DataFrame({'Name': ['Alice'], 'Age': [30]})
         >>> result = dataframe_to_replacement_object(df)
-        >>> # Returns: {'{{1,1}}': 'Name', '{{1,2}}': 'Age', '{{2,1}}': 'Alice', '{{2,2}}': 30}
+        >>> # Returns: {'{{1,1}}': 'Alice', '{{1,2}}': 30}
 
         Empty DataFrame handling:
 

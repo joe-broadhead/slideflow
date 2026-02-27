@@ -41,6 +41,7 @@ def test_theme_output_helpers_emit_expected_messages(monkeypatch):
 
     rendered = [str(args[0]) for args, _ in calls if args]
     assert any("Validation Complete" in entry for entry in rendered)
+    assert any("Validation Failed" in entry for entry in rendered)
     assert any("Build Complete" in entry for entry in rendered)
     assert any("line1" in entry for entry in rendered)
     assert all(

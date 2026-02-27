@@ -213,7 +213,7 @@ def print_config_summary(presentation_config: Any) -> None:
 def print_error(
     error_msg: Any, verbose: bool = False, error_code: Optional[str] = None
 ) -> None:
-    console.print("[bold red]❌ Validation Faliled[/bold red]")
+    console.print("[bold red]❌ Validation Failed[/bold red]")
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")
     console.print("[bold yellow]🚨 Error Detected:[/bold yellow]")
     if error_code:
