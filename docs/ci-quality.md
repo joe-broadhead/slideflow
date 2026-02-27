@@ -4,7 +4,7 @@
 
 - `CI` (`.github/workflows/ci.yml`)
   - enforces lock freshness with `uv lock --check`
-  - installs project + dev deps with locked resolution (`uv sync --locked`)
+  - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
   - runs `uv pip check`
   - runs NumPy/Pandas ABI compatibility check (`scripts/ci/check_numpy_binary_compatibility.py`)
   - runs `black --check`, `ruff check`, and `mypy`
