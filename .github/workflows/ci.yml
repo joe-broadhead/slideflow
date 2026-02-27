@@ -42,7 +42,7 @@ jobs:
 
       - name: Validate dependency resolution
         run: |
-          uv run python -m pip check
+          uv pip check
 
       - name: Check NumPy/Pandas binary compatibility
         run: |
