@@ -108,10 +108,8 @@ scratch so NumPy/Pandas are installed as a compatible pair:
 
 ```bash
 rm -rf .venv
-python -m venv .venv
+uv sync --extra docs --extra dev --extra ai --locked
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev,ai,docs]"
 python scripts/ci/check_numpy_binary_compatibility.py
 ```
 

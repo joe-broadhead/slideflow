@@ -5,16 +5,15 @@ SlideFlow expects contribution changes to be tested and documented in the same P
 ## Local setup
 
 ```bash
-python -m venv .venv
+uv sync --extra dev --extra ai --locked
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev,ai]"
 ```
 
 ## Required local gates
 
 ```bash
-python -m pip check
+uv lock --check
+uv pip check
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
@@ -33,12 +32,8 @@ python -m pytest -q -m e2e
 Docs validation:
 
 ```bash
-python -m pip install \
-  "mkdocs>=1.6" \
-  "mkdocs-material>=9.5" \
-  "mkdocs-minify-plugin>=0.8" \
-  "pymdown-extensions>=10.0"
-python -m mkdocs build --strict
+uv sync --extra docs --extra dev --extra ai --locked
+uv run mkdocs build --strict
 ```
 
 ## PR checklist
@@ -54,8 +49,9 @@ python -m mkdocs build --strict
   `pyproject.toml`.
 - Keep dbt adapter compatibility aligned with the supported `dbt-core` train.
 - Add explicit minimum versions for security-sensitive packages when needed.
-- When changing constraints, run `python -m pip check` and the relevant test
-  suites before opening a PR.
+- `uv.lock` is tracked and must stay current.
+- When changing constraints, run `uv lock` and commit updated `uv.lock` in the
+  same PR.
 
 ## Additional references
 

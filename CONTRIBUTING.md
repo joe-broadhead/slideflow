@@ -26,12 +26,8 @@ python -m pytest -q
 Docs validation:
 
 ```bash
-python -m pip install \
-  "mkdocs>=1.6" \
-  "mkdocs-material>=9.5" \
-  "mkdocs-minify-plugin>=0.8" \
-  "pymdown-extensions>=10.0"
-python -m mkdocs build --strict
+uv sync --extra docs --extra dev --extra ai --locked
+uv run mkdocs build --strict
 ```
 
 Optional marker suites:

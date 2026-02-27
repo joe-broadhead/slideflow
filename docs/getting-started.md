@@ -21,9 +21,8 @@ For editable local development:
 ```bash
 git clone https://github.com/joe-broadhead/slideflow.git
 cd slideflow
-python -m venv .venv
+uv sync --extra dev --extra ai --extra docs --locked
 source .venv/bin/activate
-pip install -e ".[dev,ai,docs]"
 ```
 
 ## Configure Google credentials

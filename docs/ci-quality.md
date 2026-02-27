@@ -3,8 +3,9 @@
 ## Workflows
 
 - `CI` (`.github/workflows/ci.yml`)
-  - installs project + dev deps
-  - runs `pip check`
+  - enforces lock freshness with `uv lock --check`
+  - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
+  - runs `uv pip check`
   - runs NumPy/Pandas ABI compatibility check (`scripts/ci/check_numpy_binary_compatibility.py`)
   - runs `black --check`, `ruff check`, and `mypy`
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
@@ -40,8 +41,10 @@
 ## Required local checks before PR
 
 ```bash
+uv sync --extra docs --extra dev --extra ai --locked
 source .venv/bin/activate
-python -m pip check
+uv lock --check
+uv pip check
 python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
@@ -50,7 +53,7 @@ pytest -q
 pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=80
 pytest -q -m integration
 pytest -q -m e2e
-mkdocs build --strict
+uv run mkdocs build --strict
 ```
 
 To run the same smoke validation CI uses:
