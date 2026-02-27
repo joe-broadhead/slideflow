@@ -37,12 +37,13 @@ jobs:
 
       - name: Run pip-audit
         id: pip_audit
-        continue-on-error: true
+        # Keep scheduled scans advisory, but block PR/push on audit failures.
+        continue-on-error: ${{ github.event_name == 'schedule' }}
         run: |
           pip-audit --format=json --output pip-audit.json
 
       - name: Warn on vulnerabilities
-        if: steps.pip_audit.outcome == 'failure'
+        if: always() && steps.pip_audit.outcome == 'failure'
         run: |
           echo "::warning::pip-audit detected vulnerable dependencies. See artifact pip-audit-report."
 
@@ -74,12 +75,13 @@ jobs:
 
       - name: Run Bandit
         id: bandit
-        continue-on-error: true
+        # Keep scheduled scans advisory, but block PR/push on audit failures.
+        continue-on-error: ${{ github.event_name == 'schedule' }}
         run: |
           bandit -r slideflow -f json -o bandit-report.json -ll
 
       - name: Warn on Bandit findings
-        if: steps.bandit.outcome == 'failure'
+        if: always() && steps.bandit.outcome == 'failure'
         run: |
           echo "::warning::Bandit found medium/high severity issues. See artifact bandit-report."
 
