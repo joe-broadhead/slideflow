@@ -21,6 +21,7 @@ from google.auth.exceptions import DefaultCredentialsError
 
 from slideflow.constants import Environment
 from slideflow.data.connectors.base import DataConnector, SQLExecutor
+from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import (
     get_logger,
@@ -29,15 +30,6 @@ from slideflow.utilities.logging import (
 )
 
 logger = get_logger(__name__)
-
-
-def _safe_error_message(error: Exception) -> str:
-    """Get a non-empty single-line error message."""
-    message = str(error).strip()
-    if not message:
-        return error.__class__.__name__
-    first_line, _sep, _rest = message.partition("\n")
-    return first_line.strip() or error.__class__.__name__
 
 
 class BigQueryConnectorError(DataSourceError):
@@ -113,7 +105,7 @@ class BigQueryConnector(DataConnector):
         if isinstance(error, DefaultCredentialsError):
             return "authentication"
 
-        message = _safe_error_message(error).lower()
+        message = safe_error_line(error).lower()
         if any(
             token in message
             for token in (
@@ -165,7 +157,7 @@ class BigQueryConnector(DataConnector):
                 raise BigQueryConnectorError(
                     "configuration",
                     "Failed to load BigQuery credentials from credentials_json "
-                    f"({_safe_error_message(error)})",
+                    f"({safe_error_line(error)})",
                 ) from error
 
             inferred_project = payload.get("project_id") or getattr(
@@ -183,7 +175,7 @@ class BigQueryConnector(DataConnector):
                 raise BigQueryConnectorError(
                     "configuration",
                     "Failed to load BigQuery credentials from credentials_path "
-                    f"({_safe_error_message(error)})",
+                    f"({safe_error_line(error)})",
                 ) from error
 
             inferred_project = getattr(credentials, "project_id", None)
@@ -224,7 +216,7 @@ class BigQueryConnector(DataConnector):
                 raise BigQueryConnectorError(
                     category,
                     "Failed to initialize BigQuery client "
-                    f"({_safe_error_message(error)})",
+                    f"({safe_error_line(error)})",
                 ) from error
         return self._client
 
@@ -274,7 +266,7 @@ class BigQueryConnector(DataConnector):
                 if isinstance(error, BigQueryConnectorError)
                 else BigQueryConnectorError(
                     self._categorize_error(error),
-                    f"BigQuery query failed ({_safe_error_message(error)})",
+                    f"BigQuery query failed ({safe_error_line(error)})",
                 )
             )
             log_api_operation(

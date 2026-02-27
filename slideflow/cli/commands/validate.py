@@ -52,6 +52,7 @@ from slideflow.cli.theme import (
 from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities import ConfigLoader
+from slideflow.utilities.error_messages import safe_error_line
 
 _GOOGLE_SLIDES_CONTRACT_FIELDS = (
     "slides(objectId,pageElements(shape(text(textElements(textRun(content))))))"
@@ -68,11 +69,7 @@ class ProviderContractValidationError(ValueError):
 
 def _first_error_line(error: Exception) -> str:
     """Return a safe single-line error description."""
-    lines = str(error).splitlines()
-    first_line = lines[0].strip() if lines else ""
-    if first_line:
-        return first_line
-    return type(error).__name__
+    return safe_error_line(error)
 
 
 def _collect_expected_contract(

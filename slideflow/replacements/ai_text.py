@@ -82,7 +82,11 @@ from slideflow.ai.providers import AIProvider
 from slideflow.ai.registry import get_provider_class
 from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.replacements.base import BaseReplacement
+from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import ReplacementError
+from slideflow.utilities.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AITextReplacement(BaseReplacement):
@@ -358,7 +362,14 @@ class AITextReplacement(BaseReplacement):
                 if df is not None:
                     try:
                         df = self.apply_data_transforms(df)
-                    except Exception:
+                    except Exception as error:
+                        logger.warning(
+                            "AI text replacement fallback: data transform failed for "
+                            "source '%s' (%s)",
+                            name,
+                            safe_error_line(error),
+                            exc_info=True,
+                        )
                         return f'Summary unable to be generated as data source "{name}" was not available'
                     data = df.to_dict(orient="records")
                     prompt += f"\n\nData from {name}:\n{data}"

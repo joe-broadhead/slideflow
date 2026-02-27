@@ -16,6 +16,7 @@ from slideflow.constants import Environment
 from slideflow.presentations.config import PresentationConfig
 from slideflow.presentations.providers.factory import ProviderFactory
 from slideflow.utilities import ConfigLoader
+from slideflow.utilities.error_messages import safe_error_line
 
 CheckSeverity = Literal["error", "warning", "info"]
 
@@ -28,11 +29,7 @@ def _check(
 
 def _first_error_line(error: Exception) -> str:
     """Return a safe single-line error description."""
-    first_line, _sep, _rest = str(error).partition("\n")
-    first_line = first_line.strip()
-    if first_line:
-        return first_line
-    return type(error).__name__
+    return safe_error_line(error)
 
 
 def _resolve_binary_candidate(candidate: Optional[str]) -> Optional[str]:

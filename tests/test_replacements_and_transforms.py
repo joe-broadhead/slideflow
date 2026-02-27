@@ -228,6 +228,13 @@ def test_ai_text_replacement_data_context_and_transform_failure_fallback(monkeyp
     def fail_transform(_frame):
         raise RuntimeError("boom")
 
+    warning_calls = []
+    monkeypatch.setattr(
+        ai_text_module.logger,
+        "warning",
+        lambda *args, **kwargs: warning_calls.append((args, kwargs)),
+    )
+
     failing = AITextReplacement.model_construct(
         type="ai_text",
         placeholder="{{AI_FAIL}}",
@@ -241,3 +248,4 @@ def test_ai_text_replacement_data_context_and_transform_failure_fallback(monkeyp
         failing.get_replacement()
         == 'Summary unable to be generated as data source "sales" was not available'
     )
+    assert warning_calls

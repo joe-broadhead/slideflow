@@ -49,6 +49,7 @@ from pydantic import ConfigDict, Field
 
 from slideflow.constants import Defaults, Environment
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
+from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import (
     get_logger,
@@ -81,15 +82,6 @@ def _resolve_positive_int_from_env(env_var: str, default: int) -> int:
     except ValueError:
         return default
     return parsed if parsed > 0 else default
-
-
-def _safe_error_message(error: Exception) -> str:
-    """Get a non-empty single-line error message."""
-    message = str(error).strip()
-    if not message:
-        return error.__class__.__name__
-    first_line, _sep, _rest = message.partition("\n")
-    return first_line.strip() or error.__class__.__name__
 
 
 class DatabricksConnectorError(DataSourceError):
@@ -185,7 +177,7 @@ class DatabricksConnector(DataConnector):
     @staticmethod
     def _categorize_error(error: Exception) -> str:
         """Classify Databricks execution failures into stable categories."""
-        message = _safe_error_message(error).lower()
+        message = safe_error_line(error).lower()
         if any(
             token in message
             for token in (
@@ -284,7 +276,7 @@ class DatabricksConnector(DataConnector):
                 category = self._categorize_connect_error(error)
                 raise DatabricksConnectorError(
                     category,
-                    f"Failed to connect to Databricks ({_safe_error_message(error)})",
+                    f"Failed to connect to Databricks ({safe_error_line(error)})",
                 ) from error
         return self._connection
 
@@ -362,7 +354,7 @@ class DatabricksConnector(DataConnector):
                 if isinstance(e, DatabricksConnectorError)
                 else DatabricksConnectorError(
                     self._categorize_error(e),
-                    f"Databricks query failed ({_safe_error_message(e)})",
+                    f"Databricks query failed ({safe_error_line(e)})",
                 )
             )
             log_api_operation(
