@@ -56,6 +56,17 @@ python -m pytest -q tests/live_tests -m live_google
 - Preserve backward compatibility unless a breaking change is explicitly planned.
 - Keep legacy `databricks_dbt` behavior compatible while extending composable `dbt`.
 
+## Dependency policy
+
+- Runtime dependencies in `pyproject.toml` (`[project.dependencies]`) must have
+  an explicit upper bound.
+- dbt adapter ranges must stay compatible with `dbt-core` (same supported minor
+  train).
+- Security-sensitive dependencies must include explicit minimum versions when
+  relevant (for example, `gitpython>=3.1.41`).
+- If you change constraints, run `python -m pip check` and relevant tests before
+  opening a PR.
+
 ## Pull request checklist
 
 1. Keep changes scoped to one concern.
