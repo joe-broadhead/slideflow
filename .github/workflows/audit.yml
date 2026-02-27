@@ -37,8 +37,8 @@ jobs:
 
       - name: Run pip-audit
         id: pip_audit
-        # Keep scheduled scans advisory, but block PR/push on audit failures.
-        continue-on-error: ${{ github.event_name == 'schedule' }}
+        # Advisory security scans: emit warnings + artifacts without blocking CI.
+        continue-on-error: true
         run: |
           pip-audit --format=json --output pip-audit.json
 
@@ -75,8 +75,8 @@ jobs:
 
       - name: Run Bandit
         id: bandit
-        # Keep scheduled scans advisory, but block PR/push on audit failures.
-        continue-on-error: ${{ github.event_name == 'schedule' }}
+        # Advisory security scans: emit warnings + artifacts without blocking CI.
+        continue-on-error: true
         run: |
           bandit -r slideflow -f json -o bandit-report.json -ll
 

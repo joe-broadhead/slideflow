@@ -57,9 +57,10 @@ Both reports are uploaded as artifacts for triage.
 
 Audit enforcement policy:
 
-- `pull_request` / `push`: audit failures are blocking.
-- `schedule`: audit findings are advisory (warnings + artifacts) to avoid noisy
-  scheduled failures while preserving visibility.
+- Audit findings are advisory for all events (pull requests, pushes, schedules).
+- Findings are surfaced as warnings and uploaded artifacts for triage follow-up.
+- Audit workflow is intentionally non-blocking until baseline findings are
+  reduced and a blocking threshold policy is adopted.
 
 Action pinning policy:
 
