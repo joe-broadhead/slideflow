@@ -435,7 +435,6 @@ class TableReplacement(BaseReplacement):
             raise ValueError(
                 "Table replacement has no data to process. Provide `replacements` or `data_source`."
             )
-        assert df is not None
 
         df = self.apply_data_transforms(df)
 
