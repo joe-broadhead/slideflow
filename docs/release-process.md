@@ -57,7 +57,7 @@ PyPI package identity:
 ```bash
 source .venv/bin/activate
 uv lock --check
-python -m pip check
+uv pip check
 python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts

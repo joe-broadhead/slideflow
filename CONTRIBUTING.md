@@ -16,7 +16,7 @@ source .venv/bin/activate
 ## Local quality gates (run before opening a PR)
 
 ```bash
-python -m pip check
+uv pip check
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
