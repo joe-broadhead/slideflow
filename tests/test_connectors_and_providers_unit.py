@@ -534,6 +534,55 @@ def test_google_provider_execute_request_and_batch_update(monkeypatch):
     assert logs and logs[-1][0][2] is True
 
 
+def test_google_provider_upload_image_uses_configured_propagation_delay(monkeypatch):
+    provider = object.__new__(google_provider_module.GoogleSlidesProvider)
+    provider.config = SimpleNamespace(drive_folder_id="folder-1")
+
+    class _Files:
+        def create(self, **kwargs):
+            return ("file-create", kwargs)
+
+    class _Permissions:
+        def create(self, **kwargs):
+            return ("permission-create", kwargs)
+
+    provider.drive_service = SimpleNamespace(
+        files=lambda: _Files(),
+        permissions=lambda: _Permissions(),
+    )
+
+    executed = []
+
+    def _execute(request):
+        executed.append(request)
+        if len(executed) == 1:
+            return {"id": "file-1"}
+        return {}
+
+    monkeypatch.setattr(provider, "_execute_request", _execute)
+    monkeypatch.setattr(
+        google_provider_module,
+        "log_api_operation",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        google_provider_module.Timing,
+        "GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S",
+        0.25,
+    )
+    sleep_calls = []
+    monkeypatch.setattr(
+        google_provider_module.time, "sleep", lambda delay: sleep_calls.append(delay)
+    )
+
+    public_url, file_id = provider._upload_image_to_drive(b"image-bytes", "chart.png")
+
+    assert file_id == "file-1"
+    assert public_url == "https://drive.google.com/uc?id=file-1"
+    assert sleep_calls == [0.25]
+    assert len(executed) == 2
+
+
 def test_google_rate_limiter_singleton_update(monkeypatch):
     monkeypatch.setattr(google_provider_module, "_api_rate_limiter", None)
     rl1 = google_provider_module._get_rate_limiter(1.0)

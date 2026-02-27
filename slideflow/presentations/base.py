@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from slideflow.constants import GoogleSlides
+from slideflow.constants import GoogleSlides, Timing
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
@@ -549,8 +549,11 @@ class Presentation(BaseModel):
             for slide in self.slides:
                 # Generate charts for this slide
                 for chart in slide.charts:
-                    max_retries = 3
-                    delay_seconds = 3
+                    max_retries = Timing.PRESENTATION_CHART_MAX_RETRIES
+                    base_retry_delay_s = Timing.PRESENTATION_CHART_RETRY_DELAY_S
+                    backoff_multiplier = (
+                        Timing.PRESENTATION_CHART_RETRY_BACKOFF_MULTIPLIER
+                    )
                     for attempt in range(max_retries):
                         try:
                             df = (
@@ -594,10 +597,14 @@ class Presentation(BaseModel):
                             break  # Break out of retry loop on success
                         except Exception as e:
                             if attempt < max_retries - 1:
+                                delay_seconds = base_retry_delay_s * (
+                                    backoff_multiplier**attempt
+                                )
                                 logger.warning(
                                     f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' (attempt {attempt + 1}/{max_retries}). Retrying in {delay_seconds} seconds. Error: {e}"
                                 )
-                                time.sleep(delay_seconds)
+                                if delay_seconds > 0:
+                                    time.sleep(delay_seconds)
                             else:
                                 logger.error(
                                     f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' after {max_retries} attempts. Inserting error placeholder. Error: {e}"
@@ -659,7 +666,13 @@ class Presentation(BaseModel):
                             # Table replacements return a dictionary of placeholder->value
                             if isinstance(replacement_result, dict):
                                 for placeholder, value in replacement_result.items():
-                                    time.sleep(1)
+                                    if (
+                                        Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S
+                                        > 0
+                                    ):
+                                        time.sleep(
+                                            Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S
+                                        )
                                     replacements_made = (
                                         self.provider.replace_text_in_slide(
                                             presentation_id,

@@ -29,6 +29,7 @@ Example:
         slideflow build config.yaml --dry-run
 """
 
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,10 +49,20 @@ from slideflow.cli.theme import (
     print_build_progress,
     print_build_success,
 )
+from slideflow.constants import Timing
 from slideflow.presentations import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.presentations.providers.factory import ProviderFactory
 from slideflow.utilities import ConfigLoader
+
+
+def _sleep_for_progress(seconds: float) -> None:
+    """Pace interactive progress output without slowing non-interactive runs."""
+    if seconds <= 0:
+        return
+    if not sys.stdout.isatty():
+        return
+    time.sleep(seconds)
 
 
 def build_single_presentation(
@@ -266,7 +277,7 @@ def build_command(
 
     try:
         print_build_progress(1, 6, "Loading configuration...")
-        time.sleep(0.5)
+        _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_INITIAL_S)
 
         raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
         config_registry = raw_config.get("registry")
@@ -322,15 +333,15 @@ def build_command(
             return []
 
         print_build_progress(2, 6, "Initializing presentation builder...")
-        time.sleep(0.3)
+        _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_STEP_S)
 
         print_build_progress(
             3, 6, f"Processing {total_presentations} presentation(s) concurrently..."
         )
-        time.sleep(0.5)
+        _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_INITIAL_S)
 
         print_build_progress(4, 6, "Starting concurrent generation...")
-        time.sleep(0.3)
+        _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_STEP_S)
 
         # Create thread lock for safe printing
         print_lock = threading.Lock()
@@ -339,7 +350,9 @@ def build_command(
         if threads:
             max_workers = threads
         else:
-            max_workers = min(total_presentations, 5)  # Max 5 concurrent presentations
+            max_workers = min(
+                total_presentations, Timing.BUILD_MAX_WORKERS_DEFAULT
+            )  # Max concurrent presentations by default
 
         results = []
         completed_count = 0
@@ -390,7 +403,7 @@ def build_command(
                     raise
 
         print_build_progress(6, 6, "All presentations deployed!")
-        time.sleep(0.3)
+        _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_STEP_S)
 
         # Sort results by original order and print summary
         results.sort(

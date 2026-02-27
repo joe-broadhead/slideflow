@@ -219,6 +219,83 @@ def test_build_command_non_dry_run_worker_failure_exits(tmp_path, monkeypatch):
     assert exc_info.value.code == 1
 
 
+def test_build_command_uses_configured_default_worker_cap(tmp_path, monkeypatch):
+    _stub_build_cli_output(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n",
+        encoding="utf-8",
+    )
+    params_path = tmp_path / "params.csv"
+    params_path.write_text("region\nus\neu\napac\n", encoding="utf-8")
+
+    class _Future:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def result(self):
+            return self._payload
+
+    captured = {}
+
+    class _Executor:
+        def __init__(self, max_workers):
+            captured["max_workers"] = max_workers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, func, *args, **kwargs):
+            return _Future(func(*args, **kwargs))
+
+    monkeypatch.setattr(build_command_module, "ThreadPoolExecutor", _Executor)
+    monkeypatch.setattr(
+        build_command_module, "as_completed", lambda futures: list(futures)
+    )
+    monkeypatch.setattr(build_command_module.Timing, "BUILD_MAX_WORKERS_DEFAULT", 2)
+
+    def _fake_build_single(
+        config_file,
+        registry_files,
+        params,
+        index,
+        total,
+        print_lock,
+        requests_per_second=None,
+    ):
+        return (
+            f"{params['region']} Deck",
+            SimpleNamespace(presentation_url=f"https://example.com/{params['region']}"),
+            index,
+            params,
+        )
+
+    monkeypatch.setattr(
+        build_command_module, "build_single_presentation", _fake_build_single
+    )
+
+    result = build_command_module.build_command(
+        config_file=config_file,
+        registry_files=None,
+        params_path=params_path,
+        dry_run=False,
+        threads=None,
+    )
+
+    assert captured["max_workers"] == 2
+    assert len(result) == 3
+
+
 def test_presentation_builder_from_yaml_uses_loader_and_delegates(
     monkeypatch, tmp_path
 ):
@@ -466,7 +543,15 @@ def test_render_shares_presentation_and_processes_table_replacements(monkeypatch
 
 
 def test_render_inserts_error_placeholder_after_chart_retries(monkeypatch):
-    monkeypatch.setattr(base_module.time, "sleep", lambda *_: None)
+    sleep_calls = []
+    monkeypatch.setattr(
+        base_module.time, "sleep", lambda delay: sleep_calls.append(delay)
+    )
+    monkeypatch.setattr(base_module.Timing, "PRESENTATION_CHART_MAX_RETRIES", 3)
+    monkeypatch.setattr(base_module.Timing, "PRESENTATION_CHART_RETRY_DELAY_S", 1.5)
+    monkeypatch.setattr(
+        base_module.Timing, "PRESENTATION_CHART_RETRY_BACKOFF_MULTIPLIER", 2.0
+    )
 
     class FailingChart:
         type = "plotly_go"
@@ -535,3 +620,4 @@ def test_render_inserts_error_placeholder_after_chart_retries(monkeypatch):
         provider.insert_calls[0][1]
         == "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
     )
+    assert sleep_calls == [1.5, 3.0]
