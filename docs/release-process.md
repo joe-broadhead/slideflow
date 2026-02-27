@@ -56,6 +56,7 @@ PyPI package identity:
 
 ```bash
 source .venv/bin/activate
+uv lock --check
 python -m pip check
 python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
@@ -71,6 +72,7 @@ mkdocs build --strict
 - runtime dependencies have explicit upper bounds
 - dbt adapters remain compatible with the supported `dbt-core` range
 - security-sensitive dependency minimums are preserved
+- `uv.lock` is current for the release branch
 
 5. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
 6. Create release branch `release/vX.Y.Z`.

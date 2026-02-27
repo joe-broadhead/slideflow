@@ -200,6 +200,20 @@ You can then reference `format_as_usd` in your YAML configuration.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, local quality gates,
 test expectations, and PR checklist.
 
+## 🔒 Dependency Reproducibility Policy
+
+SlideFlow tracks `uv.lock` in git as the canonical lockfile for development and CI.
+
+- CI validates lock freshness with `uv lock --check`.
+- Contributor environments should be synced from lock with:
+
+```bash
+uv sync --extra dev --extra ai --locked
+```
+
+When dependency constraints change in `pyproject.toml`, regenerate `uv.lock` in the
+same PR.
+
 ---
 
 ## 📜 License

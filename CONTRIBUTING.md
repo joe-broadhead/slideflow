@@ -6,13 +6,11 @@ Thanks for contributing to SlideFlow.
 
 1. Use Python 3.12+.
 2. Create and activate a virtual environment.
-3. Install project dependencies with dev extras.
+3. Install project dependencies from the tracked lockfile.
 
 ```bash
-python -m venv .venv
+uv sync --extra dev --extra ai --locked
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev,ai]"
 ```
 
 ## Local quality gates (run before opening a PR)
@@ -64,8 +62,14 @@ python -m pytest -q tests/live_tests -m live_google
   train).
 - Security-sensitive dependencies must include explicit minimum versions when
   relevant (for example, `gitpython>=3.1.41`).
-- If you change constraints, run `python -m pip check` and relevant tests before
-  opening a PR.
+- `uv.lock` is tracked in git and is required to be up to date.
+- If you change dependency constraints in `pyproject.toml`, run `uv lock` and
+  commit the resulting `uv.lock` update in the same PR.
+- Validate lock freshness before pushing:
+
+```bash
+uv lock --check
+```
 
 ## Pull request checklist
 
