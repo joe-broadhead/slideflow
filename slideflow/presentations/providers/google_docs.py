@@ -133,6 +133,7 @@ class GoogleDocsProvider(PresentationProvider):
     def __init__(self, config: GoogleDocsProviderConfig):
         super().__init__(config)
         self.config: GoogleDocsProviderConfig = config
+        self._section_insert_indices: Dict[Tuple[str, str], int] = {}
 
         loaded_credentials = handle_google_credentials(
             config.credentials,
@@ -249,11 +250,16 @@ class GoogleDocsProvider(PresentationProvider):
             presentation_id,
             slide_id,
         )
+        section_key = (presentation_id, slide_id)
+        insert_index = self._section_insert_indices.get(section_key, anchor.section_start)
+        if insert_index < anchor.section_start:
+            insert_index = anchor.section_start
+
         requests = [
             {
                 "insertInlineImage": {
                     "uri": image_url,
-                    "location": {"index": anchor.section_start},
+                    "location": {"index": insert_index},
                     "objectSize": {
                         "width": {"magnitude": width, "unit": "PT"},
                         "height": {"magnitude": height, "unit": "PT"},
@@ -266,6 +272,8 @@ class GoogleDocsProvider(PresentationProvider):
                 documentId=presentation_id, body={"requests": requests}
             )
         )
+        # Docs inserts inline objects as a single position in the text stream.
+        self._section_insert_indices[section_key] = insert_index + 1
 
     def finalize_presentation(self, presentation_id: str) -> None:
         if not self.config.remove_section_markers:

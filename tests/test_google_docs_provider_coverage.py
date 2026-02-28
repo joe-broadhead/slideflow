@@ -17,7 +17,9 @@ from slideflow.utilities.exceptions import AuthenticationError, RenderingError
 
 
 def _provider_without_init() -> GoogleDocsProvider:
-    return object.__new__(google_docs_module.GoogleDocsProvider)
+    provider = object.__new__(google_docs_module.GoogleDocsProvider)
+    provider._section_insert_indices = {}
+    return provider
 
 
 def _attach_default_docs_config(provider: GoogleDocsProvider) -> None:
@@ -282,6 +284,39 @@ def test_insert_chart_and_replace_text_requests():
     assert delete_range["startIndex"] >= expected_index
     section_two_start = 1 + len(section_one)
     assert delete_range["startIndex"] < section_two_start
+
+
+def test_insert_chart_preserves_chart_order_within_same_section():
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+    mock_document = _document_from_paragraph_texts("{{SECTION:section-1}} Alpha\n")
+
+    requests: List[Any] = []
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return mock_document
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.insert_chart_to_slide(
+        "doc-1", "section-1", "https://img.example/chart1.png", 0, 0, 300, 200
+    )
+    provider.insert_chart_to_slide(
+        "doc-1", "section-1", "https://img.example/chart2.png", 0, 0, 300, 200
+    )
+
+    first_insert = requests[1][1]["body"]["requests"][0]["insertInlineImage"]
+    second_insert = requests[3][1]["body"]["requests"][0]["insertInlineImage"]
+    assert second_insert["location"]["index"] == first_insert["location"]["index"] + 1
 
 
 def test_insert_chart_warns_when_position_values_are_ignored(monkeypatch):
