@@ -1,6 +1,6 @@
 # Automation
 
-Use Slideflow's reusable workflow to run scheduled deck builds for business teams.
+Use Slideflow's reusable workflow to run scheduled deck/doc builds for business teams.
 
 ## Reusable Workflow
 
@@ -66,7 +66,7 @@ jobs:
 - `run-doctor` (optional): Run `slideflow doctor` before validate/build. Default `true`.
 - `strict-doctor` (optional): Make doctor fail on error-severity findings. Default `false`.
 - `run-validate` (optional): Run `slideflow validate` before build. Default `true`.
-- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate. Default `false`.
+- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate (`google_slides` and `google_docs`). Default `false`.
 - `provider-contract-params-path` (optional): CSV path for validate contract checks; falls back to `params-path` when unset.
 - `dry-run` (optional): Run build with `--dry-run`. Default `false`.
 - `threads` (optional): Value passed to `--threads`.
@@ -76,7 +76,7 @@ jobs:
 
 ## Outputs
 
-- `presentation-urls`: Comma-separated Google Slides URLs extracted from build JSON output.
+- `presentation-urls`: Comma-separated build URLs extracted from build JSON output (Google Slides or Google Docs).
 - `doctor-result-json`: JSON summary emitted by `slideflow doctor --output-json`.
 - `validate-result-json`: JSON summary emitted by `slideflow validate --output-json`.
 - `build-result-json`: JSON summary emitted by `slideflow build --output-json`.
@@ -113,8 +113,22 @@ jobs:
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON` (optional; creates `GOOGLE_APPLICATION_CREDENTIALS` file during workflow run)
 - Callers can either pass those secrets explicitly or use `secrets: inherit` if the same names exist in the caller repository/org.
 - Your Slideflow config can continue to reference environment variables as usual.
-- For Google Slides builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
+- For `google_slides` and `google_docs` builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
+- `google_docs` provider can use `GOOGLE_SLIDEFLOW_CREDENTIALS` in this workflow (or `provider.config.credentials`).
 - Prefer pinning reusable workflow references to a commit SHA in production.
+
+If your caller repo stores Google Docs credentials under `GOOGLE_DOCS_CREDENTIALS`,
+map it into the reusable workflow's expected secret name:
+
+```yaml
+jobs:
+  build:
+    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_DOCS_CREDENTIALS }}
+    with:
+      config-file: config/google-docs-report.yml
+```
 
 Example `dbt` source for a private dbt repo:
 

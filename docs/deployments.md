@@ -12,7 +12,7 @@ For all orchestrated environments, ensure:
 
 - Python 3.12+
 - SlideFlow package installed (and `ai` extras if using `ai_text` providers)
-- Access to required data systems (Drive/Slides/Databricks/Git)
+- Access to required data systems (Drive/Slides/Docs/Databricks/Git)
 - Correct environment variables and secrets
 
 For chart image rendering, provide a Chrome/Chromium binary available to Kaleido.
@@ -77,11 +77,26 @@ Supported reusable-workflow secret mappings:
 - `BIGQUERY_PROJECT` (optional; project id fallback for `warehouse.type: bigquery`)
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON` (optional; service-account JSON used to create `GOOGLE_APPLICATION_CREDENTIALS` file)
 
+For `google_docs` provider runs with the reusable workflow, use `GOOGLE_SLIDEFLOW_CREDENTIALS`
+as the credentials secret mapping (or set `provider.config.credentials` directly in config).
+
+If your caller repo secret is named `GOOGLE_DOCS_CREDENTIALS`, map it explicitly:
+
+```yaml
+jobs:
+  build:
+    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_DOCS_CREDENTIALS }}
+    with:
+      config-file: config/google-docs-report.yml
+```
+
 ### Passing machine-readable outputs to downstream jobs
 
 The reusable workflow exposes:
 
-- `presentation-urls`: comma-separated Google Slides URLs
+- `presentation-urls`: comma-separated build URLs extracted from JSON output (Google Slides or Google Docs)
 - `build-result-json`: JSON summary from `slideflow build --output-json`
 - `validate-result-json`: JSON summary from `slideflow validate --output-json`
 - `doctor-result-json`: JSON summary from `slideflow doctor --output-json`
@@ -191,6 +206,8 @@ Operational notes:
 - `slideflow validate` enforced before `slideflow build`
 - `slideflow doctor` runs before long render jobs (`--strict` in CI)
 - provider contract checks enabled where template compatibility guarantees matter (`slideflow validate --provider-contract-check`)
+  - `google_slides`: slide-id + placeholder checks
+  - `google_docs`: section-marker + placeholder checks
 - Secrets managed by platform secret manager (not committed)
 - API quotas/rate limits measured and tuned (`--rps`, `--threads`)
 - Failure notifications wired to orchestration platform

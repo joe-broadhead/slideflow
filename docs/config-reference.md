@@ -9,7 +9,7 @@ presentation:
   slides: [...]
 
 provider:
-  type: "google_slides"
+  type: "google_slides" # or "google_docs"
   config: {...}
 
 template_paths: ["./templates"] # optional additional paths (prepended before defaults)
@@ -30,7 +30,7 @@ registry: ["./registry.py"] # optional
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `id` | `str` | yes | Target slide ID in template |
+| `id` | `str` | yes | `google_slides`: target slide object ID, `google_docs`: target section marker id |
 | `title` | `str` | no | Metadata only |
 | `replacements` | `list` | no | `text`, `table`, `ai_text` specs |
 | `charts` | `list` | no | `plotly_go`, `template`, `custom` specs |
@@ -42,6 +42,7 @@ registry: ["./registry.py"] # optional
 Supported values:
 
 - `google_slides`
+- `google_docs`
 
 ### `provider.config` for `google_slides`
 
@@ -59,6 +60,31 @@ Supported values:
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
 For provider setup and operational behavior, see [Google Slides Provider](providers/google-slides.md).
+
+### `provider.config` for `google_docs`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `credentials` | `str` | conditionally | Path/raw JSON; can also come from env |
+| `template_id` | `str` | recommended | Source template document ID |
+| `document_folder_id` | `str` | no | Folder for generated docs |
+| `drive_folder_id` | `str` | no | Folder for uploaded chart images |
+| `section_marker_prefix` | `str` | no | Marker prefix (default `{{SECTION:`) |
+| `section_marker_suffix` | `str` | no | Marker suffix (default `}}`) |
+| `remove_section_markers` | `bool` | no | Remove `{{SECTION:...}}` markers after render finalization |
+| `default_chart_width_pt` | `float` | no | Reserved config field; currently not applied at render time |
+| `share_with` | `list[str]` | no | Emails to share generated document with |
+| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `requests_per_second` | `float` | no | API rate limit override |
+| `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
+
+Credential precedence for `google_docs`:
+
+1. `provider.config.credentials`
+2. `GOOGLE_DOCS_CREDENTIALS`
+3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+
+For provider setup and marker behavior, see [Google Docs Provider](providers/google-docs.md).
 
 ## Replacements
 
@@ -124,6 +150,10 @@ Common positioning fields in chart config:
 - `alignment_format`: `left|center|right` + `top|center|bottom` (for example `center-top`)
 - `scale`: image scaling factor
 - `data_transforms`: optional ordered transform pipeline
+
+Provider note:
+
+- `google_docs` inserts charts inline and ignores positional fields (`x`, `y`, alignment); non-zero positional values emit a warning.
 
 ### `plotly_go`
 

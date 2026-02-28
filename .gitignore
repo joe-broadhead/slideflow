@@ -1,6 +1,7 @@
 /local_testing
 /**/__pycache__
 /slideflow.egg-info
+*.egg-info/
 .env*
 .venv
 .coverage

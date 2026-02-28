@@ -323,7 +323,7 @@ def _install_google_api_client_stub() -> None:
         def __call__(self, *args, **kwargs):
             return self
 
-        def execute(self):
+        def execute(self, *args, **kwargs):
             return {}
 
     class HttpError(Exception):

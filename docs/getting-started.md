@@ -5,8 +5,9 @@
 - Python `3.12+`
 - Google Cloud project with:
   - Google Slides API enabled
+  - Google Docs API enabled (if using `google_docs` provider)
   - Google Drive API enabled
-- A service account with access to your target template deck and Drive folders
+- A service account with access to your target template deck/document and Drive folders
 
 ## Install
 
@@ -30,9 +31,10 @@ source .venv/bin/activate
 SlideFlow accepts credentials via:
 
 1. `provider.config.credentials` in YAML
-2. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable
+2. `GOOGLE_DOCS_CREDENTIALS` environment variable (for `google_docs`)
+3. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable
 
-`GOOGLE_SLIDEFLOW_CREDENTIALS` supports either:
+Environment credential values support either:
 
 - Path to service-account JSON file
 - Raw JSON string content
@@ -41,15 +43,21 @@ Example:
 
 ```bash
 export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/service-account.json
+export GOOGLE_DOCS_CREDENTIALS=/absolute/path/service-account.json
 ```
 
 ## Create a template deck
 
-Create a Google Slides template deck with placeholders and target slide layouts.
+Create a template and decide provider mode:
+
+- `google_slides`: Google Slides template deck with placeholder text and target slide IDs.
+- `google_docs`: Google Docs template with explicit section markers (for example `{{SECTION:intro}}`).
+
 You will need:
 
-- `template_id` (presentation ID from URL)
-- slide IDs for each slide you modify
+- `template_id` (presentation/document ID from URL)
+- `google_slides`: slide IDs for each slide you modify
+- `google_docs`: marker ids that match `presentation.slides[].id`
 
 ## Minimal config
 
@@ -71,6 +79,25 @@ presentation:
             replacement: "Hello SlideFlow"
 ```
 
+Google Docs variant:
+
+```yaml
+provider:
+  type: "google_docs"
+  config:
+    template_id: "your_google_docs_template_id"
+
+presentation:
+  name: "My First SlideFlow Doc"
+  slides:
+    - id: "intro"
+      replacements:
+        - type: "text"
+          config:
+            placeholder: "{{TITLE}}"
+            replacement: "Hello SlideFlow"
+```
+
 ## Validate before build
 
 ```bash
@@ -79,6 +106,12 @@ slideflow build config.yml
 ```
 
 Validation should be treated as mandatory in CI and release workflows.
+
+For provider contract checks (recommended in CI):
+
+```bash
+slideflow validate config.yml --provider-contract-check
+```
 
 To discover built-in chart templates:
 
@@ -101,6 +134,7 @@ slideflow build config.yml --params-path params.csv --dry-run
 
 - Run the sample pipeline in [Quickstart](quickstart.md)
 - Configure real template/folder/sharing behavior in [Google Slides Provider](providers/google-slides.md)
+- Configure marker-based doc behavior in [Google Docs Provider](providers/google-docs.md)
 - Choose and harden source systems in [Data Connectors](data-connectors.md)
 - Add reusable preprocessing in [Data Transforms](data-transforms.md)
 - Configure LLM output in [AI Providers](ai-providers.md)
