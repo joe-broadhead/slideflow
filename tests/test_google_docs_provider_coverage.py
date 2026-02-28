@@ -39,33 +39,85 @@ def _http_error(
     return error
 
 
-def _document_from_paragraph_texts(*paragraph_texts: str) -> Dict[str, Any]:
+def _document_from_paragraph_run_groups(
+    *paragraph_run_groups: Tuple[str, ...],
+) -> Dict[str, Any]:
     content: List[Dict[str, Any]] = []
     cursor = 1
-    for paragraph_text in paragraph_texts:
-        start_index = cursor
-        end_index = cursor + len(paragraph_text)
+    for paragraph_runs in paragraph_run_groups:
+        paragraph_start = cursor
+        paragraph_elements: List[Dict[str, Any]] = []
+        for run_text in paragraph_runs:
+            start_index = cursor
+            end_index = cursor + _utf16_units(run_text)
+            paragraph_elements.append(
+                {
+                    "startIndex": start_index,
+                    "endIndex": end_index,
+                    "textRun": {"content": run_text},
+                }
+            )
+            cursor = end_index
+        paragraph_end = cursor
         content.append(
             {
-                "startIndex": start_index,
-                "endIndex": end_index,
-                "paragraph": {
-                    "elements": [
-                        {
-                            "startIndex": start_index,
-                            "endIndex": end_index,
-                            "textRun": {"content": paragraph_text},
-                        }
-                    ]
-                },
+                "startIndex": paragraph_start,
+                "endIndex": paragraph_end,
+                "paragraph": {"elements": paragraph_elements},
             }
         )
-        cursor = end_index
     return {"body": {"content": content}}
 
 
 def _utf16_units(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
+
+
+def _document_from_paragraph_texts(*paragraph_texts: str) -> Dict[str, Any]:
+    return _document_from_paragraph_run_groups(
+        *[(paragraph_text,) for paragraph_text in paragraph_texts]
+    )
+
+
+def _append_toc_copy(document: Dict[str, Any], toc_text: str) -> Dict[str, Any]:
+    body = document.setdefault("body", {})
+    content = body.setdefault("content", [])
+    if not isinstance(content, list):
+        return document
+
+    cursor = 1
+    if content:
+        last = content[-1]
+        if isinstance(last, dict):
+            last_end = last.get("endIndex")
+            if isinstance(last_end, int):
+                cursor = last_end
+
+    toc_start = cursor
+    toc_end = toc_start + _utf16_units(toc_text)
+    toc_content = [
+        {
+            "startIndex": toc_start,
+            "endIndex": toc_end,
+            "paragraph": {
+                "elements": [
+                    {
+                        "startIndex": toc_start,
+                        "endIndex": toc_end,
+                        "textRun": {"content": toc_text},
+                    }
+                ]
+            },
+        }
+    ]
+    content.append(
+        {
+            "startIndex": toc_start,
+            "endIndex": toc_end,
+            "tableOfContents": {"content": toc_content},
+        }
+    )
+    return document
 
 
 def test_google_docs_provider_init_success(monkeypatch):
@@ -315,6 +367,69 @@ def test_replace_text_handles_utf16_indices_with_emoji():
     assert delete_range["endIndex"] == expected_end
     insert_payload = replace_requests[1]["insertText"]
     assert insert_payload["location"]["index"] == expected_start
+
+
+def test_marker_detection_handles_adjacent_text_runs():
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+    mock_document = _document_from_paragraph_run_groups(
+        ("{{SECTION:", "section-1}} Alpha {{PLACEHOLDER}}\n"),
+        ("{{SECTION:section-2}} Tail\n",),
+    )
+
+    requests: List[Any] = []
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return mock_document
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.insert_chart_to_slide(
+        "doc-split", "section-1", "https://img.example/chart.png", 10, 20, 300, 200
+    )
+    insert_payload = requests[1][1]["body"]["requests"][0]["insertInlineImage"]
+    assert insert_payload["location"]["index"] == 1 + _utf16_units(
+        "{{SECTION:section-1}}"
+    )
+
+    replaced = provider.replace_text_in_slide(
+        "doc-split", "section-1", "{{PLACEHOLDER}}", "VALUE"
+    )
+    assert replaced == 1
+
+
+def test_marker_resolution_ignores_table_of_contents_copies():
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+    mock_document = _document_from_paragraph_texts(
+        "{{SECTION:section-1}} Alpha {{PLACEHOLDER}}\n",
+        "{{SECTION:section-2}} Tail\n",
+    )
+    _append_toc_copy(mock_document, "{{SECTION:section-1}}")
+
+    provider._execute_request = lambda request: (
+        mock_document if request[0] == "doc-get" else {}
+    )
+
+    replaced = provider.replace_text_in_slide(
+        "doc-toc", "section-1", "{{PLACEHOLDER}}", "VALUE"
+    )
+    assert replaced == 1
 
 
 def test_upload_share_and_delete_paths():

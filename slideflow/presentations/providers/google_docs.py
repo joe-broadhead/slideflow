@@ -273,14 +273,16 @@ class GoogleDocsProvider(PresentationProvider):
             return []
         return [item for item in content if isinstance(item, dict)]
 
-    def _iter_text_runs(
-        self, elements: Iterable[Dict[str, Any]]
-    ) -> Iterable[Tuple[str, int, int]]:
+    def _iter_text_segments(
+        self, elements: Iterable[Dict[str, Any]], include_toc: bool = False
+    ) -> Iterable[_SectionTextSegment]:
         for element in elements:
             paragraph = element.get("paragraph")
             if isinstance(paragraph, dict):
                 para_elements = paragraph.get("elements", [])
                 if isinstance(para_elements, list):
+                    current_text: Optional[str] = None
+                    current_boundaries: Optional[List[int]] = None
                     for para_element in para_elements:
                         if not isinstance(para_element, dict):
                             continue
@@ -296,7 +298,31 @@ class GoogleDocsProvider(PresentationProvider):
                             and isinstance(end_index, int)
                             and end_index > start_index
                         ):
-                            yield text_content, start_index, end_index
+                            cumulative_units = self._utf16_cumulative_units(
+                                text_content
+                            )
+                            run_boundaries = [
+                                start_index + unit_offset
+                                for unit_offset in cumulative_units
+                            ]
+                            if current_text is None or current_boundaries is None:
+                                current_text = text_content
+                                current_boundaries = run_boundaries
+                            elif current_boundaries[-1] == run_boundaries[0]:
+                                current_text += text_content
+                                current_boundaries.extend(run_boundaries[1:])
+                            else:
+                                yield self._SectionTextSegment(
+                                    text=current_text,
+                                    boundaries=current_boundaries,
+                                )
+                                current_text = text_content
+                                current_boundaries = run_boundaries
+                    if current_text is not None and current_boundaries is not None:
+                        yield self._SectionTextSegment(
+                            text=current_text,
+                            boundaries=current_boundaries,
+                        )
 
             table = element.get("table")
             if isinstance(table, dict):
@@ -313,13 +339,19 @@ class GoogleDocsProvider(PresentationProvider):
                                 continue
                             cell_content = cell.get("content", [])
                             if isinstance(cell_content, list):
-                                yield from self._iter_text_runs(cell_content)
+                                yield from self._iter_text_segments(
+                                    cell_content,
+                                    include_toc=include_toc,
+                                )
 
-            toc = element.get("tableOfContents")
+            toc = element.get("tableOfContents") if include_toc else None
             if isinstance(toc, dict):
                 toc_content = toc.get("content", [])
                 if isinstance(toc_content, list):
-                    yield from self._iter_text_runs(toc_content)
+                    yield from self._iter_text_segments(
+                        toc_content,
+                        include_toc=True,
+                    )
 
     def _marker_regex(self) -> re.Pattern[str]:
         return re.compile(
@@ -357,12 +389,11 @@ class GoogleDocsProvider(PresentationProvider):
         content = self._get_document_content(document_id)
         marker_pattern = self._marker_regex()
         markers: List[Tuple[str, int, int]] = []
-        for text_content, start_index, _end_index in self._iter_text_runs(content):
-            cumulative_units = self._utf16_cumulative_units(text_content)
-            for marker_match in marker_pattern.finditer(text_content):
+        for segment in self._iter_text_segments(content):
+            for marker_match in marker_pattern.finditer(segment.text):
                 marker_id = marker_match.group("id").strip()
-                marker_start = start_index + cumulative_units[marker_match.start()]
-                marker_end = start_index + cumulative_units[marker_match.end()]
+                marker_start = segment.boundaries[marker_match.start()]
+                marker_end = segment.boundaries[marker_match.end()]
                 if marker_end > marker_start:
                     markers.append((marker_id, marker_start, marker_end))
 
@@ -421,7 +452,10 @@ class GoogleDocsProvider(PresentationProvider):
         self, content: List[Dict[str, Any]], section_start: int, section_end: int
     ) -> List[_SectionTextSegment]:
         segments: List[GoogleDocsProvider._SectionTextSegment] = []
-        for text_content, run_start, run_end in self._iter_text_runs(content):
+        for base_segment in self._iter_text_segments(content):
+            text_content = base_segment.text
+            run_start = base_segment.boundaries[0]
+            run_end = base_segment.boundaries[-1]
             overlap_start = max(section_start, run_start)
             overlap_end = min(section_end, run_end)
             if overlap_start >= overlap_end:
