@@ -309,6 +309,8 @@ class GoogleDocsProvider(PresentationProvider):
                 )
             else:
                 logger.error("Error trashing file %s: %s", file_id, error)
+            if self.config.strict_cleanup:
+                raise
 
     def _create_document(self, title: str) -> str:
         created = self._execute_request(

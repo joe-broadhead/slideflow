@@ -9,20 +9,32 @@ from slideflow.utilities.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _normalize_credentials_source(value: Optional[str]) -> Optional[str]:
+    """Normalize credential source values and treat sentinel nulls as missing."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    if trimmed.lower() == "null":
+        return None
+    return trimmed
+
+
 def handle_google_credentials(
     credentials: Optional[str] = None,
     env_var_names: Optional[Sequence[str]] = None,
 ) -> dict:
     """Handle Google credentials from config and environment variables."""
 
-    clean_credentials = None if (credentials == "null") else credentials
+    clean_credentials = _normalize_credentials_source(credentials)
 
     env_sources = list(env_var_names or [Environment.GOOGLE_SLIDEFLOW_CREDENTIALS])
 
     creds_source = clean_credentials
     if not creds_source:
         for env_name in env_sources:
-            env_value = os.getenv(env_name)
+            env_value = _normalize_credentials_source(os.getenv(env_name))
             if env_value:
                 creds_source = env_value
                 break

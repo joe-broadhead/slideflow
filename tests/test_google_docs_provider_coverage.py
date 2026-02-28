@@ -176,7 +176,7 @@ def test_insert_chart_and_replace_text_requests():
 
 def test_upload_share_and_delete_paths():
     provider = _provider_without_init()
-    provider.config = SimpleNamespace(drive_folder_id="folder-1")
+    provider.config = SimpleNamespace(drive_folder_id="folder-1", strict_cleanup=False)
 
     provider.drive_service = SimpleNamespace(
         files=lambda: SimpleNamespace(
@@ -225,3 +225,17 @@ def test_upload_share_and_delete_paths():
         _http_error("forbidden", status=403)
     )
     provider.delete_chart_image("file-2")
+
+
+def test_delete_chart_image_raises_when_strict_cleanup_enabled():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(strict_cleanup=True)
+    provider.drive_service = SimpleNamespace(
+        files=lambda: SimpleNamespace(update=lambda **kwargs: ("files-update", kwargs))
+    )
+    provider._execute_request = lambda _request: (_ for _ in ()).throw(
+        _http_error("forbidden", status=403)
+    )
+
+    with pytest.raises(google_docs_module.HttpError):
+        provider.delete_chart_image("file-strict")
