@@ -313,12 +313,6 @@ def _extract_google_docs_text(document_payload: Dict[str, Any]) -> str:
                             if isinstance(cell_content, list):
                                 _walk_elements(cell_content)
 
-            toc = element.get("tableOfContents")
-            if isinstance(toc, dict):
-                toc_content = toc.get("content")
-                if isinstance(toc_content, list):
-                    _walk_elements(toc_content)
-
     _walk_elements(content)
     return "".join(chunks)
 

@@ -1010,6 +1010,130 @@ def test_validate_provider_contract_check_google_docs_success(tmp_path, monkeypa
     assert fake_provider._documents.calls == [template_id]
 
 
+def test_validate_provider_contract_check_google_docs_ignores_toc_markers(
+    tmp_path, monkeypatch
+):
+    _stub_cli_output(monkeypatch)
+
+    slide_spec = types.SimpleNamespace(
+        id="intro",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{region}}"})],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="google_docs", config={}),
+            presentation=types.SimpleNamespace(name="Newsletter", slides=[slide_spec]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    class FakeRequest:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def execute(self):
+            return self._payload
+
+    class FakeProvider:
+        def __init__(self, payload):
+            self.docs_service = types.SimpleNamespace(
+                documents=lambda: types.SimpleNamespace(
+                    get=lambda documentId: FakeRequest(payload[documentId])
+                )
+            )
+            self.config = types.SimpleNamespace(
+                section_marker_prefix="{{SECTION:", section_marker_suffix="}}"
+            )
+
+        def _execute_request(self, request):
+            return request.execute()
+
+    template_id = "doc-template-toc"
+    provider_payload = {
+        template_id: {
+            "body": {
+                "content": [
+                    {
+                        "tableOfContents": {
+                            "content": [
+                                {
+                                    "paragraph": {
+                                        "elements": [
+                                            {
+                                                "textRun": {
+                                                    "content": "{{SECTION:intro}} TOC"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "paragraph": {
+                            "elements": [
+                                {
+                                    "textRun": {
+                                        "content": "{{SECTION:intro}}Region: {{region}}"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                ]
+            }
+        }
+    }
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: FakeProvider(provider_payload)),
+    )
+
+    config_file = tmp_path / "config.yaml"
+    params_path = tmp_path / "params.csv"
+    output_file = tmp_path / "validate-provider-contract-docs-ignore-toc.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_docs\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("template_id\n" f"{template_id}\n")
+
+    validate_command_module.validate_command(
+        config_file=config_file,
+        registry_paths=None,
+        output_json=output_file,
+        params_path=params_path,
+        provider_contract_check=True,
+    )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "success"
+    assert payload["provider_contract"]["issues"] == []
+
+
 def test_validate_provider_contract_check_google_docs_missing_section_marker(
     tmp_path, monkeypatch
 ):
