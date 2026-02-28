@@ -88,7 +88,7 @@ Integration Features:
     - CLI interface for automation and scripting
 """
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 
 # AI providers
 from slideflow.ai import AIProvider, GeminiProvider, OpenAIProvider
