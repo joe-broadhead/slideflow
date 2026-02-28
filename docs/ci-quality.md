@@ -37,6 +37,15 @@
   - optional secret: `SLIDEFLOW_LIVE_TEMPLATE_ID` (seed template to copy before test mutation)
   - optional secret: `SLIDEFLOW_LIVE_SHARE_EMAIL` (share rendered deck for manual visual verification)
   - workflow pins `SLIDEFLOW_LIVE_KEEP_ARTIFACTS=0` to avoid leaving artifacts in CI runs
+- `Live Google Docs` (`.github/workflows/live-google-docs.yml`)
+  - runs on manual dispatch (`workflow_dispatch`) only
+  - executes `pytest -q tests/live_tests -m live_google_docs`
+  - uses dedicated secrets/folders to create real template-based documents
+  - validates marker-scoped replacements and inline chart insertion behavior
+  - requires secrets: `GOOGLE_DOCS_CREDENTIALS` (or `GOOGLE_SLIDEFLOW_CREDENTIALS` fallback), `SLIDEFLOW_LIVE_DOCUMENT_FOLDER_ID` (or `SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID` fallback)
+  - optional secret: `SLIDEFLOW_LIVE_DOC_TEMPLATE_ID` (seed template to copy before test mutation)
+  - optional secret: `SLIDEFLOW_LIVE_SHARE_EMAIL` (share rendered doc for manual visual verification)
+  - workflow pins `SLIDEFLOW_LIVE_KEEP_ARTIFACTS=0` to avoid leaving artifacts in CI runs
 
 ## Required local checks before PR
 

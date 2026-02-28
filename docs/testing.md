@@ -30,6 +30,13 @@
      - table replacement placeholders
    - verifies image elements and placeholder replacement in rendered slides
    - trashes created files on teardown
+5. Live Google Docs tests (`@pytest.mark.live_google_docs`, `tests/live_tests/`)
+   - creates real template documents via Google API
+   - copies template into a new doc during render
+   - validates marker-scoped replacements (`slide.id` -> `{{SECTION:<id>}}`)
+   - validates inline chart insertion in rendered docs
+   - validates deterministic AI and table replacement behavior
+   - trashes created files on teardown
 
 ## Local commands
 
@@ -84,6 +91,26 @@ When `SLIDEFLOW_LIVE_SHARE_EMAIL` is set, the rendered presentation is shared us
 service account and the test prints the deck URL. Artifacts are retained by default in
 that mode so you can validate the slides visually.
 
+Run live Google Docs tests locally:
+
+```bash
+export SLIDEFLOW_RUN_LIVE=1
+export GOOGLE_DOCS_CREDENTIALS=/absolute/path/to/service-account.json
+export SLIDEFLOW_LIVE_DOCUMENT_FOLDER_ID=<drive-folder-id>
+# optional override for chart image uploads:
+export SLIDEFLOW_LIVE_DRIVE_FOLDER_ID=<drive-folder-id>
+# optional seed template document:
+export SLIDEFLOW_LIVE_DOC_TEMPLATE_ID=<google-docs-template-id>
+# optional comma-separated emails to share rendered doc with:
+export SLIDEFLOW_LIVE_SHARE_EMAIL=<you@example.com>
+# optional permission role for shared doc (reader|writer|commenter):
+export SLIDEFLOW_LIVE_SHARE_ROLE=reader
+# optional retention toggle; defaults to 1 when sharing is enabled:
+export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
+
+pytest -q tests/live_tests -m live_google_docs
+```
+
 ## CI quality gates
 
 - CI enforces version consistency checks.
@@ -92,6 +119,7 @@ that mode so you can validate the slides visually.
 - CI runs dedicated integration and e2e marker suites in separate steps.
 - Distribution artifacts are built for every CI run.
 - Live Google Slides tests run in a separate workflow (`Live Google Slides`) so PR CI remains deterministic.
+- Live Google Docs tests run in a separate workflow (`Live Google Docs`) so PR CI remains deterministic.
 
 ## Orchestrated runtime note
 

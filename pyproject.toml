@@ -89,4 +89,5 @@ markers = [
     "integration: integration tests that may hit external systems",
     "e2e: end-to-end workflow tests",
     "live_google: live Google Slides API tests that create real presentations",
+    "live_google_docs: live Google Docs API tests that create real documents",
 ]
