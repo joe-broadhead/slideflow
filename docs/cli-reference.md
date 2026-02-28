@@ -53,6 +53,11 @@ slideflow validate config.yml --output-json validate-result.json
 slideflow validate config.yml --provider-contract-check --params-path variants.csv
 ```
 
+Provider contract behavior:
+
+- `google_slides`: validates slide IDs and placeholders in template decks.
+- `google_docs`: validates section markers and placeholders in template docs.
+
 ## `slideflow build`
 
 ```bash

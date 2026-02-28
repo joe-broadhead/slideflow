@@ -2,10 +2,11 @@
 
 ## Credential sources
 
-For Google Slides provider auth, SlideFlow reads credentials from:
+For Google provider auth, SlideFlow reads credentials from:
 
 1. `provider.config.credentials`
-2. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+2. `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`)
+3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
 
 Credential value can be:
 
@@ -16,9 +17,15 @@ Recommended: use environment variables in CI and avoid storing secrets in repo f
 
 ## Required scopes
 
-Google provider uses:
+Google Slides provider scopes:
 
 - `https://www.googleapis.com/auth/presentations`
+- `https://www.googleapis.com/auth/drive`
+- `https://www.googleapis.com/auth/drive.file`
+
+Google Docs provider scopes:
+
+- `https://www.googleapis.com/auth/documents`
 - `https://www.googleapis.com/auth/drive`
 - `https://www.googleapis.com/auth/drive.file`
 

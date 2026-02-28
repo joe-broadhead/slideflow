@@ -58,7 +58,7 @@ on:
         default: true
         type: boolean
       run-provider-contract-check:
-        description: "Run provider contract checks during validate (Google Slides)"
+        description: "Run provider contract checks during validate (Google Slides/Docs)"
         required: false
         default: false
         type: boolean

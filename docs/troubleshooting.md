@@ -26,8 +26,8 @@ Common causes:
 
 Common causes:
 
-- missing Google credentials (`provider.config.credentials` or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
-- invalid template ID or slide IDs
+- missing Google credentials (`provider.config.credentials`, `GOOGLE_DOCS_CREDENTIALS`, or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
+- invalid template ID or target IDs (`slide.id` for `google_slides`, section marker ids for `google_docs`)
 - unreadable CSV/JSON input path
 - query/auth issues for Databricks connectors
 
