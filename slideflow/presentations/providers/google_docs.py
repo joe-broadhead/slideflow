@@ -251,7 +251,9 @@ class GoogleDocsProvider(PresentationProvider):
             slide_id,
         )
         section_key = (presentation_id, slide_id)
-        insert_index = self._section_insert_indices.get(section_key, anchor.section_start)
+        insert_index = self._section_insert_indices.get(
+            section_key, anchor.section_start
+        )
         if insert_index < anchor.section_start:
             insert_index = anchor.section_start
 
