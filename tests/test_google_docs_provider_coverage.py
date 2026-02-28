@@ -227,6 +227,42 @@ def test_upload_share_and_delete_paths():
     provider.delete_chart_image("file-2")
 
 
+def test_upload_chart_image_waits_for_drive_acl_propagation(monkeypatch):
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(drive_folder_id="folder-1", strict_cleanup=False)
+    provider.drive_service = SimpleNamespace(
+        files=lambda: SimpleNamespace(create=lambda **kwargs: ("files-create", kwargs)),
+        permissions=lambda: SimpleNamespace(
+            create=lambda **kwargs: ("perm-create", kwargs)
+        ),
+    )
+
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        if request[0] == "files-create":
+            return {"id": "file-1"}
+        return {}
+
+    sleep_calls: List[float] = []
+    monkeypatch.setattr(
+        google_docs_module, "time", SimpleNamespace(sleep=sleep_calls.append)
+    )
+    monkeypatch.setattr(
+        google_docs_module.Timing,
+        "GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S",
+        1.5,
+    )
+
+    provider._execute_request = _exec
+
+    url, file_id = provider.upload_chart_image("doc-1", b"bytes", "chart.png")
+    assert url == "https://drive.google.com/uc?id=file-1"
+    assert file_id == "file-1"
+    assert sleep_calls == [1.5]
+
+
 def test_delete_chart_image_raises_when_strict_cleanup_enabled():
     provider = _provider_without_init()
     provider.config = SimpleNamespace(strict_cleanup=True)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import os
 import threading
+import time
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from google.oauth2.service_account import Credentials
@@ -18,7 +19,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from pydantic import Field
 
-from slideflow.constants import Environment, GoogleSlides
+from slideflow.constants import Environment, GoogleSlides, Timing
 from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
@@ -375,5 +376,7 @@ class GoogleDocsProvider(PresentationProvider):
                 supportsAllDrives=True,
             )
         )
+        if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
+            time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
         public_url = f"https://drive.google.com/uc?id={file_id}"
         return public_url, file_id
