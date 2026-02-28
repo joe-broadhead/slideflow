@@ -64,6 +64,10 @@ def _document_from_paragraph_texts(*paragraph_texts: str) -> Dict[str, Any]:
     return {"body": {"content": content}}
 
 
+def _utf16_units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
 def test_google_docs_provider_init_success(monkeypatch):
     captured: Dict[str, Any] = {}
 
@@ -274,6 +278,43 @@ def test_replace_text_raises_when_markers_are_duplicated():
 
     with pytest.raises(RenderingError, match="Duplicate section markers"):
         provider.replace_text_in_slide("doc-1", "section-1", "{{PLACEHOLDER}}", "VALUE")
+
+
+def test_replace_text_handles_utf16_indices_with_emoji():
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+    section_one = "{{SECTION:section-1}} 🙂 {{PLACEHOLDER}}\n"
+    section_two = "{{SECTION:section-2}} Tail\n"
+    mock_document = _document_from_paragraph_texts(section_one, section_two)
+
+    requests: List[Any] = []
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return mock_document
+        return {}
+
+    provider._execute_request = _exec
+
+    replaced = provider.replace_text_in_slide(
+        "doc-emoji", "section-1", "{{PLACEHOLDER}}", "VALUE"
+    )
+    assert replaced == 1
+    replace_requests = requests[1][1]["body"]["requests"]
+    delete_range = replace_requests[0]["deleteContentRange"]["range"]
+    expected_start = 1 + _utf16_units("{{SECTION:section-1}} 🙂 ")
+    expected_end = expected_start + _utf16_units("{{PLACEHOLDER}}")
+    assert delete_range["startIndex"] == expected_start
+    assert delete_range["endIndex"] == expected_end
+    insert_payload = replace_requests[1]["insertText"]
+    assert insert_payload["location"]["index"] == expected_start
 
 
 def test_upload_share_and_delete_paths():

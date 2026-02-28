@@ -12,6 +12,7 @@ import os
 import re
 import threading
 import time
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
@@ -123,6 +124,11 @@ class GoogleDocsProvider(PresentationProvider):
         marker_end: int
         section_start: int
         section_end: int
+
+    @dataclass
+    class _SectionTextSegment:
+        text: str
+        boundaries: List[int]
 
     def __init__(self, config: GoogleDocsProviderConfig):
         super().__init__(config)
@@ -322,6 +328,21 @@ class GoogleDocsProvider(PresentationProvider):
             f"{re.escape(self.config.section_marker_suffix)}"
         )
 
+    def _utf16_cumulative_units(self, text: str) -> List[int]:
+        cumulative = [0]
+        for char in text:
+            cumulative.append(cumulative[-1] + len(char.encode("utf-16-le")) // 2)
+        return cumulative
+
+    def _utf16_offset_to_py_index(
+        self, cumulative: List[int], utf16_offset: int
+    ) -> int:
+        index = bisect_left(cumulative, utf16_offset)
+        if index < len(cumulative):
+            if cumulative[index] == utf16_offset:
+                return index
+        return max(0, min(index, len(cumulative) - 1))
+
     def _get_document_end_index(self, content: List[Dict[str, Any]]) -> int:
         minimum_insert_index = 1
         for element in reversed(content):
@@ -337,10 +358,11 @@ class GoogleDocsProvider(PresentationProvider):
         marker_pattern = self._marker_regex()
         markers: List[Tuple[str, int, int]] = []
         for text_content, start_index, _end_index in self._iter_text_runs(content):
+            cumulative_units = self._utf16_cumulative_units(text_content)
             for marker_match in marker_pattern.finditer(text_content):
                 marker_id = marker_match.group("id").strip()
-                marker_start = start_index + marker_match.start()
-                marker_end = start_index + marker_match.end()
+                marker_start = start_index + cumulative_units[marker_match.start()]
+                marker_end = start_index + cumulative_units[marker_match.end()]
                 if marker_end > marker_start:
                     markers.append((marker_id, marker_start, marker_end))
 
@@ -395,24 +417,46 @@ class GoogleDocsProvider(PresentationProvider):
 
         return anchor, content
 
-    def _build_section_text_index(
+    def _build_section_text_segments(
         self, content: List[Dict[str, Any]], section_start: int, section_end: int
-    ) -> Tuple[str, List[int]]:
-        text_chunks: List[str] = []
-        index_map: List[int] = []
+    ) -> List[_SectionTextSegment]:
+        segments: List[GoogleDocsProvider._SectionTextSegment] = []
         for text_content, run_start, run_end in self._iter_text_runs(content):
             overlap_start = max(section_start, run_start)
             overlap_end = min(section_end, run_end)
             if overlap_start >= overlap_end:
                 continue
-            relative_start = overlap_start - run_start
-            relative_end = relative_start + (overlap_end - overlap_start)
-            overlap_text = text_content[relative_start:relative_end]
+
+            cumulative_units = self._utf16_cumulative_units(text_content)
+            relative_start_units = overlap_start - run_start
+            relative_end_units = overlap_end - run_start
+            py_start = self._utf16_offset_to_py_index(
+                cumulative_units, relative_start_units
+            )
+            py_end = self._utf16_offset_to_py_index(
+                cumulative_units, relative_end_units
+            )
+            overlap_text = text_content[py_start:py_end]
             if not overlap_text:
                 continue
-            text_chunks.append(overlap_text)
-            index_map.extend(range(overlap_start, overlap_end))
-        return "".join(text_chunks), index_map
+
+            piece_units = self._utf16_cumulative_units(overlap_text)
+            piece_boundaries = [
+                overlap_start + unit_offset for unit_offset in piece_units
+            ]
+
+            if segments and segments[-1].boundaries[-1] == piece_boundaries[0]:
+                segments[-1].text += overlap_text
+                segments[-1].boundaries.extend(piece_boundaries[1:])
+            else:
+                segments.append(
+                    self._SectionTextSegment(
+                        text=overlap_text,
+                        boundaries=piece_boundaries,
+                    )
+                )
+
+        return segments
 
     def replace_text_in_slide(
         self, presentation_id: str, slide_id: str, placeholder: str, replacement: str
@@ -425,26 +469,27 @@ class GoogleDocsProvider(PresentationProvider):
             presentation_id,
             slide_id,
         )
-        section_text, index_map = self._build_section_text_index(
+        section_segments = self._build_section_text_segments(
             content,
             anchor.section_start,
             anchor.section_end,
         )
-        if not section_text:
+        if not section_segments:
             return 0
 
         placeholder_occurrences: List[Tuple[int, int]] = []
-        search_position = 0
         placeholder_length = len(placeholder)
-        while True:
-            found_at = section_text.find(placeholder, search_position)
-            if found_at < 0:
-                break
-            found_end = found_at + placeholder_length
-            abs_start = index_map[found_at]
-            abs_end = index_map[found_end - 1] + 1
-            placeholder_occurrences.append((abs_start, abs_end))
-            search_position = found_end
+        for segment in section_segments:
+            search_position = 0
+            while True:
+                found_at = segment.text.find(placeholder, search_position)
+                if found_at < 0:
+                    break
+                found_end = found_at + placeholder_length
+                abs_start = segment.boundaries[found_at]
+                abs_end = segment.boundaries[found_end]
+                placeholder_occurrences.append((abs_start, abs_end))
+                search_position = found_end
 
         if not placeholder_occurrences:
             return 0
