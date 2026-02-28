@@ -1,17 +1,20 @@
-"""Google Docs provider scaffold for Slideflow newsletter workflows.
+"""Google Docs provider for marker-anchored newsletter workflows.
 
-This module introduces the `google_docs` provider type and core provider wiring.
-It intentionally focuses on provider plumbing and safe defaults; advanced
-section-marker newsletter behavior is implemented in follow-up work.
+The provider maps `slide.id` values to explicit marker tokens in the target
+document (for example `{{SECTION:intro}}`) and scopes chart/text operations to
+those marker-defined sections.
 """
 
 from __future__ import annotations
 
 import io
 import os
+import re
 import threading
 import time
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from bisect import bisect_left
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -25,7 +28,7 @@ from slideflow.presentations.providers.base import (
     PresentationProviderConfig,
 )
 from slideflow.utilities.auth import handle_google_credentials
-from slideflow.utilities.exceptions import AuthenticationError
+from slideflow.utilities.exceptions import AuthenticationError, RenderingError
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 
@@ -113,6 +116,19 @@ class GoogleDocsProvider(PresentationProvider):
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/drive.file",
     ]
+
+    @dataclass(frozen=True)
+    class _SectionAnchor:
+        marker_id: str
+        marker_start: int
+        marker_end: int
+        section_start: int
+        section_end: int
+
+    @dataclass
+    class _SectionTextSegment:
+        text: str
+        boundaries: List[int]
 
     def __init__(self, config: GoogleDocsProviderConfig):
         super().__init__(config)
@@ -212,17 +228,24 @@ class GoogleDocsProvider(PresentationProvider):
     ) -> None:
         """Insert chart inline in document.
 
-        `slide_id` and positional arguments are accepted for interface
-        compatibility and are intentionally ignored in this baseline phase.
-        """
-        del slide_id, x, y
+        `slide_id` is treated as a section marker ID and must match a marker
+        token in the document template (for example: ``{{SECTION:intro}}``).
 
-        insert_index = self._get_document_insert_index(presentation_id)
+        Positional arguments ``x`` and ``y`` are accepted for interface
+        compatibility and ignored because Google Docs only supports inline
+        image insertion in this provider.
+        """
+        del x, y
+
+        anchor, _ = self._resolve_section_anchor(
+            presentation_id,
+            slide_id,
+        )
         requests = [
             {
                 "insertInlineImage": {
                     "uri": image_url,
-                    "location": {"index": insert_index},
+                    "location": {"index": anchor.section_start},
                     "objectSize": {
                         "width": {"magnitude": width, "unit": "PT"},
                         "height": {"magnitude": height, "unit": "PT"},
@@ -236,79 +259,299 @@ class GoogleDocsProvider(PresentationProvider):
             )
         )
 
-    def _get_document_insert_index(self, document_id: str) -> int:
-        """Resolve a safe inline-image insertion index for a Google Doc."""
-        minimum_insert_index = 1
-        try:
-            document = self._execute_request(
-                self.docs_service.documents().get(
-                    documentId=document_id, fields="body/content/endIndex"
-                )
-            )
-        except HttpError as error:
-            logger.warning(
-                "Could not resolve document insertion index for %s: %s. "
-                "Using fallback index %s.",
-                document_id,
-                error,
-                minimum_insert_index,
-            )
-            return minimum_insert_index
-
+    def _get_document_content(self, document_id: str) -> List[Dict[str, Any]]:
+        document = self._execute_request(
+            self.docs_service.documents().get(documentId=document_id)
+        )
         if not isinstance(document, dict):
-            return minimum_insert_index
+            return []
         body = document.get("body", {})
         if not isinstance(body, dict):
-            return minimum_insert_index
+            return []
         content = body.get("content", [])
         if not isinstance(content, list):
-            return minimum_insert_index
+            return []
+        return [item for item in content if isinstance(item, dict)]
 
+    def _iter_text_segments(
+        self, elements: Iterable[Dict[str, Any]], include_toc: bool = False
+    ) -> Iterable[_SectionTextSegment]:
+        for element in elements:
+            paragraph = element.get("paragraph")
+            if isinstance(paragraph, dict):
+                para_elements = paragraph.get("elements", [])
+                if isinstance(para_elements, list):
+                    current_text: Optional[str] = None
+                    current_boundaries: Optional[List[int]] = None
+                    for para_element in para_elements:
+                        if not isinstance(para_element, dict):
+                            continue
+                        text_run = para_element.get("textRun")
+                        if not isinstance(text_run, dict):
+                            continue
+                        text_content = text_run.get("content")
+                        start_index = para_element.get("startIndex")
+                        end_index = para_element.get("endIndex")
+                        if (
+                            isinstance(text_content, str)
+                            and isinstance(start_index, int)
+                            and isinstance(end_index, int)
+                            and end_index > start_index
+                        ):
+                            cumulative_units = self._utf16_cumulative_units(
+                                text_content
+                            )
+                            run_boundaries = [
+                                start_index + unit_offset
+                                for unit_offset in cumulative_units
+                            ]
+                            if current_text is None or current_boundaries is None:
+                                current_text = text_content
+                                current_boundaries = run_boundaries
+                            elif current_boundaries[-1] == run_boundaries[0]:
+                                current_text += text_content
+                                current_boundaries.extend(run_boundaries[1:])
+                            else:
+                                yield self._SectionTextSegment(
+                                    text=current_text,
+                                    boundaries=current_boundaries,
+                                )
+                                current_text = text_content
+                                current_boundaries = run_boundaries
+                    if current_text is not None and current_boundaries is not None:
+                        yield self._SectionTextSegment(
+                            text=current_text,
+                            boundaries=current_boundaries,
+                        )
+
+            table = element.get("table")
+            if isinstance(table, dict):
+                rows = table.get("tableRows", [])
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        cells = row.get("tableCells", [])
+                        if not isinstance(cells, list):
+                            continue
+                        for cell in cells:
+                            if not isinstance(cell, dict):
+                                continue
+                            cell_content = cell.get("content", [])
+                            if isinstance(cell_content, list):
+                                yield from self._iter_text_segments(
+                                    cell_content,
+                                    include_toc=include_toc,
+                                )
+
+            toc = element.get("tableOfContents") if include_toc else None
+            if isinstance(toc, dict):
+                toc_content = toc.get("content", [])
+                if isinstance(toc_content, list):
+                    yield from self._iter_text_segments(
+                        toc_content,
+                        include_toc=True,
+                    )
+
+    def _marker_regex(self) -> re.Pattern[str]:
+        return re.compile(
+            f"{re.escape(self.config.section_marker_prefix)}"
+            r"(?P<id>.+?)"
+            f"{re.escape(self.config.section_marker_suffix)}"
+        )
+
+    def _utf16_cumulative_units(self, text: str) -> List[int]:
+        cumulative = [0]
+        for char in text:
+            cumulative.append(cumulative[-1] + len(char.encode("utf-16-le")) // 2)
+        return cumulative
+
+    def _utf16_offset_to_py_index(
+        self, cumulative: List[int], utf16_offset: int
+    ) -> int:
+        index = bisect_left(cumulative, utf16_offset)
+        if index < len(cumulative):
+            if cumulative[index] == utf16_offset:
+                return index
+        return max(0, min(index, len(cumulative) - 1))
+
+    def _get_document_end_index(self, content: List[Dict[str, Any]]) -> int:
+        minimum_insert_index = 1
         for element in reversed(content):
-            if not isinstance(element, dict):
-                continue
             end_index = element.get("endIndex")
             if isinstance(end_index, int):
                 return max(minimum_insert_index, end_index - 1)
         return minimum_insert_index
 
+    def _resolve_section_anchor(
+        self, document_id: str, section_id: str
+    ) -> Tuple[_SectionAnchor, List[Dict[str, Any]]]:
+        content = self._get_document_content(document_id)
+        marker_pattern = self._marker_regex()
+        markers: List[Tuple[str, int, int]] = []
+        for segment in self._iter_text_segments(content):
+            for marker_match in marker_pattern.finditer(segment.text):
+                marker_id = marker_match.group("id").strip()
+                marker_start = segment.boundaries[marker_match.start()]
+                marker_end = segment.boundaries[marker_match.end()]
+                if marker_end > marker_start:
+                    markers.append((marker_id, marker_start, marker_end))
+
+        if not markers:
+            raise RenderingError(
+                "No section markers found in document. "
+                f"Expected markers like "
+                f"'{self.config.section_marker_prefix}<id>{self.config.section_marker_suffix}'."
+            )
+
+        marker_counts: Dict[str, int] = {}
+        for marker_id, _, _ in markers:
+            marker_counts[marker_id] = marker_counts.get(marker_id, 0) + 1
+        duplicates = sorted(
+            marker_id for marker_id, count in marker_counts.items() if count > 1
+        )
+        if duplicates:
+            raise RenderingError(
+                f"Duplicate section markers found in document: {', '.join(duplicates)}"
+            )
+
+        ordered_markers = sorted(markers, key=lambda marker: marker[1])
+        document_end_index = self._get_document_end_index(content)
+        sections: Dict[str, GoogleDocsProvider._SectionAnchor] = {}
+        for index, (marker_id, marker_start, marker_end) in enumerate(ordered_markers):
+            next_marker_start = (
+                ordered_markers[index + 1][1]
+                if index + 1 < len(ordered_markers)
+                else document_end_index
+            )
+            section_start = marker_end
+            section_end = max(section_start, next_marker_start)
+            sections[marker_id] = self._SectionAnchor(
+                marker_id=marker_id,
+                marker_start=marker_start,
+                marker_end=marker_end,
+                section_start=section_start,
+                section_end=section_end,
+            )
+
+        anchor = sections.get(section_id)
+        if anchor is None:
+            available_markers = ", ".join(sorted(sections))
+            expected_marker = (
+                f"{self.config.section_marker_prefix}{section_id}"
+                f"{self.config.section_marker_suffix}"
+            )
+            raise RenderingError(
+                f"Missing section marker '{expected_marker}' in document. "
+                f"Available marker ids: {available_markers}"
+            )
+
+        return anchor, content
+
+    def _build_section_text_segments(
+        self, content: List[Dict[str, Any]], section_start: int, section_end: int
+    ) -> List[_SectionTextSegment]:
+        segments: List[GoogleDocsProvider._SectionTextSegment] = []
+        for base_segment in self._iter_text_segments(content):
+            text_content = base_segment.text
+            run_start = base_segment.boundaries[0]
+            run_end = base_segment.boundaries[-1]
+            overlap_start = max(section_start, run_start)
+            overlap_end = min(section_end, run_end)
+            if overlap_start >= overlap_end:
+                continue
+
+            cumulative_units = self._utf16_cumulative_units(text_content)
+            relative_start_units = overlap_start - run_start
+            relative_end_units = overlap_end - run_start
+            py_start = self._utf16_offset_to_py_index(
+                cumulative_units, relative_start_units
+            )
+            py_end = self._utf16_offset_to_py_index(
+                cumulative_units, relative_end_units
+            )
+            overlap_text = text_content[py_start:py_end]
+            if not overlap_text:
+                continue
+
+            piece_units = self._utf16_cumulative_units(overlap_text)
+            piece_boundaries = [
+                overlap_start + unit_offset for unit_offset in piece_units
+            ]
+
+            if segments and segments[-1].boundaries[-1] == piece_boundaries[0]:
+                segments[-1].text += overlap_text
+                segments[-1].boundaries.extend(piece_boundaries[1:])
+            else:
+                segments.append(
+                    self._SectionTextSegment(
+                        text=overlap_text,
+                        boundaries=piece_boundaries,
+                    )
+                )
+
+        return segments
+
     def replace_text_in_slide(
         self, presentation_id: str, slide_id: str, placeholder: str, replacement: str
     ) -> int:
-        """Replace text in document.
+        """Replace placeholder text within the target marker section only."""
+        if not placeholder:
+            return 0
 
-        `slide_id` is accepted for interface compatibility and is intentionally
-        ignored in this baseline phase.
-        """
-        del slide_id
+        anchor, content = self._resolve_section_anchor(
+            presentation_id,
+            slide_id,
+        )
+        section_segments = self._build_section_text_segments(
+            content,
+            anchor.section_start,
+            anchor.section_end,
+        )
+        if not section_segments:
+            return 0
 
-        response = self._execute_request(
+        placeholder_occurrences: List[Tuple[int, int]] = []
+        placeholder_length = len(placeholder)
+        for segment in section_segments:
+            search_position = 0
+            while True:
+                found_at = segment.text.find(placeholder, search_position)
+                if found_at < 0:
+                    break
+                found_end = found_at + placeholder_length
+                abs_start = segment.boundaries[found_at]
+                abs_end = segment.boundaries[found_end]
+                placeholder_occurrences.append((abs_start, abs_end))
+                search_position = found_end
+
+        if not placeholder_occurrences:
+            return 0
+
+        requests: List[Dict[str, Any]] = []
+        for start_index, end_index in reversed(placeholder_occurrences):
+            requests.append(
+                {
+                    "deleteContentRange": {
+                        "range": {"startIndex": start_index, "endIndex": end_index}
+                    }
+                }
+            )
+            requests.append(
+                {
+                    "insertText": {
+                        "location": {"index": start_index},
+                        "text": replacement,
+                    }
+                }
+            )
+        self._execute_request(
             self.docs_service.documents().batchUpdate(
                 documentId=presentation_id,
-                body={
-                    "requests": [
-                        {
-                            "replaceAllText": {
-                                "containsText": {
-                                    "text": placeholder,
-                                    "matchCase": True,
-                                },
-                                "replaceText": replacement,
-                            }
-                        }
-                    ]
-                },
+                body={"requests": requests},
             )
         )
-
-        replies = response.get("replies", []) if isinstance(response, dict) else []
-        if replies and isinstance(replies[0], dict):
-            replace_result = replies[0].get("replaceAllText")
-            if isinstance(replace_result, dict):
-                occurrences = replace_result.get("occurrencesChanged")
-                if isinstance(occurrences, int):
-                    return occurrences
-        return 0
+        return len(placeholder_occurrences)
 
     def share_presentation(
         self, presentation_id: str, emails: List[str], role: str = "writer"
