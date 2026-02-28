@@ -284,6 +284,43 @@ def test_insert_chart_and_replace_text_requests():
     assert delete_range["startIndex"] < section_two_start
 
 
+def test_insert_chart_warns_when_position_values_are_ignored(monkeypatch):
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+
+    requests: List[Any] = []
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return _document_from_paragraph_texts("{{SECTION:section-1}} Alpha\n")
+        return {}
+
+    warning_messages: List[str] = []
+    monkeypatch.setattr(
+        google_docs_module.logger,
+        "warning",
+        lambda message, *args: warning_messages.append(message % args),
+    )
+
+    provider._execute_request = _exec
+    provider.insert_chart_to_slide(
+        "doc-1", "section-1", "https://img.example/chart.png", 10, 20, 300, 200
+    )
+
+    assert requests[0][0] == "doc-get"
+    assert requests[1][0] == "batch-update"
+    assert len(warning_messages) == 1
+    assert "ignores chart positioning values" in warning_messages[0]
+    assert "section-1" in warning_messages[0]
+
+
 def test_insert_chart_raises_when_marker_missing():
     provider = _provider_without_init()
     _attach_default_docs_config(provider)

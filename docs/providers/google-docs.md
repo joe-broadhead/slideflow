@@ -76,7 +76,7 @@ Current implementation notes:
 
 - Replacements are section-scoped by marker id.
 - Charts are inserted inline at the matched section anchor.
-- Positional chart fields (`x`, `y`, alignment) are ignored for `google_docs`.
+- Positional chart fields (`x`, `y`, alignment) are ignored for `google_docs` and log a warning when non-zero positional values are provided.
 - The build result `url` points to `https://docs.google.com/document/d/<id>`.
 
 ## Contract Validation

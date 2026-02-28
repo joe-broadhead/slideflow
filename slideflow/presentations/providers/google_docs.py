@@ -235,6 +235,14 @@ class GoogleDocsProvider(PresentationProvider):
         compatibility and ignored because Google Docs only supports inline
         image insertion in this provider.
         """
+        if x != 0 or y != 0:
+            logger.warning(
+                "google_docs provider ignores chart positioning values (x=%s, y=%s) "
+                "and inserts charts inline at section '%s'.",
+                x,
+                y,
+                slide_id,
+            )
         del x, y
 
         anchor, _ = self._resolve_section_anchor(
