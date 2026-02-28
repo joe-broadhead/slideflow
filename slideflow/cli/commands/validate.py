@@ -384,7 +384,7 @@ def _extract_google_docs_sections(
         counts[marker_id] = counts.get(marker_id, 0) + 1
     duplicate_markers = {marker_id for marker_id, count in counts.items() if count > 1}
 
-    sections: Dict[str, str] = {}
+    sections: Dict[str, List[str]] = {}
     for index, marker in enumerate(marker_positions):
         marker_id = marker["id"]
         if marker_id in duplicate_markers:
@@ -399,15 +399,16 @@ def _extract_google_docs_sections(
             trailing_chunks = [document_segments[marker_segment_index][marker_end:]]
             if marker_segment_index + 1 < len(document_segments):
                 trailing_chunks.extend(document_segments[marker_segment_index + 1 :])
-            sections[marker_id] = "".join(trailing_chunks)
+            sections[marker_id] = [chunk for chunk in trailing_chunks if chunk]
             continue
 
         next_segment_index = next_marker["segment_index"]
         next_start = next_marker["start"]
         if next_segment_index == marker_segment_index:
-            sections[marker_id] = document_segments[marker_segment_index][
+            section_text = document_segments[marker_segment_index][
                 marker_end:next_start
             ]
+            sections[marker_id] = [section_text] if section_text else []
             continue
 
         section_chunks = [document_segments[marker_segment_index][marker_end:]]
@@ -416,7 +417,7 @@ def _extract_google_docs_sections(
                 document_segments[marker_segment_index + 1 : next_segment_index]
             )
         section_chunks.append(document_segments[next_segment_index][:next_start])
-        sections[marker_id] = "".join(section_chunks)
+        sections[marker_id] = [chunk for chunk in section_chunks if chunk]
 
     return {"sections": sections, "duplicate_markers": duplicate_markers}
 
@@ -460,7 +461,7 @@ def _run_google_docs_provider_contract_check(
             )
             continue
 
-        sections: Dict[str, str] = sections_payload["sections"]
+        sections: Dict[str, List[str]] = sections_payload["sections"]
         duplicate_markers: Set[str] = sections_payload["duplicate_markers"]
 
         for duplicate_marker in sorted(duplicate_markers):
@@ -478,8 +479,8 @@ def _run_google_docs_provider_contract_check(
             if slide_id in duplicate_markers:
                 continue
 
-            section_text = sections.get(slide_id)
-            if section_text is None:
+            section_segments = sections.get(slide_id)
+            if section_segments is None:
                 issues.append(
                     {
                         "type": "missing_section_marker",
@@ -495,7 +496,7 @@ def _run_google_docs_provider_contract_check(
                 continue
 
             for placeholder in sorted(placeholders):
-                if placeholder not in section_text:
+                if not any(placeholder in segment for segment in section_segments):
                     issues.append(
                         {
                             "type": "missing_placeholder",

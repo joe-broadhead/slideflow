@@ -1242,6 +1242,114 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_mark
     assert "missing_section_marker" in issue_types
 
 
+def test_validate_provider_contract_check_google_docs_does_not_stitch_split_placeholders(
+    tmp_path, monkeypatch
+):
+    _stub_cli_output(monkeypatch)
+
+    slide_spec = types.SimpleNamespace(
+        id="intro",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{region}}"})],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="google_docs", config={}),
+            presentation=types.SimpleNamespace(name="Newsletter", slides=[slide_spec]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    class FakeRequest:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def execute(self):
+            return self._payload
+
+    class FakeProvider:
+        def __init__(self, payload):
+            self.docs_service = types.SimpleNamespace(
+                documents=lambda: types.SimpleNamespace(
+                    get=lambda documentId: FakeRequest(payload[documentId])
+                )
+            )
+            self.config = types.SimpleNamespace(
+                section_marker_prefix="{{SECTION:", section_marker_suffix="}}"
+            )
+
+        def _execute_request(self, request):
+            return request.execute()
+
+    template_id = "doc-template-split-placeholder"
+    provider_payload = {
+        template_id: {
+            "body": {
+                "content": [
+                    {
+                        "paragraph": {
+                            "elements": [
+                                {"textRun": {"content": "{{SECTION:intro}} Value: {{"}},
+                                {"inlineObjectElement": {"inlineObjectId": "kix.2"}},
+                                {"textRun": {"content": "region}}"}},
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: FakeProvider(provider_payload)),
+    )
+
+    config_file = tmp_path / "config.yaml"
+    params_path = tmp_path / "params.csv"
+    output_file = tmp_path / "validate-provider-contract-docs-split-placeholder.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_docs\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("template_id\n" f"{template_id}\n")
+
+    with pytest.raises(validate_command_module.typer.Exit) as exc_info:
+        validate_command_module.validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+            params_path=params_path,
+            provider_contract_check=True,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    issue_types = [issue["type"] for issue in payload["provider_contract"]["issues"]]
+    assert "missing_placeholder" in issue_types
+
+
 def test_validate_provider_contract_check_google_docs_missing_section_marker(
     tmp_path, monkeypatch
 ):
