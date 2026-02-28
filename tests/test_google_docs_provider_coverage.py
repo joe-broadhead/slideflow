@@ -24,6 +24,7 @@ def _attach_default_docs_config(provider: GoogleDocsProvider) -> None:
     provider.config = SimpleNamespace(
         section_marker_prefix="{{SECTION:",
         section_marker_suffix="}}",
+        remove_section_markers=False,
         strict_cleanup=False,
     )
 
@@ -430,6 +431,75 @@ def test_marker_resolution_ignores_table_of_contents_copies():
         "doc-toc", "section-1", "{{PLACEHOLDER}}", "VALUE"
     )
     assert replaced == 1
+
+
+def test_remove_section_markers_deletes_body_markers_only():
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+    mock_document = _document_from_paragraph_texts(
+        "{{SECTION:section-1}} Intro\n",
+        "{{SECTION:section-2}} Details\n",
+    )
+    _append_toc_copy(mock_document, "{{SECTION:section-1}}")
+
+    requests: List[Any] = []
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return mock_document
+        return {}
+
+    provider._execute_request = _exec
+
+    removed = provider._remove_section_markers("doc-remove")
+
+    assert removed == 2
+    assert requests[0][0] == "doc-get"
+    assert requests[1][0] == "batch-update"
+    delete_requests = requests[1][1]["body"]["requests"]
+    assert len(delete_requests) == 2
+    first_range = delete_requests[0]["deleteContentRange"]["range"]
+    second_range = delete_requests[1]["deleteContentRange"]["range"]
+    assert first_range["startIndex"] > second_range["startIndex"]
+
+
+def test_finalize_presentation_skips_marker_cleanup_when_disabled(monkeypatch):
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.config.remove_section_markers = False
+
+    calls: List[str] = []
+    monkeypatch.setattr(
+        provider,
+        "_remove_section_markers",
+        lambda document_id: calls.append(document_id) or 0,
+    )
+
+    provider.finalize_presentation("doc-no-cleanup")
+    assert calls == []
+
+
+def test_finalize_presentation_runs_marker_cleanup_when_enabled(monkeypatch):
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.config.remove_section_markers = True
+
+    calls: List[str] = []
+    monkeypatch.setattr(
+        provider,
+        "_remove_section_markers",
+        lambda document_id: calls.append(document_id) or 2,
+    )
+
+    provider.finalize_presentation("doc-cleanup")
+    assert calls == ["doc-cleanup"]
 
 
 def test_upload_share_and_delete_paths():

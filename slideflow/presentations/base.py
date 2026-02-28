@@ -696,6 +696,12 @@ class Presentation(BaseModel):
                         # Continue with other replacements rather than failing entirely
                         continue
 
+            finalize_presentation = getattr(
+                self.provider, "finalize_presentation", None
+            )
+            if callable(finalize_presentation):
+                finalize_presentation(presentation_id)
+
             # Share presentation if configured
             if hasattr(self.provider, "config") and hasattr(
                 self.provider.config, "share_with"

@@ -259,6 +259,17 @@ class GoogleDocsProvider(PresentationProvider):
             )
         )
 
+    def finalize_presentation(self, presentation_id: str) -> None:
+        if not self.config.remove_section_markers:
+            return
+        removed = self._remove_section_markers(presentation_id)
+        if removed > 0:
+            logger.info(
+                "Removed %s section marker(s) from rendered document %s",
+                removed,
+                presentation_id,
+            )
+
     def _get_document_content(self, document_id: str) -> List[Dict[str, Any]]:
         document = self._execute_request(
             self.docs_service.documents().get(documentId=document_id)
@@ -491,6 +502,37 @@ class GoogleDocsProvider(PresentationProvider):
                 )
 
         return segments
+
+    def _remove_section_markers(self, document_id: str) -> int:
+        content = self._get_document_content(document_id)
+        marker_pattern = self._marker_regex()
+        marker_ranges: List[Tuple[int, int]] = []
+
+        for segment in self._iter_text_segments(content):
+            for marker_match in marker_pattern.finditer(segment.text):
+                marker_start = segment.boundaries[marker_match.start()]
+                marker_end = segment.boundaries[marker_match.end()]
+                if marker_end > marker_start:
+                    marker_ranges.append((marker_start, marker_end))
+
+        if not marker_ranges:
+            return 0
+
+        requests = [
+            {
+                "deleteContentRange": {
+                    "range": {"startIndex": start_index, "endIndex": end_index}
+                }
+            }
+            for start_index, end_index in sorted(marker_ranges, reverse=True)
+        ]
+        self._execute_request(
+            self.docs_service.documents().batchUpdate(
+                documentId=document_id,
+                body={"requests": requests},
+            )
+        )
+        return len(marker_ranges)
 
     def replace_text_in_slide(
         self, presentation_id: str, slide_id: str, placeholder: str, replacement: str

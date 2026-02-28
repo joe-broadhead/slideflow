@@ -71,7 +71,7 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 | `drive_folder_id` | `str` | no | Folder for uploaded chart images |
 | `section_marker_prefix` | `str` | no | Marker prefix (default `{{SECTION:`) |
 | `section_marker_suffix` | `str` | no | Marker suffix (default `}}`) |
-| `remove_section_markers` | `bool` | no | Reserved config field; currently not applied at render time |
+| `remove_section_markers` | `bool` | no | Remove `{{SECTION:...}}` markers after render finalization |
 | `default_chart_width_pt` | `float` | no | Reserved config field; currently not applied at render time |
 | `share_with` | `list[str]` | no | Emails to share generated document with |
 | `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
