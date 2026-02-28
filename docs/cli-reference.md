@@ -33,7 +33,7 @@ Options:
 | --- | --- |
 | `-r`, `--registry` | One or more Python registry files |
 | `-f`, `--params-path` | Optional CSV used for provider contract checks (`template_id` column) |
-| `--provider-contract-check` | Validate configured slide IDs/placeholders against Google Slides templates |
+| `--provider-contract-check` | Validate provider template contracts (`google_slides`: slide IDs/placeholders, `google_docs`: section markers/placeholders) |
 | `--output-json` | Write machine-readable validation summary JSON |
 
 Registry resolution order:

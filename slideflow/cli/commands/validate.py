@@ -34,6 +34,7 @@ Example:
 """
 
 import csv
+import re
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, Set
 
@@ -263,6 +264,195 @@ def _run_google_provider_contract_check(
     }
 
 
+def _extract_google_docs_text(document_payload: Dict[str, Any]) -> str:
+    """Extract concatenated text content from a Google Docs payload."""
+    if not isinstance(document_payload, dict):
+        return ""
+    body = document_payload.get("body")
+    if not isinstance(body, dict):
+        return ""
+    content = body.get("content")
+    if not isinstance(content, list):
+        return ""
+
+    chunks: List[str] = []
+
+    def _walk_elements(elements: List[Any]) -> None:
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+
+            paragraph = element.get("paragraph")
+            if isinstance(paragraph, dict):
+                para_elements = paragraph.get("elements")
+                if isinstance(para_elements, list):
+                    for para_element in para_elements:
+                        if not isinstance(para_element, dict):
+                            continue
+                        text_run = para_element.get("textRun")
+                        if not isinstance(text_run, dict):
+                            continue
+                        text_content = text_run.get("content")
+                        if isinstance(text_content, str):
+                            chunks.append(text_content)
+
+            table = element.get("table")
+            if isinstance(table, dict):
+                rows = table.get("tableRows")
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        cells = row.get("tableCells")
+                        if not isinstance(cells, list):
+                            continue
+                        for cell in cells:
+                            if not isinstance(cell, dict):
+                                continue
+                            cell_content = cell.get("content")
+                            if isinstance(cell_content, list):
+                                _walk_elements(cell_content)
+
+            toc = element.get("tableOfContents")
+            if isinstance(toc, dict):
+                toc_content = toc.get("content")
+                if isinstance(toc_content, list):
+                    _walk_elements(toc_content)
+
+    _walk_elements(content)
+    return "".join(chunks)
+
+
+def _extract_google_docs_sections(
+    document_text: str,
+    marker_prefix: str,
+    marker_suffix: str,
+) -> Dict[str, Any]:
+    """Extract section bodies keyed by marker id and report duplicates."""
+    marker_pattern = re.compile(
+        f"{re.escape(marker_prefix)}(?P<id>.+?){re.escape(marker_suffix)}"
+    )
+    marker_matches = list(marker_pattern.finditer(document_text))
+    if not marker_matches:
+        return {"sections": {}, "duplicate_markers": set()}
+
+    marker_ids = [match.group("id").strip() for match in marker_matches]
+    counts: Dict[str, int] = {}
+    for marker_id in marker_ids:
+        counts[marker_id] = counts.get(marker_id, 0) + 1
+    duplicate_markers = {marker_id for marker_id, count in counts.items() if count > 1}
+
+    sections: Dict[str, str] = {}
+    for index, match in enumerate(marker_matches):
+        marker_id = match.group("id").strip()
+        if marker_id in duplicate_markers:
+            continue
+        section_start = match.end()
+        section_end = (
+            marker_matches[index + 1].start()
+            if index + 1 < len(marker_matches)
+            else len(document_text)
+        )
+        sections[marker_id] = document_text[section_start:section_end]
+
+    return {"sections": sections, "duplicate_markers": duplicate_markers}
+
+
+def _run_google_docs_provider_contract_check(
+    presentation_config: PresentationConfig,
+    provider: Any,
+    params_path: Optional[Path],
+) -> Dict[str, Any]:
+    """Validate configured marker IDs/placeholders against Google Docs templates."""
+    template_ids = _resolve_template_ids_for_contract_check(
+        presentation_config, params_path
+    )
+    expected_contract = _collect_expected_contract(presentation_config)
+    issues: List[Dict[str, Any]] = []
+    checked_templates = 0
+    marker_prefix = getattr(provider.config, "section_marker_prefix", "{{SECTION:")
+    marker_suffix = getattr(provider.config, "section_marker_suffix", "}}")
+
+    for template_id in template_ids:
+        try:
+            response = provider._execute_request(  # noqa: SLF001
+                provider.docs_service.documents().get(documentId=template_id)
+            )
+            document_text = _extract_google_docs_text(response)
+            sections_payload = _extract_google_docs_sections(
+                document_text=document_text,
+                marker_prefix=marker_prefix,
+                marker_suffix=marker_suffix,
+            )
+            checked_templates += 1
+        except Exception as error:
+            issues.append(
+                {
+                    "type": "template_fetch_failed",
+                    "template_id": template_id,
+                    "slide_id": None,
+                    "placeholder": None,
+                    "detail": _first_error_line(error),
+                }
+            )
+            continue
+
+        sections: Dict[str, str] = sections_payload["sections"]
+        duplicate_markers: Set[str] = sections_payload["duplicate_markers"]
+
+        for duplicate_marker in sorted(duplicate_markers):
+            issues.append(
+                {
+                    "type": "duplicate_section_marker",
+                    "template_id": template_id,
+                    "slide_id": duplicate_marker,
+                    "placeholder": None,
+                    "detail": "Section marker appears multiple times in document",
+                }
+            )
+
+        for slide_id, placeholders in expected_contract.items():
+            if slide_id in duplicate_markers:
+                continue
+
+            section_text = sections.get(slide_id)
+            if section_text is None:
+                issues.append(
+                    {
+                        "type": "missing_section_marker",
+                        "template_id": template_id,
+                        "slide_id": slide_id,
+                        "placeholder": None,
+                        "detail": (
+                            f"Missing section marker "
+                            f"'{marker_prefix}{slide_id}{marker_suffix}' in document"
+                        ),
+                    }
+                )
+                continue
+
+            for placeholder in sorted(placeholders):
+                if placeholder not in section_text:
+                    issues.append(
+                        {
+                            "type": "missing_placeholder",
+                            "template_id": template_id,
+                            "slide_id": slide_id,
+                            "placeholder": placeholder,
+                            "detail": "Placeholder not found in section text",
+                        }
+                    )
+
+    return {
+        "enabled": True,
+        "provider_type": presentation_config.provider.type,
+        "checked_templates": checked_templates,
+        "template_ids": template_ids,
+        "checked_slides": sorted(expected_contract.keys()),
+        "issues": issues,
+    }
+
+
 def validate_command(
     config_file: Annotated[
         Path, typer.Argument(help="Path to YAML configuration file")
@@ -294,7 +484,7 @@ def validate_command(
         bool,
         typer.Option(
             "--provider-contract-check",
-            help="Run provider-aware contract checks (Google Slides slide IDs/placeholders)",
+            help="Run provider-aware contract checks (Google Slides or Google Docs templates)",
         ),
     ] = False,
 ) -> None:
@@ -323,7 +513,8 @@ def validate_command(
         params_path: Optional CSV path for provider contract checks. Must include
             a `template_id` column when used.
         provider_contract_check: When true, runs provider-aware contract checks
-            for Google Slides (slide IDs and placeholder presence).
+            for Google Slides (slide IDs/placeholders) and Google Docs
+            (section markers/placeholders).
 
     Raises:
         typer.Exit: Exits with code 1 if validation fails at any stage.
@@ -364,7 +555,7 @@ def validate_command(
     Note:
         - By default, validation does not perform actual data fetching or API calls
         - `--provider-contract-check` performs read checks against the
-          Google Slides API for referenced templates
+          provider API for referenced templates
         - Registry functions are resolved but not executed
         - Template parameters are validated for syntax, not content
         - This command is safe to run in CI/CD pipelines
@@ -402,17 +593,26 @@ def validate_command(
             PresentationBuilder._build_slide(slide_spec)
 
         if provider_contract_check:
-            if presentation_config.provider.type != "google_slides":
+            provider_type = presentation_config.provider.type
+            if provider_type not in ("google_slides", "google_docs"):
                 raise ValueError(
-                    "Provider contract check is currently only supported for provider type 'google_slides'."
+                    "Provider contract check is currently only supported for "
+                    "provider types 'google_slides' and 'google_docs'."
                 )
 
             provider = ProviderFactory.create_provider(presentation_config.provider)
-            provider_contract_summary = _run_google_provider_contract_check(
-                presentation_config=presentation_config,
-                provider=provider,
-                params_path=params_path,
-            )
+            if provider_type == "google_slides":
+                provider_contract_summary = _run_google_provider_contract_check(
+                    presentation_config=presentation_config,
+                    provider=provider,
+                    params_path=params_path,
+                )
+            else:
+                provider_contract_summary = _run_google_docs_provider_contract_check(
+                    presentation_config=presentation_config,
+                    provider=provider,
+                    params_path=params_path,
+                )
             if provider_contract_summary["issues"]:
                 raise ProviderContractValidationError(
                     "Provider contract validation failed. "
