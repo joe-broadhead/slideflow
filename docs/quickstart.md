@@ -42,7 +42,28 @@ Expected outcome:
 - Slide 1 gets `{{MONTH}}` replacement and a bar chart from `docs/quickstart/data.csv`
 - Slide 2 gets a template chart from the built-in `bars/bar_basic` template
 
-## 3. Batch mode (multi-deck)
+## 3. Switch to a real Google Docs build
+
+Use a config with `provider.type: google_docs`, then set:
+
+- `provider.config.template_id`
+- `provider.config.credentials` (or `GOOGLE_DOCS_CREDENTIALS` / `GOOGLE_SLIDEFLOW_CREDENTIALS`)
+- section markers in your template (for example `{{SECTION:intro}}`) that match `presentation.slides[*].id`
+
+Then run:
+
+```bash
+slideflow validate path/to/google-docs-config.yml --provider-contract-check
+slideflow build path/to/google-docs-config.yml
+```
+
+Expected outcome:
+
+- A new document is copied from your template
+- Replacements run inside matched section-marker blocks
+- Charts are inserted inline in those same sections
+
+## 4. Batch mode (multi-deck)
 
 Create `variants.csv`:
 
@@ -66,7 +87,7 @@ Rules:
 - Empty CSV rows are rejected at runtime
 - Use `--dry-run` to validate all variants without building
 
-## 4. Control concurrency and rate limits
+## 5. Control concurrency and rate limits
 
 ```bash
 slideflow build docs/quickstart/config.yml \
@@ -77,7 +98,7 @@ slideflow build docs/quickstart/config.yml \
 
 Use conservative `--threads` and `--rps` when Google API quotas are tight.
 
-## 5. Troubleshoot fast
+## 6. Troubleshoot fast
 
 If anything fails:
 
@@ -87,7 +108,7 @@ If anything fails:
 - verify connector credentials for your runtime target
 - check [Troubleshooting](troubleshooting.md)
 
-## 6. CI-parity local gate (recommended before PR)
+## 7. CI-parity local gate (recommended before PR)
 
 ```bash
 source .venv/bin/activate

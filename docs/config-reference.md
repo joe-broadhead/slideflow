@@ -153,7 +153,7 @@ Common positioning fields in chart config:
 
 Provider note:
 
-- `google_docs` inserts charts inline and ignores positional fields (`x`, `y`, alignment).
+- `google_docs` inserts charts inline and ignores positional fields (`x`, `y`, alignment); non-zero positional values emit a warning.
 
 ### `plotly_go`
 

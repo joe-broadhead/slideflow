@@ -34,7 +34,7 @@ SlideFlow accepts credentials via:
 2. `GOOGLE_DOCS_CREDENTIALS` environment variable (for `google_docs`)
 3. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable
 
-`GOOGLE_SLIDEFLOW_CREDENTIALS` supports either:
+Environment credential values support either:
 
 - Path to service-account JSON file
 - Raw JSON string content
@@ -43,6 +43,7 @@ Example:
 
 ```bash
 export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/service-account.json
+export GOOGLE_DOCS_CREDENTIALS=/absolute/path/service-account.json
 ```
 
 ## Create a template deck
@@ -105,6 +106,12 @@ slideflow build config.yml
 ```
 
 Validation should be treated as mandatory in CI and release workflows.
+
+For provider contract checks (recommended in CI):
+
+```bash
+slideflow validate config.yml --provider-contract-check
+```
 
 To discover built-in chart templates:
 
