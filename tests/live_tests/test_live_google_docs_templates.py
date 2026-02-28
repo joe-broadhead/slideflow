@@ -258,6 +258,7 @@ def test_live_google_docs_renders_marker_scoped_replacements_and_inline_chart(
         "template_id": template_id,
         "document_folder_id": live_provider.config.document_folder_id,
         "drive_folder_id": live_provider.config.drive_folder_id,
+        "remove_section_markers": True,
         "strict_cleanup": True,
     }
     if share_with:
@@ -390,6 +391,8 @@ def test_live_google_docs_renders_marker_scoped_replacements_and_inline_chart(
         assert "{{TABLE_1,1}}" not in rendered_text
         assert "{{TABLE_1,2}}" not in rendered_text
         assert "{{DETAILS_PLACEHOLDER}}" not in rendered_text
+        assert "{{SECTION:intro}}" not in rendered_text
+        assert "{{SECTION:details}}" not in rendered_text
 
         assert "Live Docs Title" in rendered_text
         assert "LIVE_DOCS_AI: generated summary" in rendered_text
