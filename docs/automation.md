@@ -117,6 +117,19 @@ jobs:
 - `google_docs` provider can use `GOOGLE_SLIDEFLOW_CREDENTIALS` in this workflow (or `provider.config.credentials`).
 - Prefer pinning reusable workflow references to a commit SHA in production.
 
+If your caller repo stores Google Docs credentials under `GOOGLE_DOCS_CREDENTIALS`,
+map it into the reusable workflow's expected secret name:
+
+```yaml
+jobs:
+  build:
+    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_DOCS_CREDENTIALS }}
+    with:
+      config-file: config/google-docs-report.yml
+```
+
 Example `dbt` source for a private dbt repo:
 
 ```yaml

@@ -80,6 +80,18 @@ Supported reusable-workflow secret mappings:
 For `google_docs` provider runs with the reusable workflow, use `GOOGLE_SLIDEFLOW_CREDENTIALS`
 as the credentials secret mapping (or set `provider.config.credentials` directly in config).
 
+If your caller repo secret is named `GOOGLE_DOCS_CREDENTIALS`, map it explicitly:
+
+```yaml
+jobs:
+  build:
+    uses: joe-broadhead/slideflow/.github/workflows/reusable-slideflow-build.yml@<pinned_sha>
+    secrets:
+      GOOGLE_SLIDEFLOW_CREDENTIALS: ${{ secrets.GOOGLE_DOCS_CREDENTIALS }}
+    with:
+      config-file: config/google-docs-report.yml
+```
+
 ### Passing machine-readable outputs to downstream jobs
 
 The reusable workflow exposes:
