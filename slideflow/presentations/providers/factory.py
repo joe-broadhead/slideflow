@@ -39,6 +39,10 @@ from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
 )
+from slideflow.presentations.providers.google_docs import (
+    GoogleDocsProvider,
+    GoogleDocsProviderConfig,
+)
 from slideflow.presentations.providers.google_slides import (
     GoogleSlidesProvider,
     GoogleSlidesProviderConfig,
@@ -52,6 +56,8 @@ config_registry = create_class_registry("provider_configs", PresentationProvider
 
 provider_registry.register_class("google_slides", GoogleSlidesProvider)
 config_registry.register_class("google_slides", GoogleSlidesProviderConfig)
+provider_registry.register_class("google_docs", GoogleDocsProvider)
+config_registry.register_class("google_docs", GoogleDocsProviderConfig)
 
 
 class ProviderFactory:
