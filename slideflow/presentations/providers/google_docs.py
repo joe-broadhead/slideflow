@@ -1,17 +1,19 @@
-"""Google Docs provider scaffold for Slideflow newsletter workflows.
+"""Google Docs provider for marker-anchored newsletter workflows.
 
-This module introduces the `google_docs` provider type and core provider wiring.
-It intentionally focuses on provider plumbing and safe defaults; advanced
-section-marker newsletter behavior is implemented in follow-up work.
+The provider maps `slide.id` values to explicit marker tokens in the target
+document (for example `{{SECTION:intro}}`) and scopes chart/text operations to
+those marker-defined sections.
 """
 
 from __future__ import annotations
 
 import io
 import os
+import re
 import threading
 import time
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -25,7 +27,7 @@ from slideflow.presentations.providers.base import (
     PresentationProviderConfig,
 )
 from slideflow.utilities.auth import handle_google_credentials
-from slideflow.utilities.exceptions import AuthenticationError
+from slideflow.utilities.exceptions import AuthenticationError, RenderingError
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 
@@ -113,6 +115,14 @@ class GoogleDocsProvider(PresentationProvider):
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/drive.file",
     ]
+
+    @dataclass(frozen=True)
+    class _SectionAnchor:
+        marker_id: str
+        marker_start: int
+        marker_end: int
+        section_start: int
+        section_end: int
 
     def __init__(self, config: GoogleDocsProviderConfig):
         super().__init__(config)
@@ -212,17 +222,24 @@ class GoogleDocsProvider(PresentationProvider):
     ) -> None:
         """Insert chart inline in document.
 
-        `slide_id` and positional arguments are accepted for interface
-        compatibility and are intentionally ignored in this baseline phase.
-        """
-        del slide_id, x, y
+        `slide_id` is treated as a section marker ID and must match a marker
+        token in the document template (for example: ``{{SECTION:intro}}``).
 
-        insert_index = self._get_document_insert_index(presentation_id)
+        Positional arguments ``x`` and ``y`` are accepted for interface
+        compatibility and ignored because Google Docs only supports inline
+        image insertion in this provider.
+        """
+        del x, y
+
+        anchor, _ = self._resolve_section_anchor(
+            presentation_id,
+            slide_id,
+        )
         requests = [
             {
                 "insertInlineImage": {
                     "uri": image_url,
-                    "location": {"index": insert_index},
+                    "location": {"index": anchor.section_start},
                     "objectSize": {
                         "width": {"magnitude": width, "unit": "PT"},
                         "height": {"magnitude": height, "unit": "PT"},
@@ -236,79 +253,226 @@ class GoogleDocsProvider(PresentationProvider):
             )
         )
 
-    def _get_document_insert_index(self, document_id: str) -> int:
-        """Resolve a safe inline-image insertion index for a Google Doc."""
-        minimum_insert_index = 1
-        try:
-            document = self._execute_request(
-                self.docs_service.documents().get(
-                    documentId=document_id, fields="body/content/endIndex"
-                )
-            )
-        except HttpError as error:
-            logger.warning(
-                "Could not resolve document insertion index for %s: %s. "
-                "Using fallback index %s.",
-                document_id,
-                error,
-                minimum_insert_index,
-            )
-            return minimum_insert_index
-
+    def _get_document_content(self, document_id: str) -> List[Dict[str, Any]]:
+        document = self._execute_request(
+            self.docs_service.documents().get(documentId=document_id)
+        )
         if not isinstance(document, dict):
-            return minimum_insert_index
+            return []
         body = document.get("body", {})
         if not isinstance(body, dict):
-            return minimum_insert_index
+            return []
         content = body.get("content", [])
         if not isinstance(content, list):
-            return minimum_insert_index
+            return []
+        return [item for item in content if isinstance(item, dict)]
 
+    def _iter_text_runs(
+        self, elements: Iterable[Dict[str, Any]]
+    ) -> Iterable[Tuple[str, int, int]]:
+        for element in elements:
+            paragraph = element.get("paragraph")
+            if isinstance(paragraph, dict):
+                para_elements = paragraph.get("elements", [])
+                if isinstance(para_elements, list):
+                    for para_element in para_elements:
+                        if not isinstance(para_element, dict):
+                            continue
+                        text_run = para_element.get("textRun")
+                        if not isinstance(text_run, dict):
+                            continue
+                        text_content = text_run.get("content")
+                        start_index = para_element.get("startIndex")
+                        end_index = para_element.get("endIndex")
+                        if (
+                            isinstance(text_content, str)
+                            and isinstance(start_index, int)
+                            and isinstance(end_index, int)
+                            and end_index > start_index
+                        ):
+                            yield text_content, start_index, end_index
+
+            table = element.get("table")
+            if isinstance(table, dict):
+                rows = table.get("tableRows", [])
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        cells = row.get("tableCells", [])
+                        if not isinstance(cells, list):
+                            continue
+                        for cell in cells:
+                            if not isinstance(cell, dict):
+                                continue
+                            cell_content = cell.get("content", [])
+                            if isinstance(cell_content, list):
+                                yield from self._iter_text_runs(cell_content)
+
+            toc = element.get("tableOfContents")
+            if isinstance(toc, dict):
+                toc_content = toc.get("content", [])
+                if isinstance(toc_content, list):
+                    yield from self._iter_text_runs(toc_content)
+
+    def _marker_regex(self) -> re.Pattern[str]:
+        return re.compile(
+            f"{re.escape(self.config.section_marker_prefix)}"
+            r"(?P<id>.+?)"
+            f"{re.escape(self.config.section_marker_suffix)}"
+        )
+
+    def _get_document_end_index(self, content: List[Dict[str, Any]]) -> int:
+        minimum_insert_index = 1
         for element in reversed(content):
-            if not isinstance(element, dict):
-                continue
             end_index = element.get("endIndex")
             if isinstance(end_index, int):
                 return max(minimum_insert_index, end_index - 1)
         return minimum_insert_index
 
+    def _resolve_section_anchor(
+        self, document_id: str, section_id: str
+    ) -> Tuple[_SectionAnchor, List[Dict[str, Any]]]:
+        content = self._get_document_content(document_id)
+        marker_pattern = self._marker_regex()
+        markers: List[Tuple[str, int, int]] = []
+        for text_content, start_index, _end_index in self._iter_text_runs(content):
+            for marker_match in marker_pattern.finditer(text_content):
+                marker_id = marker_match.group("id").strip()
+                marker_start = start_index + marker_match.start()
+                marker_end = start_index + marker_match.end()
+                if marker_end > marker_start:
+                    markers.append((marker_id, marker_start, marker_end))
+
+        if not markers:
+            raise RenderingError(
+                "No section markers found in document. "
+                f"Expected markers like "
+                f"'{self.config.section_marker_prefix}<id>{self.config.section_marker_suffix}'."
+            )
+
+        marker_counts: Dict[str, int] = {}
+        for marker_id, _, _ in markers:
+            marker_counts[marker_id] = marker_counts.get(marker_id, 0) + 1
+        duplicates = sorted(
+            marker_id for marker_id, count in marker_counts.items() if count > 1
+        )
+        if duplicates:
+            raise RenderingError(
+                f"Duplicate section markers found in document: {', '.join(duplicates)}"
+            )
+
+        ordered_markers = sorted(markers, key=lambda marker: marker[1])
+        document_end_index = self._get_document_end_index(content)
+        sections: Dict[str, GoogleDocsProvider._SectionAnchor] = {}
+        for index, (marker_id, marker_start, marker_end) in enumerate(ordered_markers):
+            next_marker_start = (
+                ordered_markers[index + 1][1]
+                if index + 1 < len(ordered_markers)
+                else document_end_index
+            )
+            section_start = marker_end
+            section_end = max(section_start, next_marker_start)
+            sections[marker_id] = self._SectionAnchor(
+                marker_id=marker_id,
+                marker_start=marker_start,
+                marker_end=marker_end,
+                section_start=section_start,
+                section_end=section_end,
+            )
+
+        anchor = sections.get(section_id)
+        if anchor is None:
+            available_markers = ", ".join(sorted(sections))
+            expected_marker = (
+                f"{self.config.section_marker_prefix}{section_id}"
+                f"{self.config.section_marker_suffix}"
+            )
+            raise RenderingError(
+                f"Missing section marker '{expected_marker}' in document. "
+                f"Available marker ids: {available_markers}"
+            )
+
+        return anchor, content
+
+    def _build_section_text_index(
+        self, content: List[Dict[str, Any]], section_start: int, section_end: int
+    ) -> Tuple[str, List[int]]:
+        text_chunks: List[str] = []
+        index_map: List[int] = []
+        for text_content, run_start, run_end in self._iter_text_runs(content):
+            overlap_start = max(section_start, run_start)
+            overlap_end = min(section_end, run_end)
+            if overlap_start >= overlap_end:
+                continue
+            relative_start = overlap_start - run_start
+            relative_end = relative_start + (overlap_end - overlap_start)
+            overlap_text = text_content[relative_start:relative_end]
+            if not overlap_text:
+                continue
+            text_chunks.append(overlap_text)
+            index_map.extend(range(overlap_start, overlap_end))
+        return "".join(text_chunks), index_map
+
     def replace_text_in_slide(
         self, presentation_id: str, slide_id: str, placeholder: str, replacement: str
     ) -> int:
-        """Replace text in document.
+        """Replace placeholder text within the target marker section only."""
+        if not placeholder:
+            return 0
 
-        `slide_id` is accepted for interface compatibility and is intentionally
-        ignored in this baseline phase.
-        """
-        del slide_id
+        anchor, content = self._resolve_section_anchor(
+            presentation_id,
+            slide_id,
+        )
+        section_text, index_map = self._build_section_text_index(
+            content,
+            anchor.section_start,
+            anchor.section_end,
+        )
+        if not section_text:
+            return 0
 
-        response = self._execute_request(
+        placeholder_occurrences: List[Tuple[int, int]] = []
+        search_position = 0
+        placeholder_length = len(placeholder)
+        while True:
+            found_at = section_text.find(placeholder, search_position)
+            if found_at < 0:
+                break
+            found_end = found_at + placeholder_length
+            abs_start = index_map[found_at]
+            abs_end = index_map[found_end - 1] + 1
+            placeholder_occurrences.append((abs_start, abs_end))
+            search_position = found_end
+
+        if not placeholder_occurrences:
+            return 0
+
+        requests: List[Dict[str, Any]] = []
+        for start_index, end_index in reversed(placeholder_occurrences):
+            requests.append(
+                {
+                    "deleteContentRange": {
+                        "range": {"startIndex": start_index, "endIndex": end_index}
+                    }
+                }
+            )
+            requests.append(
+                {
+                    "insertText": {
+                        "location": {"index": start_index},
+                        "text": replacement,
+                    }
+                }
+            )
+        self._execute_request(
             self.docs_service.documents().batchUpdate(
                 documentId=presentation_id,
-                body={
-                    "requests": [
-                        {
-                            "replaceAllText": {
-                                "containsText": {
-                                    "text": placeholder,
-                                    "matchCase": True,
-                                },
-                                "replaceText": replacement,
-                            }
-                        }
-                    ]
-                },
+                body={"requests": requests},
             )
         )
-
-        replies = response.get("replies", []) if isinstance(response, dict) else []
-        if replies and isinstance(replies[0], dict):
-            replace_result = replies[0].get("replaceAllText")
-            if isinstance(replace_result, dict):
-                occurrences = replace_result.get("occurrencesChanged")
-                if isinstance(occurrences, int):
-                    return occurrences
-        return 0
+        return len(placeholder_occurrences)
 
     def share_presentation(
         self, presentation_id: str, emails: List[str], role: str = "writer"

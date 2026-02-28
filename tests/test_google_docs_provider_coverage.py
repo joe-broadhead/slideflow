@@ -13,11 +13,19 @@ from slideflow.presentations.providers.google_docs import (
     GoogleDocsProvider,
     GoogleDocsProviderConfig,
 )
-from slideflow.utilities.exceptions import AuthenticationError
+from slideflow.utilities.exceptions import AuthenticationError, RenderingError
 
 
 def _provider_without_init() -> GoogleDocsProvider:
     return object.__new__(google_docs_module.GoogleDocsProvider)
+
+
+def _attach_default_docs_config(provider: GoogleDocsProvider) -> None:
+    provider.config = SimpleNamespace(
+        section_marker_prefix="{{SECTION:",
+        section_marker_suffix="}}",
+        strict_cleanup=False,
+    )
 
 
 def _http_error(
@@ -29,6 +37,31 @@ def _http_error(
     if content is not None:
         error.content = content
     return error
+
+
+def _document_from_paragraph_texts(*paragraph_texts: str) -> Dict[str, Any]:
+    content: List[Dict[str, Any]] = []
+    cursor = 1
+    for paragraph_text in paragraph_texts:
+        start_index = cursor
+        end_index = cursor + len(paragraph_text)
+        content.append(
+            {
+                "startIndex": start_index,
+                "endIndex": end_index,
+                "paragraph": {
+                    "elements": [
+                        {
+                            "startIndex": start_index,
+                            "endIndex": end_index,
+                            "textRun": {"content": paragraph_text},
+                        }
+                    ]
+                },
+            }
+        )
+        cursor = end_index
+    return {"body": {"content": content}}
 
 
 def test_google_docs_provider_init_success(monkeypatch):
@@ -148,23 +181,24 @@ def test_create_presentation_template_and_plain(monkeypatch):
 
 def test_insert_chart_and_replace_text_requests():
     provider = _provider_without_init()
+    _attach_default_docs_config(provider)
     provider.docs_service = SimpleNamespace(
         documents=lambda: SimpleNamespace(
             batchUpdate=lambda **kwargs: ("batch-update", kwargs),
             get=lambda **kwargs: ("doc-get", kwargs),
         )
     )
+    section_one = "{{SECTION:section-1}} Alpha {{PLACEHOLDER}}\n"
+    section_two = "{{SECTION:section-2}} Beta {{PLACEHOLDER}}\n"
+    mock_document = _document_from_paragraph_texts(section_one, section_two)
 
     requests: List[Any] = []
 
     def _exec(request: Any) -> Any:
         requests.append(request)
         if request[0] == "doc-get":
-            return {"body": {"content": [{"endIndex": 9}]}}
+            return mock_document
         if request[0] == "batch-update":
-            payload = request[1]["body"]["requests"][0]
-            if "replaceAllText" in payload:
-                return {"replies": [{"replaceAllText": {"occurrencesChanged": 4}}]}
             return {}
         return {}
 
@@ -177,19 +211,25 @@ def test_insert_chart_and_replace_text_requests():
     assert requests[1][0] == "batch-update"
     insert_payload = requests[1][1]["body"]["requests"][0]["insertInlineImage"]
     assert insert_payload["uri"] == "https://img.example/chart.png"
-    assert insert_payload["location"]["index"] == 8
+    expected_index = 1 + len("{{SECTION:section-1}}")
+    assert insert_payload["location"]["index"] == expected_index
     assert "endOfSegmentLocation" not in insert_payload
 
     replaced = provider.replace_text_in_slide(
         "doc-1", "section-1", "{{PLACEHOLDER}}", "VALUE"
     )
-    assert replaced == 4
-    replace_payload = requests[2][1]["body"]["requests"][0]["replaceAllText"]
-    assert replace_payload["containsText"]["text"] == "{{PLACEHOLDER}}"
+    assert replaced == 1
+    replace_requests = requests[3][1]["body"]["requests"]
+    assert len(replace_requests) == 2
+    delete_range = replace_requests[0]["deleteContentRange"]["range"]
+    assert delete_range["startIndex"] >= expected_index
+    section_two_start = 1 + len(section_one)
+    assert delete_range["startIndex"] < section_two_start
 
 
-def test_insert_chart_uses_fallback_index_when_document_end_unknown():
+def test_insert_chart_raises_when_marker_missing():
     provider = _provider_without_init()
+    _attach_default_docs_config(provider)
     provider.docs_service = SimpleNamespace(
         documents=lambda: SimpleNamespace(
             batchUpdate=lambda **kwargs: ("batch-update", kwargs),
@@ -202,16 +242,38 @@ def test_insert_chart_uses_fallback_index_when_document_end_unknown():
     def _exec(request: Any) -> Any:
         requests.append(request)
         if request[0] == "doc-get":
-            return {}
+            return _document_from_paragraph_texts("{{SECTION:section-1}} Alpha\n")
         return {}
 
     provider._execute_request = _exec
 
-    provider.insert_chart_to_slide(
-        "doc-2", "section-1", "https://img.example/chart.png", 10, 20, 300, 200
+    with pytest.raises(RenderingError, match="Missing section marker"):
+        provider.insert_chart_to_slide(
+            "doc-2", "missing", "https://img.example/chart.png", 10, 20, 300, 200
+        )
+
+
+def test_replace_text_raises_when_markers_are_duplicated():
+    provider = _provider_without_init()
+    _attach_default_docs_config(provider)
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
     )
-    insert_payload = requests[1][1]["body"]["requests"][0]["insertInlineImage"]
-    assert insert_payload["location"]["index"] == 1
+
+    provider._execute_request = lambda request: (
+        _document_from_paragraph_texts(
+            "{{SECTION:section-1}} First\n",
+            "{{SECTION:section-1}} Second\n",
+        )
+        if request[0] == "doc-get"
+        else {}
+    )
+
+    with pytest.raises(RenderingError, match="Duplicate section markers"):
+        provider.replace_text_in_slide("doc-1", "section-1", "{{PLACEHOLDER}}", "VALUE")
 
 
 def test_upload_share_and_delete_paths():
