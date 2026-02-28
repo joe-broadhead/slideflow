@@ -69,7 +69,7 @@ Field behavior:
 
 Current implementation notes:
 
-- `remove_section_markers` is currently reserved and not yet applied at render time.
+- `remove_section_markers` runs after render finalization and deletes section-marker tokens.
 - `default_chart_width_pt` is currently reserved and not yet applied at render time.
 
 ## Runtime Behavior

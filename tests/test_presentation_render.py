@@ -38,6 +38,7 @@ class FakeProvider:
         self.insert_calls = []
         self.page_size = None
         self.preflight_checks = []
+        self.finalize_calls = []
 
     def create_presentation(self, _name):
         return "presentation-1"
@@ -87,6 +88,9 @@ class FakeProvider:
     def run_preflight_checks(self):
         return self.preflight_checks
 
+    def finalize_presentation(self, presentation_id):
+        self.finalize_calls.append(presentation_id)
+
 
 def _build_presentation(provider):
     chart = FakeChart()
@@ -110,6 +114,7 @@ def test_render_passes_empty_dataframe_to_static_chart():
 
     assert isinstance(chart.generated_with, pd.DataFrame)
     assert result.charts_generated == 1
+    assert provider.finalize_calls == ["presentation-1"]
 
 
 def test_render_raises_when_strict_cleanup_enabled_and_delete_fails():

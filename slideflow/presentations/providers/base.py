@@ -215,6 +215,17 @@ class PresentationProvider(ABC):
         """
         return []
 
+    def finalize_presentation(self, presentation_id: str) -> None:
+        """Run provider-specific finalization after slide operations complete.
+
+        Providers can override this hook for post-render actions that must happen
+        once (for example, marker cleanup) after chart/replacement work is done.
+
+        Args:
+            presentation_id: Unique identifier of the rendered presentation.
+        """
+        del presentation_id
+
     @abstractmethod
     def create_presentation(self, name: str, template_id: Optional[str] = None) -> str:
         """Create a new presentation on the platform.
