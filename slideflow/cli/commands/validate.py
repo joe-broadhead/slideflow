@@ -264,18 +264,27 @@ def _run_google_provider_contract_check(
     }
 
 
-def _extract_google_docs_text(document_payload: Dict[str, Any]) -> str:
-    """Extract concatenated text content from a Google Docs payload."""
+def _extract_google_docs_text_segments(document_payload: Dict[str, Any]) -> List[str]:
+    """Extract contiguous text segments from a Google Docs payload.
+
+    Segments preserve paragraph run continuity and intentionally ignore table of
+    contents content to align with runtime provider behavior.
+    """
     if not isinstance(document_payload, dict):
-        return ""
+        return []
     body = document_payload.get("body")
     if not isinstance(body, dict):
-        return ""
+        return []
     content = body.get("content")
     if not isinstance(content, list):
-        return ""
+        return []
 
-    chunks: List[str] = []
+    segments: List[str] = []
+
+    def _flush(run_chunks: List[str]) -> None:
+        if run_chunks:
+            segments.append("".join(run_chunks))
+            run_chunks.clear()
 
     def _walk_elements(elements: List[Any]) -> None:
         for element in elements:
@@ -286,15 +295,43 @@ def _extract_google_docs_text(document_payload: Dict[str, Any]) -> str:
             if isinstance(paragraph, dict):
                 para_elements = paragraph.get("elements")
                 if isinstance(para_elements, list):
+                    run_chunks: List[str] = []
+                    previous_end: Optional[int] = None
                     for para_element in para_elements:
                         if not isinstance(para_element, dict):
+                            _flush(run_chunks)
+                            previous_end = None
                             continue
                         text_run = para_element.get("textRun")
                         if not isinstance(text_run, dict):
+                            _flush(run_chunks)
+                            previous_end = None
                             continue
                         text_content = text_run.get("content")
-                        if isinstance(text_content, str):
-                            chunks.append(text_content)
+                        if not isinstance(text_content, str):
+                            _flush(run_chunks)
+                            previous_end = None
+                            continue
+
+                        start_index = para_element.get("startIndex")
+                        end_index = para_element.get("endIndex")
+                        if (
+                            isinstance(start_index, int)
+                            and isinstance(end_index, int)
+                            and end_index > start_index
+                        ):
+                            if previous_end is None or previous_end == start_index:
+                                run_chunks.append(text_content)
+                            else:
+                                _flush(run_chunks)
+                                run_chunks.append(text_content)
+                            previous_end = end_index
+                        else:
+                            _flush(run_chunks)
+                            segments.append(text_content)
+                            previous_end = None
+
+                    _flush(run_chunks)
 
             table = element.get("table")
             if isinstance(table, dict):
@@ -314,11 +351,11 @@ def _extract_google_docs_text(document_payload: Dict[str, Any]) -> str:
                                 _walk_elements(cell_content)
 
     _walk_elements(content)
-    return "".join(chunks)
+    return segments
 
 
 def _extract_google_docs_sections(
-    document_text: str,
+    document_segments: List[str],
     marker_prefix: str,
     marker_suffix: str,
 ) -> Dict[str, Any]:
@@ -326,28 +363,60 @@ def _extract_google_docs_sections(
     marker_pattern = re.compile(
         f"{re.escape(marker_prefix)}(?P<id>.+?){re.escape(marker_suffix)}"
     )
-    marker_matches = list(marker_pattern.finditer(document_text))
-    if not marker_matches:
+    marker_positions: List[Dict[str, Any]] = []
+    for segment_index, segment_text in enumerate(document_segments):
+        for marker_match in marker_pattern.finditer(segment_text):
+            marker_positions.append(
+                {
+                    "id": marker_match.group("id").strip(),
+                    "segment_index": segment_index,
+                    "start": marker_match.start(),
+                    "end": marker_match.end(),
+                }
+            )
+
+    if not marker_positions:
         return {"sections": {}, "duplicate_markers": set()}
 
-    marker_ids = [match.group("id").strip() for match in marker_matches]
+    marker_ids = [marker["id"] for marker in marker_positions]
     counts: Dict[str, int] = {}
     for marker_id in marker_ids:
         counts[marker_id] = counts.get(marker_id, 0) + 1
     duplicate_markers = {marker_id for marker_id, count in counts.items() if count > 1}
 
     sections: Dict[str, str] = {}
-    for index, match in enumerate(marker_matches):
-        marker_id = match.group("id").strip()
+    for index, marker in enumerate(marker_positions):
+        marker_id = marker["id"]
         if marker_id in duplicate_markers:
             continue
-        section_start = match.end()
-        section_end = (
-            marker_matches[index + 1].start()
-            if index + 1 < len(marker_matches)
-            else len(document_text)
+        marker_segment_index = marker["segment_index"]
+        marker_end = marker["end"]
+        next_marker = (
+            marker_positions[index + 1] if index + 1 < len(marker_positions) else None
         )
-        sections[marker_id] = document_text[section_start:section_end]
+
+        if next_marker is None:
+            trailing_chunks = [document_segments[marker_segment_index][marker_end:]]
+            if marker_segment_index + 1 < len(document_segments):
+                trailing_chunks.extend(document_segments[marker_segment_index + 1 :])
+            sections[marker_id] = "".join(trailing_chunks)
+            continue
+
+        next_segment_index = next_marker["segment_index"]
+        next_start = next_marker["start"]
+        if next_segment_index == marker_segment_index:
+            sections[marker_id] = document_segments[marker_segment_index][
+                marker_end:next_start
+            ]
+            continue
+
+        section_chunks = [document_segments[marker_segment_index][marker_end:]]
+        if marker_segment_index + 1 < next_segment_index:
+            section_chunks.extend(
+                document_segments[marker_segment_index + 1 : next_segment_index]
+            )
+        section_chunks.append(document_segments[next_segment_index][:next_start])
+        sections[marker_id] = "".join(section_chunks)
 
     return {"sections": sections, "duplicate_markers": duplicate_markers}
 
@@ -372,9 +441,9 @@ def _run_google_docs_provider_contract_check(
             response = provider._execute_request(  # noqa: SLF001
                 provider.docs_service.documents().get(documentId=template_id)
             )
-            document_text = _extract_google_docs_text(response)
+            document_segments = _extract_google_docs_text_segments(response)
             sections_payload = _extract_google_docs_sections(
-                document_text=document_text,
+                document_segments=document_segments,
                 marker_prefix=marker_prefix,
                 marker_suffix=marker_suffix,
             )
