@@ -217,11 +217,12 @@ class GoogleDocsProvider(PresentationProvider):
         """
         del slide_id, x, y
 
+        insert_index = self._get_document_insert_index(presentation_id)
         requests = [
             {
                 "insertInlineImage": {
                     "uri": image_url,
-                    "endOfSegmentLocation": {},
+                    "location": {"index": insert_index},
                     "objectSize": {
                         "width": {"magnitude": width, "unit": "PT"},
                         "height": {"magnitude": height, "unit": "PT"},
@@ -234,6 +235,42 @@ class GoogleDocsProvider(PresentationProvider):
                 documentId=presentation_id, body={"requests": requests}
             )
         )
+
+    def _get_document_insert_index(self, document_id: str) -> int:
+        """Resolve a safe inline-image insertion index for a Google Doc."""
+        minimum_insert_index = 1
+        try:
+            document = self._execute_request(
+                self.docs_service.documents().get(
+                    documentId=document_id, fields="body/content/endIndex"
+                )
+            )
+        except HttpError as error:
+            logger.warning(
+                "Could not resolve document insertion index for %s: %s. "
+                "Using fallback index %s.",
+                document_id,
+                error,
+                minimum_insert_index,
+            )
+            return minimum_insert_index
+
+        if not isinstance(document, dict):
+            return minimum_insert_index
+        body = document.get("body", {})
+        if not isinstance(body, dict):
+            return minimum_insert_index
+        content = body.get("content", [])
+        if not isinstance(content, list):
+            return minimum_insert_index
+
+        for element in reversed(content):
+            if not isinstance(element, dict):
+                continue
+            end_index = element.get("endIndex")
+            if isinstance(end_index, int):
+                return max(minimum_insert_index, end_index - 1)
+        return minimum_insert_index
 
     def replace_text_in_slide(
         self, presentation_id: str, slide_id: str, placeholder: str, replacement: str

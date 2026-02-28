@@ -150,28 +150,68 @@ def test_insert_chart_and_replace_text_requests():
     provider = _provider_without_init()
     provider.docs_service = SimpleNamespace(
         documents=lambda: SimpleNamespace(
-            batchUpdate=lambda **kwargs: ("batch-update", kwargs)
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
         )
     )
 
     requests: List[Any] = []
-    provider._execute_request = lambda request: requests.append(request) or {
-        "replies": [{"replaceAllText": {"occurrencesChanged": 4}}]
-    }
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return {"body": {"content": [{"endIndex": 9}]}}
+        if request[0] == "batch-update":
+            payload = request[1]["body"]["requests"][0]
+            if "replaceAllText" in payload:
+                return {"replies": [{"replaceAllText": {"occurrencesChanged": 4}}]}
+            return {}
+        return {}
+
+    provider._execute_request = _exec
 
     provider.insert_chart_to_slide(
         "doc-1", "section-1", "https://img.example/chart.png", 10, 20, 300, 200
     )
-    assert requests[0][0] == "batch-update"
-    insert_payload = requests[0][1]["body"]["requests"][0]["insertInlineImage"]
+    assert requests[0][0] == "doc-get"
+    assert requests[1][0] == "batch-update"
+    insert_payload = requests[1][1]["body"]["requests"][0]["insertInlineImage"]
     assert insert_payload["uri"] == "https://img.example/chart.png"
+    assert insert_payload["location"]["index"] == 8
+    assert "endOfSegmentLocation" not in insert_payload
 
     replaced = provider.replace_text_in_slide(
         "doc-1", "section-1", "{{PLACEHOLDER}}", "VALUE"
     )
     assert replaced == 4
-    replace_payload = requests[1][1]["body"]["requests"][0]["replaceAllText"]
+    replace_payload = requests[2][1]["body"]["requests"][0]["replaceAllText"]
     assert replace_payload["containsText"]["text"] == "{{PLACEHOLDER}}"
+
+
+def test_insert_chart_uses_fallback_index_when_document_end_unknown():
+    provider = _provider_without_init()
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs),
+            get=lambda **kwargs: ("doc-get", kwargs),
+        )
+    )
+
+    requests: List[Any] = []
+
+    def _exec(request: Any) -> Any:
+        requests.append(request)
+        if request[0] == "doc-get":
+            return {}
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.insert_chart_to_slide(
+        "doc-2", "section-1", "https://img.example/chart.png", 10, 20, 300, 200
+    )
+    insert_payload = requests[1][1]["body"]["requests"][0]["insertInlineImage"]
+    assert insert_payload["location"]["index"] == 1
 
 
 def test_upload_share_and_delete_paths():
