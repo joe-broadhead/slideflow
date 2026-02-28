@@ -276,6 +276,24 @@ def test_handle_google_credentials_from_file_and_env(tmp_path, monkeypatch):
     assert handle_google_credentials(None) == payload
 
 
+def test_handle_google_credentials_custom_env_precedence(monkeypatch):
+    payload_docs = {"client_email": "docs@example.com", "private_key": "abc"}
+    payload_slides = {"client_email": "slides@example.com", "private_key": "def"}
+    monkeypatch.setenv(Environment.GOOGLE_DOCS_CREDENTIALS, json.dumps(payload_docs))
+    monkeypatch.setenv(
+        Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, json.dumps(payload_slides)
+    )
+
+    resolved = handle_google_credentials(
+        None,
+        env_var_names=[
+            Environment.GOOGLE_DOCS_CREDENTIALS,
+            Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
+        ],
+    )
+    assert resolved == payload_docs
+
+
 def test_handle_google_credentials_validation_errors(tmp_path, monkeypatch):
     bad_path = tmp_path / "bad.json"
     bad_path.write_text("{not json}")
@@ -287,7 +305,9 @@ def test_handle_google_credentials_validation_errors(tmp_path, monkeypatch):
         handle_google_credentials("{broken")
 
     monkeypatch.delenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, raising=False)
-    with pytest.raises(AuthenticationError, match="Credentials not provided"):
+    with pytest.raises(
+        AuthenticationError, match="no supported credential environment variables"
+    ):
         handle_google_credentials(None)
 
 

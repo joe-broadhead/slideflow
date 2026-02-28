@@ -62,6 +62,10 @@ from slideflow.presentations.providers.base import (
     ProviderSlideResult,
 )
 from slideflow.presentations.providers.factory import ProviderFactory
+from slideflow.presentations.providers.google_docs import (
+    GoogleDocsProvider,
+    GoogleDocsProviderConfig,
+)
 from slideflow.presentations.providers.google_slides import (
     GoogleSlidesProvider,
     GoogleSlidesProviderConfig,
@@ -74,5 +78,7 @@ __all__ = [
     "ProviderSlideResult",
     "GoogleSlidesProvider",
     "GoogleSlidesProviderConfig",
+    "GoogleDocsProvider",
+    "GoogleDocsProviderConfig",
     "ProviderFactory",
 ]
