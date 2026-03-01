@@ -865,3 +865,45 @@ def test_render_citations_per_section_routes_to_footnotes(monkeypatch):
             [{"source_id": "src-2", "provider": "csv", "display_name": "Two"}],
         ),
     ]
+
+
+def test_render_document_end_citations_logs_warning_for_invalid_payload(monkeypatch):
+    provider = _provider_without_init()
+    provider._get_document_content = lambda _document_id: [{"endIndex": 6}]
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs)
+        )
+    )
+
+    calls: List[Any] = []
+    provider._execute_request = lambda request: calls.append(request) or {}
+
+    warnings: List[str] = []
+    monkeypatch.setattr(
+        google_docs_module.logger,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    provider._render_document_end_citations(
+        "doc-3",
+        [
+            {"source_id": "src-invalid", "provider": "csv"},
+            {
+                "source_id": "src-valid",
+                "provider": "csv",
+                "display_name": "Valid Source",
+            },
+        ],
+    )
+
+    assert calls
+    request = calls[0][1]
+    inserted_text = request["body"]["requests"][0]["insertText"]["text"]
+    assert "Valid Source" in inserted_text
+    assert "src-invalid" not in inserted_text
+
+    assert warnings
+    assert "location=document_end" in warnings[0]
+    assert "src-invalid" in warnings[0]

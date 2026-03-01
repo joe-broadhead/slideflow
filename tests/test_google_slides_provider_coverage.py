@@ -551,6 +551,49 @@ def test_render_citations_document_end_uses_first_slide_notes():
     assert "Two" in insert_request["text"]
 
 
+def test_render_citations_logs_warning_for_invalid_payload_and_continues(monkeypatch):
+    provider = _provider_without_init()
+    provider._get_speaker_notes_targets = lambda _presentation_id: {
+        "slide-1": ("notes-1", 3)
+    }
+    captured_requests: List[Dict[str, Any]] = []
+    provider._batch_update = (
+        lambda _presentation_id, requests: captured_requests.extend(requests) or {}
+    )
+
+    warnings: List[str] = []
+    monkeypatch.setattr(
+        google_provider_module.logger,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    provider.render_citations(
+        "pres-1",
+        {
+            "slide-1": [
+                {"source_id": "src-invalid", "provider": "csv"},
+                {
+                    "source_id": "src-valid",
+                    "provider": "csv",
+                    "display_name": "Valid Source",
+                },
+            ]
+        },
+        location="per_slide",
+    )
+
+    assert len(captured_requests) == 1
+    rendered_text = captured_requests[0]["insertText"]["text"]
+    assert "Valid Source" in rendered_text
+    assert "src-invalid" not in rendered_text
+
+    assert warnings
+    assert "slide-1" in warnings[0]
+    assert "src-invalid" in warnings[0]
+    assert "location=per_slide" in warnings[0]
+
+
 def test_get_speaker_notes_targets_reads_slide_properties_notes_page():
     provider = _provider_without_init()
     captured_get_kwargs: Dict[str, Any] = {}
