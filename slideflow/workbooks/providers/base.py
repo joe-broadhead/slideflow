@@ -40,6 +40,18 @@ class WorkbookProvider(ABC):
         """Replace rows in a target tab and return number of rows written."""
         raise NotImplementedError
 
+    @abstractmethod
+    def write_append_rows(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        start_cell: str,
+        rows: List[List[Any]],
+        run_key: str,
+    ) -> Tuple[int, int]:
+        """Append rows with idempotency and return (rows_written, rows_skipped)."""
+        raise NotImplementedError
+
     def finalize_workbook(self, workbook_id: str) -> None:
         """Run provider-specific finalize hooks after tab writes."""
         del workbook_id

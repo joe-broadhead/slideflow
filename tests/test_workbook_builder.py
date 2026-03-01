@@ -11,7 +11,9 @@ class _FakeProvider:
     def __init__(self, fail_tab: str | None = None):
         self.fail_tab = fail_tab
         self.calls = []
+        self.append_calls = []
         self.finalized_ids = []
+        self._seen_run_keys = set()
 
     def create_or_open_workbook(self, title: str) -> str:
         assert title == "Weekly KPI Snapshot"
@@ -29,6 +31,24 @@ class _FakeProvider:
             }
         )
         return len(rows)
+
+    def write_append_rows(self, workbook_id, tab_name, start_cell, rows, run_key):
+        if self.fail_tab == tab_name:
+            raise RuntimeError("tab write failed")
+        dedupe_key = (tab_name, run_key)
+        if dedupe_key in self._seen_run_keys:
+            return 0, len(rows)
+        self._seen_run_keys.add(dedupe_key)
+        self.append_calls.append(
+            {
+                "workbook_id": workbook_id,
+                "tab_name": tab_name,
+                "start_cell": start_cell,
+                "rows": rows,
+                "run_key": run_key,
+            }
+        )
+        return len(rows), 0
 
     def finalize_workbook(self, workbook_id: str):
         self.finalized_ids.append(workbook_id)
@@ -130,3 +150,34 @@ def test_workbook_builder_collects_tab_errors_without_aborting(tmp_path, monkeyp
         "failing_tab",
     ]
     assert result.tab_results[1].error == "tab write failed"
+
+
+def test_workbook_builder_append_mode_tracks_idempotent_skips(tmp_path, monkeypatch):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["tabs"][0]["mode"] = "append"
+    payload["workbook"]["tabs"][0]["include_header"] = False
+    payload["workbook"]["tabs"][0]["idempotency_key"] = "week_2026_09"
+    config = WorkbookConfig.model_validate(payload)
+
+    fake_provider = _FakeProvider()
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: fake_provider),
+    )
+
+    first_result = WorkbookBuilder.from_config(config).build()
+    second_result = WorkbookBuilder.from_config(config).build()
+
+    assert first_result.status == "success"
+    assert first_result.tab_results[0].run_key == "week_2026_09"
+    assert first_result.tab_results[0].rows_written == 2
+    assert first_result.idempotent_skips == 0
+
+    assert second_result.status == "success"
+    assert second_result.tab_results[0].rows_written == 0
+    assert second_result.tab_results[0].rows_skipped == 2
+    assert second_result.idempotent_skips == 2
+    assert fake_provider.append_calls[0]["rows"][0] == ["Jan", "10"]
