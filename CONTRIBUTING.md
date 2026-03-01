@@ -42,6 +42,7 @@ Live Google suite (optional, requires credentials):
 ```bash
 python -m pytest -q tests/live_tests -m live_google
 python -m pytest -q tests/live_tests -m live_google_docs
+python -m pytest -q tests/live_tests -m live_google_sheets
 ```
 
 ## Contribution expectations
