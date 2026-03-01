@@ -315,11 +315,13 @@ def test_handle_google_credentials_validation_errors(tmp_path, monkeypatch):
     bad_path = tmp_path / "bad.json"
     bad_path.write_text("{not json}")
 
-    with pytest.raises(AuthenticationError, match="not a valid JSON"):
+    with pytest.raises(AuthenticationError, match="not a valid JSON") as file_exc_info:
         handle_google_credentials(str(bad_path))
+    assert isinstance(file_exc_info.value.__cause__, json.JSONDecodeError)
 
-    with pytest.raises(AuthenticationError, match="not valid"):
+    with pytest.raises(AuthenticationError, match="not valid") as string_exc_info:
         handle_google_credentials("{broken")
+    assert isinstance(string_exc_info.value.__cause__, json.JSONDecodeError)
 
     monkeypatch.delenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, raising=False)
     with pytest.raises(

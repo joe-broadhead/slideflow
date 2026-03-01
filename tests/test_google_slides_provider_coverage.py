@@ -76,8 +76,12 @@ def test_google_provider_init_authentication_failure(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("bad creds")),
     )
 
-    with pytest.raises(AuthenticationError, match="Credentials authentication failed"):
+    with pytest.raises(
+        AuthenticationError, match="Credentials authentication failed"
+    ) as exc_info:
         GoogleSlidesProvider(GoogleSlidesProviderConfig(credentials='{"invalid":true}'))
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 def test_google_slides_config_validates_transfer_ownership_target():
