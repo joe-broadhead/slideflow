@@ -198,10 +198,17 @@ jobs:
           if [[ -n "$extras" ]]; then
             if [[ "$package_spec" == *"["* ]]; then
               install_spec="$package_spec"
+            elif [[ "$package_spec" == *" @ "* ]]; then
+              package_name="${package_spec%% @ *}"
+              package_source="${package_spec#* @ }"
+              install_spec="${package_name}[${extras}] @ ${package_source}"
             elif [[ "$package_spec" == *"=="* ]]; then
               package_name="${package_spec%%==*}"
               package_version="${package_spec#*==}"
               install_spec="${package_name}[${extras}]==${package_version}"
+            elif [[ "$package_spec" =~ ^(git\+|https?://|file://|/|\.{1,2}/) ]]; then
+              echo "::warning::slideflow-install-extras was ignored for direct URL/path package spec '${package_spec}'. Use a named requirement (for example: slideflow-presentations[${extras}] @ <url>) if extras are required."
+              install_spec="$package_spec"
             else
               install_spec="${package_spec}[${extras}]"
             fi
