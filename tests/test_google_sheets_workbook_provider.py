@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Dict, List, Set, Tuple
 
+import pytest
+
 import slideflow.workbooks.providers.google_sheets as sheets_provider_module
 from slideflow.workbooks.config import RESERVED_METADATA_TAB
 
@@ -170,3 +172,98 @@ def test_write_append_rows_appends_and_records_new_run_key():
     assert requests and requests[0][0] == "values.append"
     assert requests[0][1]["range"] == "kpi_current!B2"
     assert recorded == [("sheet_123", "kpi_current", "wk_2", 2)]
+
+
+def test_write_append_rows_cleans_reserved_key_when_data_append_fails():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+
+    def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
+        del workbook_id, tab_name
+
+    provider._ensure_sheet_exists = _ensure_sheet_exists
+    run_keys: Set[Tuple[str, str]] = set()
+    provider._load_run_key_cache = lambda _workbook_id: run_keys
+
+    reserved: List[Tuple[str, str]] = []
+    removed: List[Tuple[str, str]] = []
+
+    def _record_run_key(
+        workbook_id: str, tab_name: str, run_key: str, rows_written: int
+    ) -> None:
+        del workbook_id, rows_written
+        reserved.append((tab_name, run_key))
+        run_keys.add((tab_name, run_key))
+
+    def _remove_run_key_record(workbook_id: str, tab_name: str, run_key: str) -> None:
+        del workbook_id
+        removed.append((tab_name, run_key))
+        run_keys.discard((tab_name, run_key))
+
+    provider._record_run_key = _record_run_key
+    provider._remove_run_key_record = _remove_run_key_record
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+
+    def _exec(request):
+        if request[0] == "values.append":
+            raise RuntimeError("append failed")
+        return {}
+
+    provider._execute_request = _exec
+
+    with pytest.raises(RuntimeError, match="append failed"):
+        provider.write_append_rows(
+            workbook_id="sheet_123",
+            tab_name="kpi_current",
+            start_cell="A1",
+            rows=[[1], [2]],
+            run_key="wk_3",
+        )
+
+    assert reserved == [("kpi_current", "wk_3")]
+    assert removed == [("kpi_current", "wk_3")]
+    assert ("kpi_current", "wk_3") not in run_keys
+
+
+def test_write_append_rows_keeps_reserved_key_if_cleanup_fails():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+
+    def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
+        del workbook_id, tab_name
+
+    provider._ensure_sheet_exists = _ensure_sheet_exists
+    run_keys: Set[Tuple[str, str]] = set()
+    provider._load_run_key_cache = lambda _workbook_id: run_keys
+
+    def _record_run_key(
+        workbook_id: str, tab_name: str, run_key: str, rows_written: int
+    ) -> None:
+        del workbook_id, rows_written
+        run_keys.add((tab_name, run_key))
+
+    def _remove_run_key_record(workbook_id: str, tab_name: str, run_key: str) -> None:
+        del workbook_id, tab_name, run_key
+        raise RuntimeError("cleanup failed")
+
+    provider._record_run_key = _record_run_key
+    provider._remove_run_key_record = _remove_run_key_record
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+
+    def _exec(request):
+        if request[0] == "values.append":
+            raise RuntimeError("append failed")
+        return {}
+
+    provider._execute_request = _exec
+
+    with pytest.raises(RuntimeError, match="append failed"):
+        provider.write_append_rows(
+            workbook_id="sheet_123",
+            tab_name="kpi_current",
+            start_cell="A1",
+            rows=[[1]],
+            run_key="wk_4",
+        )
+
+    assert ("kpi_current", "wk_4") in run_keys

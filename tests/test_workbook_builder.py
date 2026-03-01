@@ -157,6 +157,7 @@ def test_workbook_builder_append_mode_tracks_idempotent_skips(tmp_path, monkeypa
     csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
     payload = _workbook_payload(csv_path)
     payload["workbook"]["tabs"][0]["mode"] = "append"
+    payload["workbook"]["tabs"][0]["include_header"] = False
     payload["workbook"]["tabs"][0]["idempotency_key"] = "week_2026_09"
     config = WorkbookConfig.model_validate(payload)
 

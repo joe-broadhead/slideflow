@@ -38,8 +38,19 @@ def test_workbook_config_accepts_minimal_valid_payload():
 def test_workbook_config_append_mode_requires_idempotency_key():
     payload = _base_workbook_config()
     payload["workbook"]["tabs"][0]["mode"] = "append"
+    payload["workbook"]["tabs"][0]["include_header"] = False
 
     with pytest.raises(ValidationError, match="idempotency_key"):
+        WorkbookConfig.model_validate(payload)
+
+
+def test_workbook_config_append_mode_rejects_include_header_true():
+    payload = _base_workbook_config()
+    payload["workbook"]["tabs"][0]["mode"] = "append"
+    payload["workbook"]["tabs"][0]["idempotency_key"] = "wk_1"
+    payload["workbook"]["tabs"][0]["include_header"] = True
+
+    with pytest.raises(ValidationError, match="include_header"):
         WorkbookConfig.model_validate(payload)
 
 

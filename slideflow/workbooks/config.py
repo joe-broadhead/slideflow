@@ -137,6 +137,10 @@ class WorkbookTabSpec(BaseModel):
             raise ValueError(
                 "workbook.tabs[].idempotency_key is required when mode='append'"
             )
+        if self.mode == "append" and self.include_header:
+            raise ValueError(
+                "workbook.tabs[].include_header must be false when mode='append'"
+            )
         return self
 
 

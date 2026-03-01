@@ -303,6 +303,40 @@ class GoogleSheetsProvider(WorkbookProvider):
         )
         self._run_key_cache.setdefault(workbook_id, set()).add((tab_name, run_key))
 
+    def _remove_run_key_record(
+        self, workbook_id: str, tab_name: str, run_key: str
+    ) -> None:
+        metadata_range = self._sheet_range(RESERVED_METADATA_TAB, "A2:B")
+        response = self._execute_request(
+            self.sheets_service.spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=workbook_id,
+                range=metadata_range,
+            )
+        )
+        values = response.get("values", []) if isinstance(response, dict) else []
+        matched_row_numbers: List[int] = []
+        for index, row in enumerate(values, start=2):
+            if not isinstance(row, list) or len(row) < 2:
+                continue
+            if row[0] == tab_name and row[1] == run_key:
+                matched_row_numbers.append(index)
+
+        for row_number in matched_row_numbers:
+            row_range = self._sheet_range(
+                RESERVED_METADATA_TAB, f"A{row_number}:D{row_number}"
+            )
+            self._execute_request(
+                self.sheets_service.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=workbook_id,
+                    range=row_range,
+                    body={},
+                )
+            )
+
     def write_replace_rows(
         self,
         workbook_id: str,
@@ -353,26 +387,42 @@ class GoogleSheetsProvider(WorkbookProvider):
         if dedupe_key in run_keys:
             return 0, len(rows)
 
-        if rows:
-            target_range = self._sheet_range(tab_name, start_cell)
-            self._execute_request(
-                self.sheets_service.spreadsheets()
-                .values()
-                .append(
-                    spreadsheetId=workbook_id,
-                    range=target_range,
-                    valueInputOption="RAW",
-                    insertDataOption="INSERT_ROWS",
-                    body={"values": rows},
-                )
-            )
-
+        # Reserve the run key first so retries won't duplicate append writes.
         self._record_run_key(
             workbook_id=workbook_id,
             tab_name=tab_name,
             run_key=run_key,
             rows_written=len(rows),
         )
+
+        try:
+            if rows:
+                target_range = self._sheet_range(tab_name, start_cell)
+                self._execute_request(
+                    self.sheets_service.spreadsheets()
+                    .values()
+                    .append(
+                        spreadsheetId=workbook_id,
+                        range=target_range,
+                        valueInputOption="RAW",
+                        insertDataOption="INSERT_ROWS",
+                        body={"values": rows},
+                    )
+                )
+        except Exception:
+            try:
+                self._remove_run_key_record(workbook_id, tab_name, run_key)
+                self._run_key_cache.setdefault(workbook_id, set()).discard(dedupe_key)
+            except Exception as cleanup_error:
+                logger.error(
+                    "Failed to clean up reserved run key after append failure "
+                    "(workbook_id=%s, tab=%s, run_key=%s): %s",
+                    workbook_id,
+                    tab_name,
+                    run_key,
+                    cleanup_error,
+                )
+            raise
         return len(rows), 0
 
     def finalize_workbook(self, workbook_id: str) -> None:
