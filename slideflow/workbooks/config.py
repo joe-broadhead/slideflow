@@ -1,5 +1,7 @@
 """Workbook configuration models for sheet generation workflows."""
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional
@@ -105,6 +107,13 @@ class WorkbookTabSpec(BaseModel):
             description="Template key for append dedupe; required for append mode",
         ),
     ]
+    ai: Annotated[
+        Optional["WorkbookTabAISpec"],
+        Field(
+            default=None,
+            description="Optional tab-local AI configuration (summaries, etc.)",
+        ),
+    ]
 
     @field_validator("name")
     @classmethod
@@ -153,7 +162,7 @@ class WorkbookSummaryPlacement(BaseModel):
         Literal["same_sheet", "summary_tab"],
         Field(..., description="Summary destination strategy"),
     ]
-    tab_name: Annotated[
+    target_tab: Annotated[
         Optional[str],
         Field(default=None, description="Target tab name for summary output"),
     ]
@@ -168,9 +177,9 @@ class WorkbookSummaryPlacement(BaseModel):
         ),
     ]
 
-    @field_validator("tab_name")
+    @field_validator("target_tab")
     @classmethod
-    def _normalize_tab_name(cls, value: Optional[str]) -> Optional[str]:
+    def _normalize_target_tab(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         normalized = value.strip()
@@ -192,21 +201,10 @@ class WorkbookSummaryPlacement(BaseModel):
 
     @model_validator(mode="after")
     def _validate_required_fields(self):
-        if self.type == "same_sheet":
-            if not self.tab_name:
-                raise ValueError(
-                    "workbook.summaries[].placement.tab_name is required when "
-                    "placement.type='same_sheet'"
-                )
-            if not self.anchor_cell:
-                raise ValueError(
-                    "workbook.summaries[].placement.anchor_cell is required when "
-                    "placement.type='same_sheet'"
-                )
-        if self.type == "summary_tab" and not self.tab_name:
+        if self.type == "same_sheet" and not self.anchor_cell:
             raise ValueError(
-                "workbook.summaries[].placement.tab_name is required when "
-                "placement.type='summary_tab'"
+                "workbook.tabs[].ai.summaries[].config.placement.anchor_cell is "
+                "required when placement.type='same_sheet'"
             )
         return self
 
@@ -245,10 +243,78 @@ class WorkbookSummarySpec(BaseModel):
     def _validate_mode_constraints(self):
         if self.mode == "history" and self.placement.clear_range:
             raise ValueError(
-                "workbook.summaries[].placement.clear_range is not allowed when "
-                "mode='history'"
+                "workbook.tabs[].ai.summaries[].config.placement.clear_range is not "
+                "allowed when mode='history'"
             )
         return self
+
+
+class WorkbookTabAISummaryConfig(BaseModel):
+    """Config payload for a tab-local AI summary entry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[
+        Optional[str],
+        Field(default=None, description="Optional summary name (auto-generated)"),
+    ]
+    prompt: Annotated[str, Field(..., description="Summary generation prompt")]
+    provider: Annotated[str, Field(..., description="AI provider identifier")]
+    provider_args: Annotated[
+        Dict[str, Any],
+        Field(default_factory=dict, description="Provider-specific args"),
+    ]
+    mode: Annotated[
+        Literal["latest", "history"],
+        Field(default="latest", description="Summary write behavior"),
+    ]
+    placement: Annotated[
+        WorkbookSummaryPlacement,
+        Field(..., description="Summary placement configuration"),
+    ]
+
+    @field_validator("name", "provider", "prompt")
+    @classmethod
+    def _normalize_required_strings(
+        cls, value: Optional[str], info: Any
+    ) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(
+                f"workbook.tabs[].ai.summaries[].config.{info.field_name} cannot be empty"
+            )
+        return normalized
+
+
+class WorkbookTabAISummarySpec(BaseModel):
+    """Tab-local AI summary declaration using a slides/docs style type+config shape."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Annotated[
+        Literal["ai_text"],
+        Field(
+            default="ai_text",
+            description="AI summary type identifier (must be ai_text)",
+        ),
+    ]
+    config: Annotated[
+        WorkbookTabAISummaryConfig,
+        Field(..., description="AI summary config payload"),
+    ]
+
+
+class WorkbookTabAISpec(BaseModel):
+    """Tab-local AI definitions for workbook tabs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    summaries: Annotated[
+        List[WorkbookTabAISummarySpec],
+        Field(default_factory=list, description="Tab-local summary definitions"),
+    ]
 
 
 class WorkbookSpec(BaseModel):
@@ -260,10 +326,6 @@ class WorkbookSpec(BaseModel):
     tabs: Annotated[
         List[WorkbookTabSpec],
         Field(..., min_length=1, description="Workbook tab write definitions"),
-    ]
-    summaries: Annotated[
-        List[WorkbookSummarySpec],
-        Field(default_factory=list, description="Optional summary definitions"),
     ]
 
     @field_validator("title")
@@ -289,34 +351,36 @@ class WorkbookSpec(BaseModel):
                 + ", ".join(sorted(duplicate_tab_names))
             )
 
-        for summary in self.summaries:
-            if summary.source_tab not in tab_by_name:
-                raise ValueError(
-                    "workbook.summaries[].source_tab must reference an existing tab; "
-                    f"got '{summary.source_tab}'"
-                )
+        canonical_summaries = self.iter_summary_specs()
+        duplicate_summary_names = set()
+        seen_summary_names = set()
+
+        for summary in canonical_summaries:
+            if summary.name in seen_summary_names:
+                duplicate_summary_names.add(summary.name)
+            seen_summary_names.add(summary.name)
 
             placement = summary.placement
-            target_tab = placement.tab_name
+            target_tab = placement.target_tab or summary.source_tab
             if target_tab == RESERVED_METADATA_TAB:
                 raise ValueError(
-                    f"workbook.summaries[].placement.tab_name cannot use reserved tab "
-                    f"name '{RESERVED_METADATA_TAB}'"
+                    "workbook.tabs[].ai.summaries[].config.placement.target_tab cannot "
+                    f"use reserved tab name '{RESERVED_METADATA_TAB}'"
                 )
 
             if placement.type == "same_sheet":
                 if target_tab != summary.source_tab:
                     raise ValueError(
-                        "workbook.summaries[].placement.tab_name must match "
-                        "source_tab when placement.type='same_sheet'"
+                        "workbook.tabs[].ai.summaries[].config.placement.target_tab "
+                        "must match source tab when placement.type='same_sheet'"
                     )
 
                 source_tab = tab_by_name[summary.source_tab]
                 if source_tab.mode == "append":
                     raise ValueError(
-                        "workbook.summaries[] with placement.type='same_sheet' is "
-                        "not supported for append-mode source tabs; use "
-                        "placement.type='summary_tab' instead"
+                        "workbook.tabs[].ai.summaries[] with "
+                        "placement.type='same_sheet' is not supported for append-mode "
+                        "source tabs; use placement.type='summary_tab' instead"
                     )
                 if placement.anchor_cell == source_tab.start_cell:
                     raise ValueError(
@@ -330,7 +394,36 @@ class WorkbookSpec(BaseModel):
                         "Summary clear_range cannot include the tab data start_cell"
                     )
 
+        if duplicate_summary_names:
+            raise ValueError(
+                "Summary names must be unique across workbook tabs; duplicates: "
+                + ", ".join(sorted(duplicate_summary_names))
+            )
+
         return self
+
+    def iter_summary_specs(self) -> List[WorkbookSummarySpec]:
+        """Expand tab-local AI summary blocks into canonical summary specs."""
+        canonical: List[WorkbookSummarySpec] = []
+        for tab in self.tabs:
+            tab_ai = tab.ai
+            if tab_ai is None:
+                continue
+            for index, summary in enumerate(tab_ai.summaries, start=1):
+                summary_config = summary.config
+                summary_name = summary_config.name or f"{tab.name}_summary_{index}"
+                canonical.append(
+                    WorkbookSummarySpec(
+                        name=summary_name,
+                        source_tab=tab.name,
+                        provider=summary_config.provider,
+                        provider_args=summary_config.provider_args,
+                        prompt=summary_config.prompt,
+                        placement=summary_config.placement,
+                        mode=summary_config.mode,
+                    )
+                )
+        return canonical
 
 
 class WorkbookConfig(BaseModel):
@@ -360,4 +453,42 @@ class WorkbookConfig(BaseModel):
             return [str(value)]
         if isinstance(value, list):
             return [str(path) for path in value]
+        return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_removed_legacy_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        workbook = value.get("workbook")
+        if isinstance(workbook, dict):
+            if "summaries" in workbook:
+                raise ValueError(
+                    "workbook.summaries is removed; migrate to "
+                    "workbook.tabs[].ai.summaries[]."
+                )
+            tabs = workbook.get("tabs")
+            if isinstance(tabs, list):
+                for tab in tabs:
+                    if not isinstance(tab, dict):
+                        continue
+                    ai = tab.get("ai")
+                    if not isinstance(ai, dict):
+                        continue
+                    summaries = ai.get("summaries")
+                    if not isinstance(summaries, list):
+                        continue
+                    for summary in summaries:
+                        if not isinstance(summary, dict):
+                            continue
+                        config = summary.get("config")
+                        if not isinstance(config, dict):
+                            continue
+                        placement = config.get("placement")
+                        if isinstance(placement, dict) and "tab_name" in placement:
+                            raise ValueError(
+                                "placement.tab_name is removed; use "
+                                "placement.target_tab."
+                            )
         return value

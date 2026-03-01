@@ -291,9 +291,10 @@ class WorkbookBuilder:
                     )
                 )
 
-        for summary in self.config.workbook.summaries:
+        summary_specs = self.config.workbook.iter_summary_specs()
+        for summary in summary_specs:
             placement = summary.placement
-            target_tab = placement.tab_name or summary.source_tab
+            target_tab = placement.target_tab or summary.source_tab
             target_cell = placement.anchor_cell or "A1"
             source_df = tab_dataframes.get(summary.source_tab)
             source_bounds = tab_write_bounds.get(summary.source_tab)

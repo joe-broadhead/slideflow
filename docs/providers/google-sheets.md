@@ -54,6 +54,21 @@ workbook:
         type: "csv"
         name: "kpi_source"
         file_path: "kpi.csv"
+      ai:
+        summaries:
+          - type: "ai_text"
+            config:
+              name: "kpi_narrative"             # optional; auto-generated when omitted
+              provider: "openai"
+              provider_args:
+                model: "gpt-4o-mini"
+              prompt: "Summarize weekly KPI movement in 3 bullets."
+              mode: "latest"                    # latest|history
+              placement:
+                type: "same_sheet"              # same_sheet|summary_tab
+                target_tab: "kpi_current"       # optional; defaults to source tab
+                anchor_cell: "H2"               # required for same_sheet
+                clear_range: "H2:H20"           # optional; latest mode only
 
     - name: "kpi_history"
       mode: "append"
@@ -64,20 +79,6 @@ workbook:
         type: "csv"
         name: "kpi_history_source"
         file_path: "kpi_history.csv"
-
-  summaries:
-    - name: "kpi_narrative"
-      source_tab: "kpi_current"
-      provider: "openai"
-      provider_args:
-        model: "gpt-4o-mini"
-      prompt: "Summarize weekly KPI movement in 3 bullets."
-      mode: "latest" # latest|history
-      placement:
-        type: "same_sheet"                      # same_sheet|summary_tab
-        tab_name: "kpi_current"
-        anchor_cell: "H2"
-        clear_range: "H2:H20"                  # optional; latest mode only
 ```
 
 ## Tab Write Semantics
@@ -93,7 +94,8 @@ workbook:
 
 ## Summary Semantics
 
-- `source_tab`: tab whose fetched/transformed data is summarized.
+- Summaries are authored per-tab under `tabs[].ai.summaries[]`.
+- Entries use a Slides/Docs-style shape: `type: ai_text` + `config`.
 - `mode: latest`
   - writes fresh summary text to target cell
   - can use `clear_range` before write
@@ -107,8 +109,49 @@ Placement:
   - writes summary to a dedicated target tab/cell
 - `placement.type: same_sheet`
   - writes summary into the source tab
-  - only supported when `source_tab.mode == replace`
+  - only supported when source tab `mode == replace`
   - runtime guard blocks writes when anchor/clear-range overlaps rendered data
+
+### Breaking schema changes
+
+- Removed: `workbook.summaries[]`
+- Removed: `placement.tab_name`
+- New location: `workbook.tabs[].ai.summaries[]`
+- New key: `placement.target_tab`
+
+Migration example:
+
+Before:
+
+```yaml
+workbook:
+  summaries:
+    - name: "kpi_summary"
+      source_tab: "kpi_current"
+      provider: "openai"
+      prompt: "Summarize"
+      placement:
+        type: "summary_tab"
+        tab_name: "summary"
+```
+
+After:
+
+```yaml
+workbook:
+  tabs:
+    - name: "kpi_current"
+      ai:
+        summaries:
+          - type: "ai_text"
+            config:
+              name: "kpi_summary"
+              provider: "openai"
+              prompt: "Summarize"
+              placement:
+                type: "summary_tab"
+                target_tab: "summary"
+```
 
 ## CLI Commands
 

@@ -140,6 +140,7 @@ SlideFlow comes with a simple CLI.
     -   inspect available chart templates and contract metadata
 -   `slideflow sheets validate|build|doctor CONFIG_FILE [OPTIONS]`
     -   workbook configuration workflows (`workbook:` schema)
+    -   tab-local AI summaries via `workbook.tabs[].ai.summaries[]` (`type: ai_text`)
     -   machine-readable JSON supported via `--output-json`
 
 Examples:
