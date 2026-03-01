@@ -14,7 +14,11 @@ from pydantic import Field
 
 from slideflow.constants import Environment, GoogleSlides
 from slideflow.utilities.auth import handle_google_credentials
-from slideflow.utilities.exceptions import AuthenticationError, RenderingError
+from slideflow.utilities.exceptions import RenderingError
+from slideflow.utilities.google_api import (
+    build_service_account_credentials,
+    execute_rate_limited_request,
+)
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 from slideflow.workbooks.config import RESERVED_METADATA_TAB
@@ -88,14 +92,9 @@ class GoogleSheetsProvider(WorkbookProvider):
             ],
         )
 
-        try:
-            credentials = Credentials.from_service_account_info(
-                loaded_credentials, scopes=self.SCOPES
-            )
-        except Exception as error_msg:  # pragma: no cover - exercised via tests
-            raise AuthenticationError(
-                f"Credentials authentication failed: {error_msg}"
-            ) from error_msg
+        credentials = build_service_account_credentials(
+            loaded_credentials, self.SCOPES, credentials_cls=Credentials
+        )
 
         self.sheets_service = build("sheets", "v4", credentials=credentials)
         self.drive_service = build("drive", "v3", credentials=credentials)
@@ -104,8 +103,7 @@ class GoogleSheetsProvider(WorkbookProvider):
 
     def _execute_request(self, request):
         """Execute Google API request with shared rate limiting."""
-        self.rate_limiter.wait()
-        return request.execute(num_retries=3)
+        return execute_rate_limited_request(request, self.rate_limiter, num_retries=3)
 
     def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
         has_credentials = bool(self.config.credentials) or bool(

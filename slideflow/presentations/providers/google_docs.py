@@ -7,7 +7,6 @@ those marker-defined sections.
 
 from __future__ import annotations
 
-import io
 import os
 import re
 import threading
@@ -19,7 +18,6 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseUpload
 from pydantic import Field, field_validator
 
 from slideflow.citations import CitationEntry, format_citation_line
@@ -35,7 +33,12 @@ from slideflow.presentations.providers.google_drive_ownership import (
     transfer_drive_file_ownership,
 )
 from slideflow.utilities.auth import handle_google_credentials
-from slideflow.utilities.exceptions import AuthenticationError, RenderingError
+from slideflow.utilities.exceptions import RenderingError
+from slideflow.utilities.google_api import (
+    build_service_account_credentials,
+    execute_rate_limited_request,
+    upload_png_to_drive,
+)
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 
@@ -170,14 +173,9 @@ class GoogleDocsProvider(PresentationProvider):
             ],
         )
 
-        try:
-            credentials = Credentials.from_service_account_info(
-                loaded_credentials, scopes=self.SCOPES
-            )
-        except Exception as error_msg:  # pragma: no cover - exercised via tests
-            raise AuthenticationError(
-                f"Credentials authentication failed: {error_msg}"
-            ) from error_msg
+        credentials = build_service_account_credentials(
+            loaded_credentials, self.SCOPES, credentials_cls=Credentials
+        )
 
         self.docs_service = build("docs", "v1", credentials=credentials)
         self.drive_service = build("drive", "v3", credentials=credentials)
@@ -185,8 +183,7 @@ class GoogleDocsProvider(PresentationProvider):
 
     def _execute_request(self, request):
         """Execute Google API request with shared rate limiting."""
-        self.rate_limiter.wait()
-        return request.execute(num_retries=3)
+        return execute_rate_limited_request(request, self.rate_limiter, num_retries=3)
 
     def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
         has_credentials = bool(self.config.credentials) or bool(
@@ -929,37 +926,22 @@ class GoogleDocsProvider(PresentationProvider):
     def _upload_image_to_drive(
         self, image_bytes: bytes, filename: str
     ) -> Tuple[str, str]:
-        file_metadata: Dict[str, Any] = {"name": filename}
-        if self.config.drive_folder_id:
-            file_metadata["parents"] = [self.config.drive_folder_id]
-
-        media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype="image/png")
-        uploaded_file = self._execute_request(
-            self.drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields="id",
-                supportsAllDrives=True,
-            )
-        )
-
-        file_id = uploaded_file.get("id")
         sharing_mode = getattr(self.config, "chart_image_sharing_mode", "public")
-        if sharing_mode == "public":
-            self._execute_request(
-                self.drive_service.permissions().create(
-                    fileId=file_id,
-                    body={"role": "reader", "type": "anyone"},
-                    supportsAllDrives=True,
+        return upload_png_to_drive(
+            drive_service=self.drive_service,
+            execute_request=self._execute_request,
+            image_bytes=image_bytes,
+            filename=filename,
+            destination_folder_id=self.config.drive_folder_id,
+            sharing_mode=sharing_mode,
+            permission_delay_seconds=Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S,
+            resumable=False,
+            sleep_fn=time.sleep,
+            on_restricted_file=(
+                lambda resolved_file_id: logger.info(
+                    "Chart image sharing mode is restricted; skipping public Drive permission "
+                    "(file_id=%s).",
+                    resolved_file_id,
                 )
-            )
-            if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
-                time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
-        else:
-            logger.info(
-                "Chart image sharing mode is restricted; skipping public Drive permission "
-                "(file_id=%s).",
-                file_id,
-            )
-        public_url = f"https://drive.google.com/uc?id={file_id}"
-        return public_url, file_id
+            ),
+        )
