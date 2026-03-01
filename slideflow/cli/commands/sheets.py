@@ -5,6 +5,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import typer
 import yaml  # type: ignore[import-untyped]
+from pydantic import ValidationError as PydanticValidationError
 
 from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.cli.error_codes import CliErrorCode, resolve_cli_error_code
@@ -21,6 +22,12 @@ CheckSeverity = Literal["error", "warning", "info"]
 
 def _first_error_line(error: Exception) -> str:
     """Return a safe single-line error description."""
+    if isinstance(error, PydanticValidationError):
+        details = error.errors()
+        if details:
+            msg = str(details[0].get("msg", "")).strip()
+            if msg:
+                return msg
     return safe_error_line(error)
 
 
@@ -54,7 +61,7 @@ def _load_workbook_config(
 def _workbook_summary_payload(workbook_config: WorkbookConfig) -> Dict[str, Any]:
     """Build a compact workbook summary for machine-readable output."""
     tabs = workbook_config.workbook.tabs
-    summaries = workbook_config.workbook.summaries
+    summaries = workbook_config.workbook.iter_summary_specs()
     append_tabs = sum(1 for tab in tabs if tab.mode == "append")
     replace_tabs = sum(1 for tab in tabs if tab.mode == "replace")
     return {

@@ -45,6 +45,7 @@ Supported values:
 
 - `google_slides`
 - `google_docs`
+- `google_sheets` (for `workbook:` pipelines via `slideflow sheets ...`)
 
 ### `provider.config` for `google_slides`
 
@@ -91,6 +92,66 @@ Credential precedence for `google_docs`:
 3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
 
 For provider setup and marker behavior, see [Google Docs Provider](providers/google-docs.md).
+
+### `provider.config` for `google_sheets`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `credentials` | `str` | conditionally | Path/raw JSON; can also come from env |
+| `spreadsheet_id` | `str` | no | Reuse an existing spreadsheet instead of creating one |
+| `drive_folder_id` | `str` | no | Destination folder for newly created spreadsheets |
+| `share_with` | `list[str]` | no | Emails to share generated spreadsheet with |
+| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `requests_per_second` | `float` | no | API rate limit override |
+
+Credential precedence for `google_sheets`:
+
+1. `provider.config.credentials`
+2. `GOOGLE_SHEETS_CREDENTIALS`
+3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+
+## `workbook` (Google Sheets pipelines)
+
+Sheets workflows use a `workbook:` schema (via `slideflow sheets ...`) instead of
+the `presentation:` schema used by Slides/Docs.
+
+```yaml
+provider:
+  type: "google_sheets"
+  config: {...}
+
+workbook:
+  title: "Weekly KPI Snapshot"
+  tabs:
+    - name: "kpi_current"
+      mode: "replace"
+      start_cell: "A1"
+      include_header: true
+      data_source: {...}
+      ai:
+        summaries:
+          - type: "ai_text"
+            config:
+              name: "kpi_summary"          # optional; auto-generated if omitted
+              provider: "openai"
+              provider_args: {model: "gpt-4o-mini"}
+              prompt: "Summarize this tab"
+              mode: "latest"               # latest|history
+              placement:
+                type: "same_sheet"         # same_sheet|summary_tab
+                target_tab: "kpi_current"  # required for summary_tab; optional for same_sheet
+                anchor_cell: "H2"
+                clear_range: "H2:H20"      # latest mode only
+```
+
+Breaking change notes:
+
+- Removed `workbook.summaries[]` (use `workbook.tabs[].ai.summaries[]`)
+- Removed `placement.tab_name` (use `placement.target_tab`)
+- `placement.type: summary_tab` requires `placement.target_tab` and it must differ from the source tab
+
+For full field-level behavior and examples, see
+[Google Sheets Provider](providers/google-sheets.md).
 
 ## `citations`
 

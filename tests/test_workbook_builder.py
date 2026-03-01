@@ -109,6 +109,23 @@ def _workbook_payload(csv_path: Path):
     }
 
 
+def _set_tab_ai_summaries(payload: dict, summaries: list[dict]) -> None:
+    tab_by_name = {tab["name"]: tab for tab in payload["workbook"]["tabs"]}
+    for tab in payload["workbook"]["tabs"]:
+        tab.pop("ai", None)
+
+    grouped: dict[str, list[dict]] = {}
+    for summary in summaries:
+        summary_payload = dict(summary)
+        source_tab = summary_payload.pop("source_tab")
+        grouped.setdefault(source_tab, []).append(
+            {"type": "ai_text", "config": summary_payload}
+        )
+
+    for source_tab, summary_specs in grouped.items():
+        tab_by_name[source_tab]["ai"] = {"summaries": summary_specs}
+
+
 def test_dataframe_to_sheet_rows_normalizes_nan_values():
     df = pd.DataFrame({"month": ["Jan", "Feb"], "value": [10.0, float("nan")]})
 
@@ -263,21 +280,24 @@ def test_workbook_builder_generates_and_writes_same_sheet_summary(
     csv_path = tmp_path / "kpi.csv"
     csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
     payload = _workbook_payload(csv_path)
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "kpi_summary",
-            "source_tab": "kpi_current",
-            "provider": "openai",
-            "provider_args": {"model": "gpt-4o-mini"},
-            "prompt": "Summarize the latest metrics",
-            "placement": {
-                "type": "same_sheet",
-                "tab_name": "kpi_current",
-                "anchor_cell": "H2",
-                "clear_range": "H2:H20",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "kpi_summary",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {"model": "gpt-4o-mini"},
+                "prompt": "Summarize the latest metrics",
+                "placement": {
+                    "type": "same_sheet",
+                    "target_tab": "kpi_current",
+                    "anchor_cell": "H2",
+                    "clear_range": "H2:H20",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider()
@@ -325,19 +345,22 @@ def test_workbook_builder_marks_error_when_summary_write_fails(tmp_path, monkeyp
     csv_path = tmp_path / "kpi.csv"
     csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
     payload = _workbook_payload(csv_path)
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "kpi_summary",
-            "source_tab": "kpi_current",
-            "provider": "openai",
-            "provider_args": {"model": "gpt-4o-mini"},
-            "prompt": "Summarize",
-            "placement": {
-                "type": "summary_tab",
-                "tab_name": "summary",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "kpi_summary",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {"model": "gpt-4o-mini"},
+                "prompt": "Summarize",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider(fail_tab="summary")
@@ -373,21 +396,24 @@ def test_workbook_builder_history_mode_appends_timestamped_summary(
     csv_path = tmp_path / "kpi.csv"
     csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
     payload = _workbook_payload(csv_path)
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "kpi_history_summary",
-            "source_tab": "kpi_current",
-            "provider": "openai",
-            "provider_args": {"model": "gpt-4o-mini"},
-            "prompt": "Summarize trend",
-            "mode": "history",
-            "placement": {
-                "type": "same_sheet",
-                "tab_name": "kpi_current",
-                "anchor_cell": "H2",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "kpi_history_summary",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {"model": "gpt-4o-mini"},
+                "prompt": "Summarize trend",
+                "mode": "history",
+                "placement": {
+                    "type": "same_sheet",
+                    "target_tab": "kpi_current",
+                    "anchor_cell": "H2",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider()
@@ -430,19 +456,22 @@ def test_workbook_builder_append_source_can_write_summary_to_summary_tab(
     payload["workbook"]["tabs"][0]["mode"] = "append"
     payload["workbook"]["tabs"][0]["include_header"] = False
     payload["workbook"]["tabs"][0]["idempotency_key"] = "wk_10"
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "append_summary",
-            "source_tab": "kpi_current",
-            "provider": "openai",
-            "provider_args": {},
-            "prompt": "Summarize append source",
-            "placement": {
-                "type": "summary_tab",
-                "tab_name": "summary",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "append_summary",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize append source",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider()
@@ -478,20 +507,23 @@ def test_workbook_builder_marks_error_when_same_sheet_anchor_overlaps_data(
     csv_path = tmp_path / "kpi.csv"
     csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
     payload = _workbook_payload(csv_path)
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "anchor_overlap_summary",
-            "source_tab": "kpi_current",
-            "provider": "openai",
-            "provider_args": {},
-            "prompt": "Summarize",
-            "placement": {
-                "type": "same_sheet",
-                "tab_name": "kpi_current",
-                "anchor_cell": "A2",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "anchor_overlap_summary",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize",
+                "placement": {
+                    "type": "same_sheet",
+                    "target_tab": "kpi_current",
+                    "anchor_cell": "A2",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider()
@@ -523,21 +555,24 @@ def test_workbook_builder_marks_error_when_same_sheet_clear_range_overlaps_data(
     csv_path = tmp_path / "kpi.csv"
     csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
     payload = _workbook_payload(csv_path)
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "range_overlap_summary",
-            "source_tab": "kpi_current",
-            "provider": "openai",
-            "provider_args": {},
-            "prompt": "Summarize",
-            "placement": {
-                "type": "same_sheet",
-                "tab_name": "kpi_current",
-                "anchor_cell": "H2",
-                "clear_range": "B2:B3",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "range_overlap_summary",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize",
+                "placement": {
+                    "type": "same_sheet",
+                    "target_tab": "kpi_current",
+                    "anchor_cell": "H2",
+                    "clear_range": "B2:B3",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider()
@@ -582,19 +617,22 @@ def test_workbook_builder_marks_error_when_summary_source_tab_has_no_data(
             },
         }
     )
-    payload["workbook"]["summaries"] = [
-        {
-            "name": "failing_tab_summary",
-            "source_tab": "failing_tab",
-            "provider": "openai",
-            "provider_args": {},
-            "prompt": "Summarize",
-            "placement": {
-                "type": "summary_tab",
-                "tab_name": "summary",
-            },
-        }
-    ]
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "failing_tab_summary",
+                "source_tab": "failing_tab",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            }
+        ],
+    )
     config = WorkbookConfig.model_validate(payload)
 
     fake_provider = _FakeProvider(fail_tab="failing_tab")
@@ -618,3 +656,104 @@ def test_workbook_builder_marks_error_when_summary_source_tab_has_no_data(
     assert result.summaries_failed == 1
     assert result.summary_results[0].status == "error"
     assert "did not produce data" in (result.summary_results[0].error or "")
+
+
+def test_workbook_builder_summary_order_is_tab_then_declaration_order(tmp_path):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["tabs"].append(
+        {
+            "name": "kpi_secondary",
+            "mode": "replace",
+            "start_cell": "A1",
+            "include_header": True,
+            "data_source": {
+                "type": "csv",
+                "name": "kpi_source_2",
+                "file_path": str(csv_path),
+            },
+        }
+    )
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "name": "s1",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize A1",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            },
+            {
+                "name": "s2",
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize A2",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            },
+            {
+                "name": "s3",
+                "source_tab": "kpi_secondary",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize B1",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            },
+        ],
+    )
+    config = WorkbookConfig.model_validate(payload)
+
+    assert [item.name for item in config.workbook.iter_summary_specs()] == [
+        "s1",
+        "s2",
+        "s3",
+    ]
+
+
+def test_workbook_builder_auto_generates_missing_summary_names(tmp_path):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    _set_tab_ai_summaries(
+        payload,
+        [
+            {
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize A1",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            },
+            {
+                "source_tab": "kpi_current",
+                "provider": "openai",
+                "provider_args": {},
+                "prompt": "Summarize A2",
+                "placement": {
+                    "type": "summary_tab",
+                    "target_tab": "summary",
+                },
+            },
+        ],
+    )
+    config = WorkbookConfig.model_validate(payload)
+
+    assert [item.name for item in config.workbook.iter_summary_specs()] == [
+        "kpi_current_summary_1",
+        "kpi_current_summary_2",
+    ]
