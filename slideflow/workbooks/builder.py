@@ -220,6 +220,210 @@ class WorkbookBuilder:
     def from_config(cls, config: WorkbookConfig) -> "WorkbookBuilder":
         return cls(config)
 
+    def _build_tab_result(
+        self,
+        workbook_id: str,
+        tab: Any,
+        tab_dataframes: Dict[str, Any],
+        tab_write_bounds: Dict[str, tuple[int, int, int, int]],
+    ) -> WorkbookTabResult:
+        """Build a single workbook tab and return its result payload."""
+        df = tab.data_source.fetch_data()
+        df = apply_data_transforms(tab.data_transforms, df)
+        run_key = tab.idempotency_key if tab.mode == "append" else None
+
+        if tab.mode == "append":
+            rows = dataframe_to_sheet_rows(df, include_header=False)
+            rows_written_payload, rows_skipped_payload = (
+                self.provider.write_append_rows(
+                    workbook_id=workbook_id,
+                    tab_name=tab.name,
+                    start_cell=tab.start_cell,
+                    rows=rows,
+                    run_key=run_key or "",
+                )
+            )
+            data_rows_written = rows_written_payload
+        else:
+            rows = dataframe_to_sheet_rows(df, include_header=tab.include_header)
+            rows_written_payload = self.provider.write_replace_rows(
+                workbook_id=workbook_id,
+                tab_name=tab.name,
+                start_cell=tab.start_cell,
+                rows=rows,
+            )
+            rows_skipped_payload = 0
+            data_rows_written = max(
+                0,
+                rows_written_payload - (1 if tab.include_header and rows else 0),
+            )
+
+        bounds = _rows_to_bounds(tab.start_cell, rows)
+        tab_dataframes[tab.name] = df
+        if tab.mode == "replace" and bounds is not None:
+            tab_write_bounds[tab.name] = bounds
+
+        return WorkbookTabResult(
+            tab_name=tab.name,
+            mode=tab.mode,
+            status="success",
+            rows_written=data_rows_written,
+            rows_skipped=rows_skipped_payload,
+            run_key=run_key,
+        )
+
+    @staticmethod
+    def _summary_context(
+        summary: Any, tab_dataframes: Dict[str, Any]
+    ) -> tuple[str, str, Any]:
+        """Resolve summary write target and source DataFrame."""
+        placement = summary.placement
+        target_tab = placement.target_tab or summary.source_tab
+        target_cell = placement.anchor_cell or "A1"
+        source_df = tab_dataframes.get(summary.source_tab)
+        return target_tab, target_cell, source_df
+
+    @staticmethod
+    def _summary_source_missing_result(
+        summary: Any, target_tab: str, target_cell: str
+    ) -> WorkbookSummaryResult:
+        """Construct a summary error result when source data is unavailable."""
+        return WorkbookSummaryResult(
+            name=summary.name,
+            source_tab=summary.source_tab,
+            placement_type=summary.placement.type,
+            target_tab=target_tab,
+            target_cell=target_cell,
+            status="error",
+            error=(
+                f"Summary source tab '{summary.source_tab}' did not produce "
+                "data for this run"
+            ),
+        )
+
+    @staticmethod
+    def _summary_placement_overlap_result(
+        summary: Any,
+        target_tab: str,
+        target_cell: str,
+        source_bounds: tuple[int, int, int, int] | None,
+    ) -> WorkbookSummaryResult | None:
+        """Return overlap error result when same-sheet summary collides with data."""
+        placement = summary.placement
+        if placement.type != "same_sheet" or source_bounds is None:
+            return None
+
+        if _cell_in_bounds(target_cell, source_bounds):
+            return WorkbookSummaryResult(
+                name=summary.name,
+                source_tab=summary.source_tab,
+                placement_type=placement.type,
+                target_tab=target_tab,
+                target_cell=target_cell,
+                status="error",
+                error=(
+                    "Summary anchor cell overlaps rendered tab data range "
+                    f"for tab '{summary.source_tab}'"
+                ),
+            )
+
+        if placement.clear_range:
+            clear_bounds = _range_to_bounds(placement.clear_range)
+            if _bounds_overlap(clear_bounds, source_bounds):
+                return WorkbookSummaryResult(
+                    name=summary.name,
+                    source_tab=summary.source_tab,
+                    placement_type=placement.type,
+                    target_tab=target_tab,
+                    target_cell=target_cell,
+                    status="error",
+                    error=(
+                        "Summary clear_range overlaps rendered tab data "
+                        f"range for tab '{summary.source_tab}'"
+                    ),
+                )
+
+        return None
+
+    def _summary_provider(self, summary: Any) -> Any:
+        """Resolve or initialize a cached AI provider for summary generation."""
+        provider_cache_key = (
+            summary.provider,
+            json.dumps(summary.provider_args, sort_keys=True, default=str),
+        )
+        if provider_cache_key not in self._summary_provider_cache:
+            self._summary_provider_cache[provider_cache_key] = create_ai_provider(
+                summary.provider, **summary.provider_args
+            )
+        return self._summary_provider_cache[provider_cache_key]
+
+    def _build_summary_result(
+        self,
+        workbook_id: str,
+        summary: Any,
+        tab_dataframes: Dict[str, Any],
+        tab_write_bounds: Dict[str, tuple[int, int, int, int]],
+    ) -> WorkbookSummaryResult:
+        """Build a single workbook summary and return its result payload."""
+        target_tab, target_cell, source_df = self._summary_context(
+            summary, tab_dataframes
+        )
+        source_bounds = tab_write_bounds.get(summary.source_tab)
+
+        if source_df is None:
+            return self._summary_source_missing_result(summary, target_tab, target_cell)
+
+        overlap_result = self._summary_placement_overlap_result(
+            summary, target_tab, target_cell, source_bounds
+        )
+        if overlap_result is not None:
+            return overlap_result
+
+        records = _dataframe_records_for_prompt(source_df)
+        prompt = f"{summary.prompt}\n\nData:\n{records}"
+        summary_provider = self._summary_provider(summary)
+        generated_summary = str(summary_provider.generate_text(prompt)).strip()
+
+        text_to_write = generated_summary
+        clear_range_to_write = summary.placement.clear_range
+        if summary.mode == "history":
+            existing_text = self.provider.read_cell_text(
+                workbook_id=workbook_id,
+                tab_name=target_tab,
+                anchor_cell=target_cell,
+            )
+            text_to_write = _history_summary_text(existing_text, generated_summary)
+            clear_range_to_write = None
+
+        self.provider.write_summary_text(
+            workbook_id=workbook_id,
+            tab_name=target_tab,
+            anchor_cell=target_cell,
+            text=text_to_write,
+            clear_range=clear_range_to_write,
+        )
+
+        return WorkbookSummaryResult(
+            name=summary.name,
+            source_tab=summary.source_tab,
+            placement_type=summary.placement.type,
+            target_tab=target_tab,
+            target_cell=target_cell,
+            status="success",
+            chars_written=len(text_to_write),
+        )
+
+    @staticmethod
+    def _build_status(
+        tab_results: List[WorkbookTabResult],
+        summary_results: List[WorkbookSummaryResult],
+    ) -> str:
+        """Resolve aggregate workbook status from tab + summary result payloads."""
+        has_errors = any(tab.status == "error" for tab in tab_results) or any(
+            summary.status == "error" for summary in summary_results
+        )
+        return "error" if has_errors else "success"
+
     def build(self) -> WorkbookBuildResult:
         workbook_id = self.provider.create_or_open_workbook(self.config.workbook.title)
         tab_results: List[WorkbookTabResult] = []
@@ -229,50 +433,12 @@ class WorkbookBuilder:
 
         for tab in self.config.workbook.tabs:
             try:
-                df = tab.data_source.fetch_data()
-                df = apply_data_transforms(tab.data_transforms, df)
-                run_key = tab.idempotency_key if tab.mode == "append" else None
-                if tab.mode == "append":
-                    # Avoid duplicate headers on repeated append runs.
-                    rows = dataframe_to_sheet_rows(df, include_header=False)
-                    rows_written_payload, rows_skipped_payload = (
-                        self.provider.write_append_rows(
-                            workbook_id=workbook_id,
-                            tab_name=tab.name,
-                            start_cell=tab.start_cell,
-                            rows=rows,
-                            run_key=run_key or "",
-                        )
-                    )
-                    data_rows_written = rows_written_payload
-                else:
-                    rows = dataframe_to_sheet_rows(
-                        df, include_header=tab.include_header
-                    )
-                    rows_written_payload = self.provider.write_replace_rows(
-                        workbook_id=workbook_id,
-                        tab_name=tab.name,
-                        start_cell=tab.start_cell,
-                        rows=rows,
-                    )
-                    rows_skipped_payload = 0
-                    data_rows_written = max(
-                        0,
-                        rows_written_payload
-                        - (1 if tab.include_header and rows else 0),
-                    )
-                bounds = _rows_to_bounds(tab.start_cell, rows)
-                tab_dataframes[tab.name] = df
-                if tab.mode == "replace" and bounds is not None:
-                    tab_write_bounds[tab.name] = bounds
                 tab_results.append(
-                    WorkbookTabResult(
-                        tab_name=tab.name,
-                        mode=tab.mode,
-                        status="success",
-                        rows_written=data_rows_written,
-                        rows_skipped=rows_skipped_payload,
-                        run_key=run_key,
+                    self._build_tab_result(
+                        workbook_id=workbook_id,
+                        tab=tab,
+                        tab_dataframes=tab_dataframes,
+                        tab_write_bounds=tab_write_bounds,
                     )
                 )
             except Exception as error:
@@ -293,113 +459,19 @@ class WorkbookBuilder:
 
         summary_specs = self.config.workbook.iter_summary_specs()
         for summary in summary_specs:
-            placement = summary.placement
-            target_tab = placement.target_tab or summary.source_tab
-            target_cell = placement.anchor_cell or "A1"
-            source_df = tab_dataframes.get(summary.source_tab)
-            source_bounds = tab_write_bounds.get(summary.source_tab)
-
-            if source_df is None:
-                summary_results.append(
-                    WorkbookSummaryResult(
-                        name=summary.name,
-                        source_tab=summary.source_tab,
-                        placement_type=placement.type,
-                        target_tab=target_tab,
-                        target_cell=target_cell,
-                        status="error",
-                        error=(
-                            f"Summary source tab '{summary.source_tab}' did not produce "
-                            "data for this run"
-                        ),
-                    )
-                )
-                continue
-
-            if placement.type == "same_sheet" and source_bounds is not None:
-                if _cell_in_bounds(target_cell, source_bounds):
-                    summary_results.append(
-                        WorkbookSummaryResult(
-                            name=summary.name,
-                            source_tab=summary.source_tab,
-                            placement_type=placement.type,
-                            target_tab=target_tab,
-                            target_cell=target_cell,
-                            status="error",
-                            error=(
-                                "Summary anchor cell overlaps rendered tab data range "
-                                f"for tab '{summary.source_tab}'"
-                            ),
-                        )
-                    )
-                    continue
-                if placement.clear_range:
-                    clear_bounds = _range_to_bounds(placement.clear_range)
-                    if _bounds_overlap(clear_bounds, source_bounds):
-                        summary_results.append(
-                            WorkbookSummaryResult(
-                                name=summary.name,
-                                source_tab=summary.source_tab,
-                                placement_type=placement.type,
-                                target_tab=target_tab,
-                                target_cell=target_cell,
-                                status="error",
-                                error=(
-                                    "Summary clear_range overlaps rendered tab data "
-                                    f"range for tab '{summary.source_tab}'"
-                                ),
-                            )
-                        )
-                        continue
-
             try:
-                records = _dataframe_records_for_prompt(source_df)
-                prompt = f"{summary.prompt}\n\nData:\n{records}"
-                provider_cache_key = (
-                    summary.provider,
-                    json.dumps(summary.provider_args, sort_keys=True, default=str),
-                )
-                if provider_cache_key not in self._summary_provider_cache:
-                    self._summary_provider_cache[provider_cache_key] = (
-                        create_ai_provider(
-                            summary.provider,
-                            **summary.provider_args,
-                        )
-                    )
-                summary_provider = self._summary_provider_cache[provider_cache_key]
-                generated_summary = str(summary_provider.generate_text(prompt)).strip()
-                text_to_write = generated_summary
-                clear_range_to_write = placement.clear_range
-                if summary.mode == "history":
-                    existing_text = self.provider.read_cell_text(
-                        workbook_id=workbook_id,
-                        tab_name=target_tab,
-                        anchor_cell=target_cell,
-                    )
-                    text_to_write = _history_summary_text(
-                        existing_text, generated_summary
-                    )
-                    clear_range_to_write = None
-
-                self.provider.write_summary_text(
-                    workbook_id=workbook_id,
-                    tab_name=target_tab,
-                    anchor_cell=target_cell,
-                    text=text_to_write,
-                    clear_range=clear_range_to_write,
-                )
                 summary_results.append(
-                    WorkbookSummaryResult(
-                        name=summary.name,
-                        source_tab=summary.source_tab,
-                        placement_type=placement.type,
-                        target_tab=target_tab,
-                        target_cell=target_cell,
-                        status="success",
-                        chars_written=len(text_to_write),
+                    self._build_summary_result(
+                        workbook_id=workbook_id,
+                        summary=summary,
+                        tab_dataframes=tab_dataframes,
+                        tab_write_bounds=tab_write_bounds,
                     )
                 )
             except Exception as error:
+                target_tab, target_cell, _ = self._summary_context(
+                    summary, tab_dataframes
+                )
                 error_message = safe_error_line(error)
                 logger.error(
                     "Workbook summary generation failed for summary '%s': %s",
@@ -410,7 +482,7 @@ class WorkbookBuilder:
                     WorkbookSummaryResult(
                         name=summary.name,
                         source_tab=summary.source_tab,
-                        placement_type=placement.type,
+                        placement_type=summary.placement.type,
                         target_tab=target_tab,
                         target_cell=target_cell,
                         status="error",
@@ -420,12 +492,7 @@ class WorkbookBuilder:
 
         self.provider.finalize_workbook(workbook_id)
         workbook_url = self.provider.get_workbook_url(workbook_id)
-        status = (
-            "error"
-            if any(tab.status == "error" for tab in tab_results)
-            or any(summary.status == "error" for summary in summary_results)
-            else "success"
-        )
+        status = self._build_status(tab_results, summary_results)
 
         return WorkbookBuildResult(
             workbook_id=workbook_id,

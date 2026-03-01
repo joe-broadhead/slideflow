@@ -349,6 +349,41 @@ def test_run_preflight_checks_with_spreadsheet_and_folder_access():
     ]
 
 
+def test_base_preflight_checks_returns_expected_core_entries():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(credentials=None, requests_per_second=2.0)
+    provider.sheets_service = object()
+    provider.drive_service = object()
+    provider.rate_limiter = object()
+
+    checks = provider._base_preflight_checks()
+    check_map = {name: ok for name, ok, _ in checks}
+
+    assert len(checks) == 4
+    assert check_map["google_sheets_credentials_present"] is False
+    assert check_map["sheets_service_initialized"] is True
+    assert check_map["drive_service_initialized"] is True
+    assert check_map["rate_limiter_initialized"] is True
+
+
+def test_drive_folder_access_checks_return_dual_failures_on_lookup_error():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(drive_folder_id="folder_456")
+    provider.drive_service = _minimal_drive_service()
+    provider._execute_request = lambda _request: (_ for _ in ()).throw(
+        RuntimeError("drive denied")
+    )
+
+    checks = provider._drive_folder_access_checks()
+    check_map = {name: ok for name, ok, _ in checks}
+    check_details = {name: detail for name, _ok, detail in checks}
+
+    assert check_map["drive_folder_access"] is False
+    assert check_map["drive_folder_write_access"] is False
+    assert "drive denied" in check_details["drive_folder_access"]
+    assert "drive denied" in check_details["drive_folder_write_access"]
+
+
 def test_run_preflight_checks_reports_spreadsheet_access_failure():
     provider = _provider_without_init()
     provider.config = SimpleNamespace(

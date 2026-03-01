@@ -377,6 +377,25 @@ def test_plotly_trace_config_invalid_index_token_raises_missing_column():
         chart._process_trace_config({"value": "$metric[bad]"}, df)
 
 
+def test_plotly_parse_direct_reference_helper_handles_index_tokens():
+    chart = charts_module.PlotlyGraphObjects(type="plotly_go", traces=[])
+
+    assert chart._parse_direct_reference("metric") == ("metric", None)
+    assert chart._parse_direct_reference("metric[-1]") == ("metric", -1)
+    assert chart._parse_direct_reference("metric[bad]") == ("metric[bad]", None)
+
+
+def test_plotly_trace_config_list_references_on_empty_dataframe():
+    chart = charts_module.PlotlyGraphObjects(type="plotly_go", traces=[])
+
+    processed = chart._process_trace_config(
+        {"labels": ["$metric", "$metric[0]", "literal"]},
+        pd.DataFrame(),
+    )
+
+    assert processed["labels"] == [[], None, "literal"]
+
+
 def test_custom_chart_process_config_and_generate(monkeypatch):
     captured: Dict[str, Any] = {}
 
