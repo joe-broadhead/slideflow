@@ -12,7 +12,7 @@ from slideflow.cli.json_output import now_iso8601_utc, write_output_json
 from slideflow.cli.theme import print_error, print_success, print_validation_header
 from slideflow.utilities import ConfigLoader
 from slideflow.utilities.error_messages import safe_error_line
-from slideflow.workbooks import WorkbookConfig
+from slideflow.workbooks import WorkbookBuilder, WorkbookConfig
 
 sheets_app = typer.Typer(help="Validate and build workbook outputs")
 
@@ -117,6 +117,105 @@ def sheets_validate_command(
         raise typer.Exit(1)
 
 
+def sheets_build_command(
+    config_file: Annotated[
+        Path, typer.Argument(help="Path to workbook YAML configuration file")
+    ],
+    registry_paths: Annotated[
+        Optional[List[Path]],
+        typer.Option(
+            "--registry",
+            "-r",
+            help="Path to Python registry files (can be used multiple times)",
+        ),
+    ] = None,
+    output_json: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output-json",
+            help="Optional path to write a machine-readable workbook build summary JSON file",
+        ),
+    ] = None,
+) -> Dict[str, Any]:
+    """Build workbook outputs from a workbook configuration."""
+    print_validation_header(str(config_file))
+    run_started_at = now_iso8601_utc()
+
+    try:
+        raw_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
+        config_registry = (
+            raw_config.get("registry") if isinstance(raw_config, dict) else None
+        )
+        resolved_registry_paths = resolve_registry_paths(
+            config_file=config_file,
+            cli_registry_paths=registry_paths,
+            config_registry=config_registry,
+        )
+
+        builder = WorkbookBuilder.from_yaml(
+            yaml_path=config_file,
+            registry_paths=resolved_registry_paths,
+        )
+        result = builder.build()
+        summary = {
+            "workbook_id": result.workbook_id,
+            "workbook_url": result.workbook_url,
+            "tabs_total": result.tabs_total,
+            "tabs_succeeded": result.tabs_succeeded,
+            "tabs_failed": result.tabs_failed,
+            "idempotent_skips": result.idempotent_skips,
+        }
+        payload = {
+            "command": "sheets build",
+            "status": result.status,
+            "started_at": run_started_at,
+            "completed_at": now_iso8601_utc(),
+            "config_file": str(config_file),
+            "registry_files": [str(path) for path in resolved_registry_paths],
+            "summary": summary,
+            "tabs": [tab.model_dump() for tab in result.tab_results],
+        }
+
+        if result.status == "error":
+            error_message = (
+                f"Workbook build completed with tab errors "
+                f"({result.tabs_failed}/{result.tabs_total} failed)."
+            )
+            payload["error"] = {
+                "code": CliErrorCode.SHEETS_BUILD_FAILED,
+                "message": error_message,
+            }
+            write_output_json(output_json, payload)
+            print_error(
+                error_message,
+                error_code=CliErrorCode.SHEETS_BUILD_FAILED,
+            )
+            raise typer.Exit(1)
+
+        write_output_json(output_json, payload)
+        print_success()
+        typer.echo(
+            "✅ Workbook build complete " f"({result.tabs_succeeded} tab(s) succeeded)."
+        )
+        typer.echo(f"Workbook URL: {result.workbook_url}")
+        return payload
+    except typer.Exit:
+        raise
+    except Exception as error:
+        error_code = resolve_cli_error_code(error, CliErrorCode.SHEETS_BUILD_FAILED)
+        payload = {
+            "command": "sheets build",
+            "status": "error",
+            "started_at": run_started_at,
+            "completed_at": now_iso8601_utc(),
+            "config_file": str(config_file),
+            "error": {"code": error_code, "message": _first_error_line(error)},
+        }
+        write_output_json(output_json, payload)
+        print_error(str(error), error_code=error_code)
+        raise typer.Exit(1)
+
+
 @sheets_app.command("validate")
 def sheets_validate(
     config_file: Annotated[
@@ -143,6 +242,35 @@ def sheets_validate(
 ) -> None:
     """Validate workbook YAML configuration without writing outputs."""
     sheets_validate_command(
+        config_file=config_file,
+        registry_paths=registry_paths,
+        output_json=output_json,
+    )
+
+
+@sheets_app.command("build")
+def sheets_build(
+    config_file: Annotated[
+        Path, typer.Argument(help="Path to workbook YAML configuration file")
+    ],
+    registry_paths: Annotated[
+        Optional[List[Path]],
+        typer.Option(
+            "--registry",
+            "-r",
+            help="Path to Python registry files (can be used multiple times)",
+        ),
+    ] = None,
+    output_json: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output-json",
+            help="Optional path to write a machine-readable workbook build summary JSON file",
+        ),
+    ] = None,
+) -> None:
+    """Build workbook outputs from a workbook YAML configuration."""
+    sheets_build_command(
         config_file=config_file,
         registry_paths=registry_paths,
         output_json=output_json,
