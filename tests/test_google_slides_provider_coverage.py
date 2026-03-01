@@ -80,6 +80,14 @@ def test_google_provider_init_authentication_failure(monkeypatch):
         GoogleSlidesProvider(GoogleSlidesProviderConfig(credentials='{"invalid":true}'))
 
 
+def test_google_slides_config_validates_transfer_ownership_target():
+    with pytest.raises(ValueError, match="transfer_ownership_to"):
+        GoogleSlidesProviderConfig(transfer_ownership_to="not-an-email")
+
+    config = GoogleSlidesProviderConfig(transfer_ownership_to=" owner@example.com ")
+    assert config.transfer_ownership_to == "owner@example.com"
+
+
 @pytest.mark.parametrize(
     ("dimension", "expected"),
     [
@@ -115,6 +123,24 @@ def test_run_preflight_checks_without_credentials(monkeypatch):
     assert check_map["rate_limiter_initialized"] is False
 
 
+def test_run_preflight_checks_validates_transfer_target(monkeypatch):
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(
+        credentials=None,
+        requests_per_second=1.0,
+        transfer_ownership_to="not-an-email",
+    )
+    provider.slides_service = object()
+    provider.drive_service = object()
+    provider.rate_limiter = object()
+    monkeypatch.delenv("GOOGLE_SLIDEFLOW_CREDENTIALS", raising=False)
+
+    checks = provider.run_preflight_checks()
+    check_map = {name: ok for name, ok, _ in checks}
+
+    assert check_map["ownership_transfer_target_valid"] is False
+
+
 def test_share_presentation_success_and_error(monkeypatch):
     provider = _provider_without_init()
     requests: List[Any] = []
@@ -147,6 +173,53 @@ def test_share_presentation_success_and_error(monkeypatch):
 
     with pytest.raises(google_provider_module.HttpError):
         provider.share_presentation("pres-2", ["x@example.com"], role="writer")
+
+
+def test_transfer_presentation_ownership_success_and_shared_drive_guard():
+    provider = _provider_without_init()
+    created_permissions: List[Dict[str, Any]] = []
+
+    class _Files:
+        def get(self, **kwargs):
+            return ("files-get", kwargs)
+
+    class _Permissions:
+        def create(self, **kwargs):
+            created_permissions.append(kwargs)
+            return ("permissions-create", kwargs)
+
+    provider.drive_service = SimpleNamespace(
+        files=lambda: _Files(),
+        permissions=lambda: _Permissions(),
+    )
+
+    def _exec(request):
+        if request[0] == "files-get":
+            return {"id": "pres-1"}
+        return {}
+
+    provider._execute_request = _exec
+    provider.transfer_presentation_ownership("pres-1", "owner@example.com")
+
+    assert created_permissions == [
+        {
+            "fileId": "pres-1",
+            "body": {
+                "type": "user",
+                "role": "owner",
+                "emailAddress": "owner@example.com",
+            },
+            "transferOwnership": True,
+            "sendNotificationEmail": True,
+            "supportsAllDrives": False,
+        }
+    ]
+
+    provider._execute_request = lambda request: (
+        {"id": "pres-2", "driveId": "drive-123"} if request[0] == "files-get" else {}
+    )
+    with pytest.raises(ValueError, match="Shared Drives"):
+        provider.transfer_presentation_ownership("pres-2", "owner@example.com")
 
 
 def test_get_presentation_page_size_logs_failure_on_exception(monkeypatch):

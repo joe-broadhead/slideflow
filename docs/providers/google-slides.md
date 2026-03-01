@@ -44,6 +44,8 @@ provider:
     share_with:
       - "team@example.com"
     share_role: "reader"
+    transfer_ownership_to: "owner@example.com"
+    transfer_ownership_strict: false
     requests_per_second: 1.0
     strict_cleanup: false
 ```
@@ -58,6 +60,8 @@ Field behavior:
   - If omitted, SlideFlow falls back to the presentation destination folder logic.
 - `new_folder_name` + `new_folder_name_fn`: optional dynamic subfolder under `presentation_folder_id`.
 - `share_with` + `share_role`: shares the rendered deck after generation.
+- `transfer_ownership_to`: optional ownership handoff target after successful render/share.
+- `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
 - `requests_per_second`: throttles API calls.
 - `strict_cleanup`: if `true`, cleanup failures (chart image trash) fail the render.
 
@@ -68,6 +72,8 @@ Sharing is performed by the service account, not your personal user.
 - Ensure the service account has permission to share files in the target drive/folder.
 - `share_role` supports `reader`, `writer`, and `commenter`.
 - Google may send notification emails when sharing is executed.
+- Ownership transfer is explicit opt-in and only works for files in **My Drive** (not Shared Drives).
+- Transfer uses Google Drive ownership APIs and may notify the target owner.
 
 ## Cleanup Semantics
 

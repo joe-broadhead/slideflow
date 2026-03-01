@@ -66,6 +66,7 @@ from slideflow.constants import GoogleSlides, Timing
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
+from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.logging import get_logger
 
@@ -129,6 +130,34 @@ class PresentationResult(BaseModel):
         Field(
             default_factory=datetime.now,
             description="Timestamp when presentation was created",
+        ),
+    ]
+    ownership_transfer_attempted: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Whether ownership transfer was explicitly requested and attempted",
+        ),
+    ]
+    ownership_transfer_succeeded: Annotated[
+        Optional[bool],
+        Field(
+            default=None,
+            description="Ownership transfer result when attempted, otherwise null",
+        ),
+    ]
+    ownership_transfer_target: Annotated[
+        Optional[str],
+        Field(
+            default=None,
+            description="Ownership transfer target email when configured",
+        ),
+    ]
+    ownership_transfer_error: Annotated[
+        Optional[str],
+        Field(
+            default=None,
+            description="Single-line transfer error when ownership transfer fails",
         ),
     ]
 
@@ -541,6 +570,10 @@ class Presentation(BaseModel):
             getattr(getattr(self.provider, "config", None), "strict_cleanup", False)
         )
         failed_cleanup_ids: List[str] = []
+        ownership_transfer_attempted = False
+        ownership_transfer_succeeded: Optional[bool] = None
+        ownership_transfer_target: Optional[str] = None
+        ownership_transfer_error: Optional[str] = None
 
         try:
             # Pre-fetch all data sources (uses caching)
@@ -713,6 +746,55 @@ class Presentation(BaseModel):
                         getattr(self.provider.config, "share_role", "writer"),
                     )
 
+            transfer_owner = getattr(
+                getattr(self.provider, "config", None),
+                "transfer_ownership_to",
+                None,
+            )
+            if transfer_owner:
+                ownership_transfer_attempted = True
+                ownership_transfer_target = transfer_owner
+                transfer_strict = bool(
+                    getattr(
+                        getattr(self.provider, "config", None),
+                        "transfer_ownership_strict",
+                        False,
+                    )
+                )
+                transfer_method = getattr(
+                    self.provider, "transfer_presentation_ownership", None
+                )
+
+                if not callable(transfer_method):
+                    ownership_transfer_succeeded = False
+                    ownership_transfer_error = (
+                        "Ownership transfer is not supported by provider "
+                        f"'{type(self.provider).__name__}'"
+                    )
+                    logger.warning(ownership_transfer_error)
+                    if transfer_strict:
+                        raise RenderingError(ownership_transfer_error)
+                else:
+                    try:
+                        transfer_method(presentation_id, transfer_owner)
+                        ownership_transfer_succeeded = True
+                    except (
+                        Exception
+                    ) as transfer_error:  # pragma: no cover - guarded via tests
+                        ownership_transfer_succeeded = False
+                        ownership_transfer_error = safe_error_line(transfer_error)
+                        logger.error(
+                            "Ownership transfer failed for '%s' -> '%s': %s",
+                            presentation_id,
+                            transfer_owner,
+                            ownership_transfer_error,
+                        )
+                        if transfer_strict:
+                            raise RenderingError(
+                                "Ownership transfer failed: "
+                                f"{ownership_transfer_error}"
+                            ) from transfer_error
+
             render_time = time.time() - start_time
 
             return PresentationResult(
@@ -722,6 +804,10 @@ class Presentation(BaseModel):
                 replacements_made=total_replacements,
                 render_time=render_time,
                 created_at=datetime.now(),
+                ownership_transfer_attempted=ownership_transfer_attempted,
+                ownership_transfer_succeeded=ownership_transfer_succeeded,
+                ownership_transfer_target=ownership_transfer_target,
+                ownership_transfer_error=ownership_transfer_error,
             )
         except Exception as e:
             original_error = e

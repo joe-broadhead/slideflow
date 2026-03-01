@@ -152,3 +152,72 @@ def test_render_fails_fast_when_provider_preflight_fails():
 
     with pytest.raises(RenderingError, match="Provider preflight checks failed"):
         presentation.render()
+
+
+def test_render_transfers_ownership_when_configured():
+    class TransferProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=False, fail_cleanup=False)
+            self.config.share_with = ["team@example.com"]
+            self.config.share_role = "writer"
+            self.config.transfer_ownership_to = "owner@example.com"
+            self.config.transfer_ownership_strict = False
+            self.share_calls = []
+            self.transfer_calls = []
+
+        def share_presentation(self, presentation_id, emails, role="writer"):
+            self.share_calls.append((presentation_id, tuple(emails), role))
+
+        def transfer_presentation_ownership(self, presentation_id, new_owner_email):
+            self.transfer_calls.append((presentation_id, new_owner_email))
+
+    provider = TransferProvider()
+    presentation, _chart = _build_presentation(provider)
+
+    result = presentation.render()
+
+    assert provider.share_calls == [("presentation-1", ("team@example.com",), "writer")]
+    assert provider.transfer_calls == [("presentation-1", "owner@example.com")]
+    assert result.ownership_transfer_attempted is True
+    assert result.ownership_transfer_succeeded is True
+    assert result.ownership_transfer_target == "owner@example.com"
+    assert result.ownership_transfer_error is None
+
+
+def test_render_records_non_strict_transfer_failure():
+    class TransferProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=False, fail_cleanup=False)
+            self.config.transfer_ownership_to = "owner@example.com"
+            self.config.transfer_ownership_strict = False
+
+        def transfer_presentation_ownership(self, presentation_id, new_owner_email):
+            del presentation_id, new_owner_email
+            raise RuntimeError()
+
+    provider = TransferProvider()
+    presentation, _chart = _build_presentation(provider)
+
+    result = presentation.render()
+
+    assert result.ownership_transfer_attempted is True
+    assert result.ownership_transfer_succeeded is False
+    assert result.ownership_transfer_error == "RuntimeError"
+
+
+def test_render_raises_when_strict_transfer_fails():
+    class TransferProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=False, fail_cleanup=False)
+            self.config.transfer_ownership_to = "owner@example.com"
+            self.config.transfer_ownership_strict = True
+
+        def transfer_presentation_ownership(self, presentation_id, new_owner_email):
+            del presentation_id, new_owner_email
+            raise RuntimeError("transfer denied")
+
+    provider = TransferProvider()
+    presentation, _chart = _build_presentation(provider)
+
+    with pytest.raises(RenderingError, match="Ownership transfer failed"):
+        presentation.render()

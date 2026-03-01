@@ -56,6 +56,8 @@ Supported values:
 | `new_folder_name_fn` | `callable` | no | Dynamic folder-name generator |
 | `share_with` | `list[str]` | no | Emails to share generated deck with |
 | `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
+| `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
@@ -75,6 +77,8 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 | `default_chart_width_pt` | `float` | no | Reserved config field; currently not applied at render time |
 | `share_with` | `list[str]` | no | Emails to share generated document with |
 | `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
+| `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 

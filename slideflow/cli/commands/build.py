@@ -386,6 +386,18 @@ def build_command(
                     result_dict = returned_params.copy()
                     result_dict["url"] = result.presentation_url
                     result_dict["presentation_name"] = name
+                    result_dict["ownership_transfer_attempted"] = getattr(
+                        result, "ownership_transfer_attempted", False
+                    )
+                    result_dict["ownership_transfer_succeeded"] = getattr(
+                        result, "ownership_transfer_succeeded", None
+                    )
+                    result_dict["ownership_transfer_target"] = getattr(
+                        result, "ownership_transfer_target", None
+                    )
+                    result_dict["ownership_transfer_error"] = getattr(
+                        result, "ownership_transfer_error", None
+                    )
                     results.append(result_dict)
 
                     completed_count += 1

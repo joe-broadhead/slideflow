@@ -53,6 +53,8 @@ provider:
     share_with:
       - "team@example.com"
     share_role: "reader"
+    transfer_ownership_to: "owner@example.com"
+    transfer_ownership_strict: false
     requests_per_second: 1.0
     strict_cleanup: false
 ```
@@ -64,6 +66,8 @@ Field behavior:
 - `drive_folder_id`: destination folder for uploaded chart images.
 - `section_marker_prefix` / `section_marker_suffix`: marker token format.
 - `share_with` / `share_role`: post-render sharing.
+- `transfer_ownership_to`: optional ownership handoff target after successful render/share.
+- `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
 - `requests_per_second`: API pacing control.
 - `strict_cleanup`: fail run if chart-image cleanup fails.
 
@@ -78,6 +82,7 @@ Current implementation notes:
 - Charts are inserted inline at the matched section anchor.
 - Positional chart fields (`x`, `y`, alignment) are ignored for `google_docs` and log a warning when non-zero positional values are provided.
 - The build result `url` points to `https://docs.google.com/document/d/<id>`.
+- Ownership transfer is explicit opt-in and only supported for files in **My Drive** (not Shared Drives).
 
 ## Contract Validation
 

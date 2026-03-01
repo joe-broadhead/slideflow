@@ -166,6 +166,54 @@ def test_build_command_non_dry_run_processes_results_and_sorts(tmp_path, monkeyp
         "https://example.com/z",
     ]
     assert sorted(row["region"] for row in result) == ["eu", "us"]
+    assert all(row["ownership_transfer_attempted"] is False for row in result)
+    assert all(row["ownership_transfer_succeeded"] is None for row in result)
+
+
+def test_build_command_includes_ownership_transfer_metadata(tmp_path, monkeypatch):
+    _stub_build_cli_output(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        build_command_module,
+        "build_single_presentation",
+        lambda *_args, **_kwargs: (
+            "Deck",
+            SimpleNamespace(
+                presentation_url="https://example.com/deck",
+                ownership_transfer_attempted=True,
+                ownership_transfer_succeeded=False,
+                ownership_transfer_target="owner@example.com",
+                ownership_transfer_error="transfer denied",
+            ),
+            1,
+            {},
+        ),
+    )
+
+    result = build_command_module.build_command(
+        config_file=config_file,
+        registry_files=None,
+        params_path=None,
+        dry_run=False,
+        threads=1,
+    )
+
+    assert result[0]["ownership_transfer_attempted"] is True
+    assert result[0]["ownership_transfer_succeeded"] is False
+    assert result[0]["ownership_transfer_target"] == "owner@example.com"
+    assert result[0]["ownership_transfer_error"] == "transfer denied"
 
 
 def test_build_command_non_dry_run_worker_failure_exits(tmp_path, monkeypatch):
