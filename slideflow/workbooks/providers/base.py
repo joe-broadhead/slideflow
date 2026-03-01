@@ -64,6 +64,16 @@ class WorkbookProvider(ABC):
         """Write a summary string to a tab/cell, optionally clearing a range first."""
         raise NotImplementedError
 
+    @abstractmethod
+    def read_cell_text(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        anchor_cell: str,
+    ) -> str | None:
+        """Read the current text value at a target cell."""
+        raise NotImplementedError
+
     def finalize_workbook(self, workbook_id: str) -> None:
         """Run provider-specific finalize hooks after tab writes."""
         del workbook_id

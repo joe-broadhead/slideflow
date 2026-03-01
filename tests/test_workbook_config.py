@@ -103,6 +103,28 @@ def test_workbook_config_rejects_same_sheet_summary_range_overlap():
         WorkbookConfig.model_validate(payload)
 
 
+def test_workbook_config_rejects_history_mode_with_clear_range():
+    payload = _base_workbook_config()
+    payload["workbook"]["summaries"] = [
+        {
+            "name": "kpi_summary_history",
+            "source_tab": "kpi_current",
+            "provider": "openai",
+            "prompt": "Summarize weekly changes",
+            "mode": "history",
+            "placement": {
+                "type": "same_sheet",
+                "tab_name": "kpi_current",
+                "anchor_cell": "H2",
+                "clear_range": "H2:H20",
+            },
+        }
+    ]
+
+    with pytest.raises(ValidationError, match="not allowed when mode='history'"):
+        WorkbookConfig.model_validate(payload)
+
+
 def test_workbook_config_rejects_reserved_tab_name():
     payload = _base_workbook_config()
     payload["workbook"]["tabs"][0]["name"] = "_slideflow_meta"

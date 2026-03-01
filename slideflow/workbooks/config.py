@@ -241,6 +241,15 @@ class WorkbookSummarySpec(BaseModel):
             raise ValueError("Summary string fields cannot be empty")
         return normalized
 
+    @model_validator(mode="after")
+    def _validate_mode_constraints(self):
+        if self.mode == "history" and self.placement.clear_range:
+            raise ValueError(
+                "workbook.summaries[].placement.clear_range is not allowed when "
+                "mode='history'"
+            )
+        return self
+
 
 class WorkbookSpec(BaseModel):
     """Workbook-level configuration."""

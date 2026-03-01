@@ -189,7 +189,9 @@ def sheets_build_command(
             "registry_files": [str(path) for path in resolved_registry_paths],
             "summary": summary,
             "tabs": [tab.model_dump() for tab in result.tab_results],
-            "summaries": [summary_result.model_dump() for summary_result in result.summary_results],
+            "summaries": [
+                summary_result.model_dump() for summary_result in result.summary_results
+            ],
         }
 
         if result.status == "error":

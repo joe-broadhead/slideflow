@@ -525,6 +525,27 @@ class GoogleSheetsProvider(WorkbookProvider):
             )
         )
 
+    def read_cell_text(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        anchor_cell: str,
+    ) -> str | None:
+        self._ensure_sheet_exists(workbook_id, tab_name)
+        response = self._execute_request(
+            self.sheets_service.spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=workbook_id,
+                range=self._sheet_range(tab_name, anchor_cell),
+            )
+        )
+        values = response.get("values", []) if isinstance(response, dict) else []
+        if not values or not isinstance(values[0], list) or not values[0]:
+            return None
+        value = values[0][0]
+        return str(value) if value is not None else None
+
     def finalize_workbook(self, workbook_id: str) -> None:
         if not self.config.share_with:
             return

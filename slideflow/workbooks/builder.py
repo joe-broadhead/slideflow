@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -77,6 +77,100 @@ def _dataframe_records_for_prompt(df: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def _column_label_to_index(column_label: str) -> int:
+    """Convert an A1 column label (A, Z, AA) to a 1-based index."""
+    index = 0
+    for char in column_label:
+        if char < "A" or char > "Z":
+            raise ValueError(f"Invalid A1 column label '{column_label}'")
+        index = (index * 26) + (ord(char) - ord("A") + 1)
+    return index
+
+
+def _split_a1_cell(cell_ref: str) -> tuple[str, int]:
+    """Split an A1 cell reference into (column_label, row_number)."""
+    cell = cell_ref.strip().upper()
+    split_index = 0
+    while split_index < len(cell) and cell[split_index].isalpha():
+        split_index += 1
+    if split_index == 0 or split_index >= len(cell):
+        raise ValueError(f"Invalid A1 cell reference '{cell_ref}'")
+    column_label = cell[:split_index]
+    row_text = cell[split_index:]
+    if not row_text.isdigit() or row_text.startswith("0"):
+        raise ValueError(f"Invalid A1 row index in '{cell_ref}'")
+    return column_label, int(row_text)
+
+
+def _cell_ref_to_indexes(cell_ref: str) -> tuple[int, int]:
+    """Convert A1 cell reference into (column_index, row_index)."""
+    column_label, row_number = _split_a1_cell(cell_ref)
+    return _column_label_to_index(column_label), row_number
+
+
+def _range_to_bounds(cell_range: str) -> tuple[int, int, int, int]:
+    """Convert an A1 range string into (min_col, min_row, max_col, max_row)."""
+    start_ref, end_ref = cell_range.split(":", maxsplit=1)
+    start_col, start_row = _cell_ref_to_indexes(start_ref)
+    end_col, end_row = _cell_ref_to_indexes(end_ref)
+    return (
+        min(start_col, end_col),
+        min(start_row, end_row),
+        max(start_col, end_col),
+        max(start_row, end_row),
+    )
+
+
+def _rows_to_bounds(
+    start_cell: str, rows: List[List[Any]]
+) -> tuple[int, int, int, int] | None:
+    """Return data bounds for rows written from start_cell, or None when empty."""
+    if not rows:
+        return None
+    max_width = max((len(row) for row in rows), default=0)
+    if max_width <= 0:
+        return None
+    start_col, start_row = _cell_ref_to_indexes(start_cell)
+    end_col = start_col + max_width - 1
+    end_row = start_row + len(rows) - 1
+    return start_col, start_row, end_col, end_row
+
+
+def _bounds_overlap(
+    first_bounds: tuple[int, int, int, int],
+    second_bounds: tuple[int, int, int, int],
+) -> bool:
+    """Return True when two rectangular bounds overlap."""
+    first_min_col, first_min_row, first_max_col, first_max_row = first_bounds
+    second_min_col, second_min_row, second_max_col, second_max_row = second_bounds
+    columns_overlap = (
+        first_min_col <= second_max_col and second_min_col <= first_max_col
+    )
+    rows_overlap = first_min_row <= second_max_row and second_min_row <= first_max_row
+    return columns_overlap and rows_overlap
+
+
+def _cell_in_bounds(cell_ref: str, bounds: tuple[int, int, int, int]) -> bool:
+    """Return True when the given A1 cell lies inside bounds."""
+    column, row = _cell_ref_to_indexes(cell_ref)
+    min_col, min_row, max_col, max_row = bounds
+    return min_col <= column <= max_col and min_row <= row <= max_row
+
+
+def _history_summary_text(existing_text: str | None, generated_summary: str) -> str:
+    """Append a timestamped history entry to existing summary content."""
+    timestamp = (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    entry = f"[{timestamp}] {generated_summary}"
+    if existing_text:
+        return f"{existing_text}\n\n{entry}"
+    return entry
+
+
 class WorkbookBuilder:
     """Build workbook artifacts from validated workbook configuration."""
 
@@ -109,6 +203,7 @@ class WorkbookBuilder:
         tab_results: List[WorkbookTabResult] = []
         summary_results: List[WorkbookSummaryResult] = []
         tab_dataframes: Dict[str, Any] = {}
+        tab_write_bounds: Dict[str, tuple[int, int, int, int]] = {}
 
         for tab in self.config.workbook.tabs:
             try:
@@ -144,7 +239,10 @@ class WorkbookBuilder:
                         rows_written_payload
                         - (1 if tab.include_header and rows else 0),
                     )
+                bounds = _rows_to_bounds(tab.start_cell, rows)
                 tab_dataframes[tab.name] = df
+                if bounds is not None:
+                    tab_write_bounds[tab.name] = bounds
                 tab_results.append(
                     WorkbookTabResult(
                         tab_name=tab.name,
@@ -176,6 +274,7 @@ class WorkbookBuilder:
             target_tab = placement.tab_name or summary.source_tab
             target_cell = placement.anchor_cell or "A1"
             source_df = tab_dataframes.get(summary.source_tab)
+            source_bounds = tab_write_bounds.get(summary.source_tab)
 
             if source_df is None:
                 summary_results.append(
@@ -194,6 +293,42 @@ class WorkbookBuilder:
                 )
                 continue
 
+            if placement.type == "same_sheet" and source_bounds is not None:
+                if _cell_in_bounds(target_cell, source_bounds):
+                    summary_results.append(
+                        WorkbookSummaryResult(
+                            name=summary.name,
+                            source_tab=summary.source_tab,
+                            placement_type=placement.type,
+                            target_tab=target_tab,
+                            target_cell=target_cell,
+                            status="error",
+                            error=(
+                                "Summary anchor cell overlaps rendered tab data range "
+                                f"for tab '{summary.source_tab}'"
+                            ),
+                        )
+                    )
+                    continue
+                if placement.clear_range:
+                    clear_bounds = _range_to_bounds(placement.clear_range)
+                    if _bounds_overlap(clear_bounds, source_bounds):
+                        summary_results.append(
+                            WorkbookSummaryResult(
+                                name=summary.name,
+                                source_tab=summary.source_tab,
+                                placement_type=placement.type,
+                                target_tab=target_tab,
+                                target_cell=target_cell,
+                                status="error",
+                                error=(
+                                    "Summary clear_range overlaps rendered tab data "
+                                    f"range for tab '{summary.source_tab}'"
+                                ),
+                            )
+                        )
+                        continue
+
             try:
                 records = _dataframe_records_for_prompt(source_df)
                 prompt = f"{summary.prompt}\n\nData:\n{records}"
@@ -210,13 +345,25 @@ class WorkbookBuilder:
                     )
                 summary_provider = self._summary_provider_cache[provider_cache_key]
                 generated_summary = str(summary_provider.generate_text(prompt)).strip()
+                text_to_write = generated_summary
+                clear_range_to_write = placement.clear_range
+                if summary.mode == "history":
+                    existing_text = self.provider.read_cell_text(
+                        workbook_id=workbook_id,
+                        tab_name=target_tab,
+                        anchor_cell=target_cell,
+                    )
+                    text_to_write = _history_summary_text(
+                        existing_text, generated_summary
+                    )
+                    clear_range_to_write = None
 
                 self.provider.write_summary_text(
                     workbook_id=workbook_id,
                     tab_name=target_tab,
                     anchor_cell=target_cell,
-                    text=generated_summary,
-                    clear_range=placement.clear_range,
+                    text=text_to_write,
+                    clear_range=clear_range_to_write,
                 )
                 summary_results.append(
                     WorkbookSummaryResult(
@@ -226,7 +373,7 @@ class WorkbookBuilder:
                         target_tab=target_tab,
                         target_cell=target_cell,
                         status="success",
-                        chars_written=len(generated_summary),
+                        chars_written=len(text_to_write),
                     )
                 )
             except Exception as error:

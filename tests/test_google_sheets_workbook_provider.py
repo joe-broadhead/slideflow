@@ -390,3 +390,44 @@ def test_write_summary_text_writes_without_clear_range():
     assert requests[0][0] == "values.update"
     assert requests[0][1]["range"] == "summary!A1"
     assert requests[0][1]["body"]["values"] == [["Weekly summary"]]
+
+
+def test_read_cell_text_returns_value_when_present():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+    provider._ensure_sheet_exists = lambda workbook_id, tab_name: None
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+
+    requests: List[Tuple[str, Dict[str, Any]]] = []
+
+    def _exec(request):
+        requests.append(request)
+        return {"values": [["Existing text"]]}
+
+    provider._execute_request = _exec
+
+    value = provider.read_cell_text(
+        workbook_id="sheet_123",
+        tab_name="summary",
+        anchor_cell="A1",
+    )
+
+    assert value == "Existing text"
+    assert requests and requests[0][0] == "values.get"
+    assert requests[0][1]["range"] == "summary!A1"
+
+
+def test_read_cell_text_returns_none_when_cell_empty():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+    provider._ensure_sheet_exists = lambda workbook_id, tab_name: None
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+    provider._execute_request = lambda request: {"values": []}
+
+    value = provider.read_cell_text(
+        workbook_id="sheet_123",
+        tab_name="summary",
+        anchor_cell="A1",
+    )
+
+    assert value is None
