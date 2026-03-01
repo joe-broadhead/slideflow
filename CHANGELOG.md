@@ -9,22 +9,59 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Optional citation/provenance pipeline for rendered outputs with new top-level config:
+- Optional citation/provenance pipeline for rendered outputs with top-level config:
   - `citations.enabled`
   - `citations.mode` (`model` | `execution` | `both`)
   - `citations.location` (`per_slide` | `per_section` | `document_end`)
   - `citations.max_items`
   - `citations.dedupe`
   - `citations.include_query_text`
-- Provider citation rendering hooks:
+- Citation rendering hooks:
   - Google Slides speaker-notes `Sources` rendering
   - Google Docs section footnote or document-end `Sources` rendering
-- Deterministic citation registry + URL normalization helpers for source provenance modeling.
+- Ownership handoff controls for Google Slides/Docs providers:
+  - `provider.config.transfer_ownership_to`
+  - `provider.config.transfer_ownership_strict`
+- Chart image sharing-mode controls for Google Slides/Docs providers:
+  - `provider.config.chart_image_sharing_mode` (`public` | `restricted`)
+- Shared Google API utility layer for provider internals:
+  - shared service-account credential construction
+  - shared rate-limited request execution helper
+  - shared Drive image upload primitive
+- Dedicated CI optional-connectors coverage path (BigQuery/DuckDB extras).
+- New targeted test coverage for:
+  - auth utilities
+  - rate limiter behavior
+  - Google Drive ownership helper utilities
+  - extracted chart/workbook/sheets preflight helper paths
 
 ### Changed
 
-- Build JSON output now includes citation summary fields and per-result citation payloads.
-- Source connectors now expose citation entries across csv/json/databricks/duckdb/dbt sources.
+- Build JSON output includes citation summary fields and per-result citation payloads.
+- Build JSON output includes ownership transfer status fields:
+  - `ownership_transfer_attempted`
+  - `ownership_transfer_succeeded`
+  - `ownership_transfer_target`
+  - `ownership_transfer_error`
+- Source connectors expose citation entries across `csv`/`json`/`databricks`/`duckdb`/`dbt`.
+- Packaging is now modular for dbt/databricks stack:
+  - base install excludes dbt/databricks-specific runtime dependencies
+  - dbt/databricks usage requires connector extras
+  - connectors now raise actionable install errors when optional dependencies are missing
+- Release workflow now enforces lockfile parity with CI (`uv lock --check` + `uv sync --locked`).
+- Reusable workflow now supports explicit install-extra selection via `slideflow-install-extras`.
+- Charts now use a provider-neutral presentation rate limiter utility (no provider-module coupling).
+- Google provider internals have been consolidated to reduce duplicate auth/request/upload code.
+- High-complexity runtime methods were split into smaller helpers in:
+  - `slideflow/presentations/charts.py`
+  - `slideflow/workbooks/builder.py`
+  - `slideflow/workbooks/providers/google_sheets.py`
+
+### Fixed
+
+- Exception chaining now preserves root causes in provider/auth error wrapping (`raise ... from error`).
+- Citation validation no longer fails silently; malformed entries emit contextual warnings while rendering continues.
+- Corrected malformed DBT warehouse YAML code fence rendering in docs config reference.
 
 ## [0.0.6] - 2026-02-26
 

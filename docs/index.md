@@ -1,11 +1,13 @@
 # SlideFlow
 
-SlideFlow generates Google Slides decks and Google Docs documents from structured YAML, data sources, and reusable chart/replacement logic.
+SlideFlow generates Google Slides decks, Google Docs documents, and Google Sheets workbooks from structured YAML, data sources, and reusable chart/replacement logic.
 
 ## Core capabilities
 
 - Declarative presentation builds via `slideflow build`
+- Declarative workbook builds via `slideflow sheets build`
 - Fast preflight validation via `slideflow validate`
+- Workbook preflight/validation via `slideflow sheets doctor|validate`
 - Data connectors for CSV, JSON, Databricks SQL, DuckDB SQL, and dbt warehouses
 - Dynamic replacements (`text`, `table`, `ai_text`)
 - Charts via Plotly graph objects, reusable templates, or custom Python functions
@@ -15,7 +17,7 @@ SlideFlow generates Google Slides decks and Google Docs documents from structure
 
 1. Configure auth and template IDs in [Getting Started](getting-started.md).
 2. Run the full local path in [Quickstart](quickstart.md).
-3. Use [Google Slides Provider](providers/google-slides.md), [Google Docs Provider](providers/google-docs.md), [Data Connectors](data-connectors.md), [Data Transforms](data-transforms.md), and [AI Providers](ai-providers.md) to harden feature usage.
+3. Use [Google Slides Provider](providers/google-slides.md), [Google Docs Provider](providers/google-docs.md), [Google Sheets Provider](providers/google-sheets.md), [Data Connectors](data-connectors.md), [Data Transforms](data-transforms.md), and [AI Providers](ai-providers.md) to harden feature usage.
 4. Use [CLI Reference](cli-reference.md) and [Configuration Reference](config-reference.md) for production configs.
 5. Use [Deployments](deployments.md), [Security & Auth](security.md), [Testing](testing.md), and [Release Process](release-process.md) for operational hardening.
 
