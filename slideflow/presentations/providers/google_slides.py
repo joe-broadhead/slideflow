@@ -472,7 +472,7 @@ class GoogleSlidesProvider(PresentationProvider):
                     "pageElements(objectId,shape(text(textElements(endIndex))))),"
                     "notesPage(notesProperties(speakerNotesObjectId),"
                     "pageElements(objectId,shape(text(textElements(endIndex)))))"
-                    ")"
+                    "))"
                 ),
             )
         )

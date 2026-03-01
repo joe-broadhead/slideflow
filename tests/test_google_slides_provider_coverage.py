@@ -542,8 +542,10 @@ def test_get_speaker_notes_targets_reads_slide_properties_notes_page():
 
     targets = provider._get_speaker_notes_targets("pres-1")
 
+    fields_mask = captured_get_kwargs["fields"]
     assert targets == {"slide-1": ("notes-1", 14)}
-    assert "slideProperties(notesPage(" in captured_get_kwargs["fields"]
+    assert "slideProperties(notesPage(" in fields_mask
+    assert fields_mask.count("(") == fields_mask.count(")")
 
 
 def test_get_speaker_notes_targets_falls_back_to_legacy_top_level_notes_page():
