@@ -503,3 +503,71 @@ def test_render_citations_document_end_uses_first_slide_notes():
     assert insert_request["objectId"] == "notes-a"
     assert "One" in insert_request["text"]
     assert "Two" in insert_request["text"]
+
+
+def test_get_speaker_notes_targets_reads_slide_properties_notes_page():
+    provider = _provider_without_init()
+    captured_get_kwargs: Dict[str, Any] = {}
+
+    provider.slides_service = SimpleNamespace(
+        presentations=lambda: SimpleNamespace(
+            get=lambda **kwargs: captured_get_kwargs.update(kwargs) or ("get", kwargs)
+        )
+    )
+    provider._execute_request = lambda _request: {
+        "slides": [
+            {
+                "objectId": "slide-1",
+                "slideProperties": {
+                    "notesPage": {
+                        "notesProperties": {"speakerNotesObjectId": "notes-1"},
+                        "pageElements": [
+                            {
+                                "objectId": "notes-1",
+                                "shape": {
+                                    "text": {
+                                        "textElements": [
+                                            {"endIndex": 4},
+                                            {"endIndex": 15},
+                                        ]
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                },
+            }
+        ]
+    }
+
+    targets = provider._get_speaker_notes_targets("pres-1")
+
+    assert targets == {"slide-1": ("notes-1", 14)}
+    assert "slideProperties(notesPage(" in captured_get_kwargs["fields"]
+
+
+def test_get_speaker_notes_targets_falls_back_to_legacy_top_level_notes_page():
+    provider = _provider_without_init()
+    provider.slides_service = SimpleNamespace(
+        presentations=lambda: SimpleNamespace(get=lambda **kwargs: ("get", kwargs))
+    )
+    provider._execute_request = lambda _request: {
+        "slides": [
+            {
+                "objectId": "slide-legacy",
+                "notesPage": {
+                    "notesProperties": {"speakerNotesObjectId": "notes-legacy"},
+                    "pageElements": [
+                        {
+                            "objectId": "notes-legacy",
+                            "shape": {"text": {"textElements": [{"endIndex": 6}]}},
+                        }
+                    ],
+                },
+            }
+        ]
+    }
+
+    targets = provider._get_speaker_notes_targets("pres-legacy")
+
+    assert targets == {"slide-legacy": ("notes-legacy", 5)}
