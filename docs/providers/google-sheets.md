@@ -108,6 +108,7 @@ Placement:
 - `placement.type: summary_tab`
   - writes summary to a dedicated target tab/cell
   - requires `placement.target_tab`
+  - `placement.target_tab` must be different from the source tab
 - `placement.type: same_sheet`
   - writes summary into the source tab
   - `placement.target_tab` is optional; defaults to source tab

@@ -148,6 +148,7 @@ Breaking change notes:
 
 - Removed `workbook.summaries[]` (use `workbook.tabs[].ai.summaries[]`)
 - Removed `placement.tab_name` (use `placement.target_tab`)
+- `placement.type: summary_tab` requires `placement.target_tab` and it must differ from the source tab
 
 For full field-level behavior and examples, see
 [Google Sheets Provider](providers/google-sheets.md).

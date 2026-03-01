@@ -373,6 +373,13 @@ class WorkbookSpec(BaseModel):
                     f"use reserved tab name '{RESERVED_METADATA_TAB}'"
                 )
 
+            if placement.type == "summary_tab" and target_tab == summary.source_tab:
+                raise ValueError(
+                    "workbook.tabs[].ai.summaries[].config.placement.target_tab must "
+                    "differ from the source tab when placement.type='summary_tab'; "
+                    "use placement.type='same_sheet' for same-tab summaries"
+                )
+
             if placement.type == "same_sheet":
                 if target_tab != summary.source_tab:
                     raise ValueError(

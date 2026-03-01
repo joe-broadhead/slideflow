@@ -240,3 +240,53 @@ def test_sheets_validate_rejects_summary_tab_without_target_tab(tmp_path, monkey
     assert "target_tab is required when placement.type='summary_tab'" in payload[
         "error"
     ]["message"]
+
+
+def test_sheets_validate_rejects_summary_tab_target_matching_source(
+    tmp_path, monkeypatch
+):
+    _stub_cli_output(monkeypatch)
+
+    config_file = tmp_path / "workbook-summary-tab-same-target.yaml"
+    output_file = tmp_path / "sheets-validate-summary-tab-same-target.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_sheets\n"
+        "  config: {}\n"
+        "workbook:\n"
+        "  title: Weekly KPI Snapshot\n"
+        "  tabs:\n"
+        "    - name: kpi_current\n"
+        "      mode: replace\n"
+        "      data_source:\n"
+        "        type: csv\n"
+        "        name: kpi_source\n"
+        "        file_path: kpi.csv\n"
+        "      ai:\n"
+        "        summaries:\n"
+        "          - type: ai_text\n"
+        "            config:\n"
+        "              name: kpi_summary\n"
+        "              provider: openai\n"
+        "              provider_args: {}\n"
+        "              prompt: Summarize\n"
+        "              placement:\n"
+        "                type: summary_tab\n"
+        "                target_tab: kpi_current\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(sheets_command_module.typer.Exit) as exc_info:
+        sheets_command_module.sheets_validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert payload["error"]["code"] == "SLIDEFLOW_SHEETS_VALIDATE_FAILED"
+    assert "must differ from the source tab when placement.type='summary_tab'" in payload[
+        "error"
+    ]["message"]
