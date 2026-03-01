@@ -664,9 +664,12 @@ class GoogleDocsProvider(PresentationProvider):
 
         lines = ["", "Sources"]
         for citation_payload in citations:
-            try:
-                entry = CitationEntry.model_validate(citation_payload)
-            except Exception:
+            entry = self._validate_citation_payload(
+                citation_payload,
+                scope_id="__document__",
+                location="document_end",
+            )
+            if entry is None:
                 continue
             lines.append(format_citation_line(entry))
         if len(lines) <= 2:
@@ -728,9 +731,12 @@ class GoogleDocsProvider(PresentationProvider):
 
         lines = ["Sources"]
         for citation_payload in citations:
-            try:
-                entry = CitationEntry.model_validate(citation_payload)
-            except Exception:
+            entry = self._validate_citation_payload(
+                citation_payload,
+                scope_id=section_id,
+                location="per_section",
+            )
+            if entry is None:
                 continue
             lines.append(format_citation_line(entry))
         if len(lines) <= 1:
@@ -782,6 +788,36 @@ class GoogleDocsProvider(PresentationProvider):
                 section_id,
                 citations,
             )
+
+    def _validate_citation_payload(
+        self,
+        citation_payload: Dict[str, Any],
+        *,
+        scope_id: str,
+        location: str,
+    ) -> Optional[CitationEntry]:
+        try:
+            return CitationEntry.model_validate(citation_payload)
+        except Exception as error:
+            source_id = (
+                citation_payload.get("source_id", "<missing>")
+                if isinstance(citation_payload, dict)
+                else "<missing>"
+            )
+            provider = (
+                citation_payload.get("provider", "<missing>")
+                if isinstance(citation_payload, dict)
+                else "<missing>"
+            )
+            logger.warning(
+                "Skipping invalid citation for scope '%s' (location=%s, source_id=%s, provider=%s): %s",
+                scope_id,
+                location,
+                source_id,
+                provider,
+                error,
+            )
+            return None
 
     def share_presentation(
         self, presentation_id: str, emails: List[str], role: str = "writer"
