@@ -18,6 +18,9 @@ For all orchestrated environments, ensure:
 For chart image rendering, provide a Chrome/Chromium binary available to Kaleido.
 Headless environments still need a browser runtime present.
 
+For production-grade Google identity and Shared Drive setup, use
+[Google Service Accounts & Shared Drives](google-service-accounts-shared-drives.md).
+
 ## GitHub Actions
 
 Use the reusable workflow in this repo:

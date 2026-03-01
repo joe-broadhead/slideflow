@@ -46,6 +46,9 @@ export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/service-account.json
 export GOOGLE_DOCS_CREDENTIALS=/absolute/path/service-account.json
 ```
 
+For production service-account and Shared Drive setup, follow the end-to-end
+guide: [Google Service Accounts & Shared Drives](google-service-accounts-shared-drives.md).
+
 ## Create a template deck
 
 Create a template and decide provider mode:

@@ -20,6 +20,9 @@ It reuses `presentation.slides[]` from the core schema:
    - `GOOGLE_DOCS_CREDENTIALS`, or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback).
 
+For production Shared Drive setup and service-account bootstrap commands, see
+[Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
+
 ## Template Design for Marker-Based Sections
 
 Use explicit section markers in your document template:
@@ -83,6 +86,9 @@ Current implementation notes:
 - Positional chart fields (`x`, `y`, alignment) are ignored for `google_docs` and log a warning when non-zero positional values are provided.
 - The build result `url` points to `https://docs.google.com/document/d/<id>`.
 - Ownership transfer is explicit opt-in and only supported for files in **My Drive** (not Shared Drives).
+
+For Shared Drive-first patterns and ownership-transfer constraints, see
+[Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
 
 ## Citation Rendering
 
