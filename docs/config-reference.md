@@ -9,7 +9,7 @@ presentation:
   slides: [...]
 
 provider:
-  type: "google_slides" # or "google_docs"
+  type: "google_slides" # or "google_docs" (use "google_sheets" with workbook schema)
   config: {...}
 
 citations: {...} # optional source provenance output
@@ -17,6 +17,11 @@ citations: {...} # optional source provenance output
 template_paths: ["./templates"] # optional additional paths (prepended before defaults)
 registry: ["./registry.py"] # optional
 ```
+
+Use one of:
+
+- `presentation:` + `provider.type: google_slides|google_docs` with `slideflow validate/build`
+- `workbook:` + `provider.type: google_sheets` with `slideflow sheets validate/build/doctor`
 
 ## `presentation`
 

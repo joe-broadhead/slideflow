@@ -5,8 +5,10 @@
 For Google provider auth, SlideFlow reads credentials from:
 
 1. `provider.config.credentials`
-2. `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`)
-3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+2. Provider-specific env:
+   - `GOOGLE_DOCS_CREDENTIALS` (`google_docs`)
+   - `GOOGLE_SHEETS_CREDENTIALS` (`google_sheets`)
+3. `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback)
 
 Credential value can be:
 
@@ -29,6 +31,12 @@ Google Docs provider scopes:
 - `https://www.googleapis.com/auth/drive`
 - `https://www.googleapis.com/auth/drive.file`
 
+Google Sheets provider scopes:
+
+- `https://www.googleapis.com/auth/spreadsheets`
+- `https://www.googleapis.com/auth/drive`
+- `https://www.googleapis.com/auth/drive.file`
+
 ## Databricks auth
 
 Databricks connectors require:
@@ -42,10 +50,10 @@ Databricks connectors require:
 For dbt package URLs with embedded token variable:
 
 ```text
-https://$GIT_TOKEN@github.com/org/dbt-project.git
+https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git
 ```
 
-Set `GIT_TOKEN` in environment, not in YAML.
+Set `DBT_GIT_TOKEN` in environment, not in YAML.
 
 ## Logging hygiene
 

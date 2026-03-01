@@ -21,7 +21,7 @@
        Direct from your data.
 ```
 
-**SlideFlow is a Python-based tool for generating beautiful, data-driven decks and docs directly from your data sources.**
+**SlideFlow is a Python-based tool for generating beautiful, data-driven decks, docs, and sheets directly from your data sources.**
 
 [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Installation](#-installation) • [Getting Started](#-getting-started) • [CLI Usage](#-cli-usage) • [Configuration](#-configuration) • [Customization](#-customization) • [Contributing](CONTRIBUTING.md)
 
@@ -34,8 +34,8 @@
 SlideFlow was built to solve a simple problem: automating the tedious process of creating data-heavy presentations. If you find yourself repeatedly copying and pasting charts and metrics into slide decks, SlideFlow is for you.
 
 -   🎨 **Beautiful, Consistent Visuals:** Leverage the power of Plotly for stunning, replicable charts. Use YAML templates to create a library of reusable chart designs.
--   📊 **Connect Directly to Your Data:** Pull data from CSV files, JSON, Databricks, or even your dbt models. No more manual data exports.
--   ⚡ **Automate Your Reporting:** Stop the manual work. Reduce errors and save time. Your decks/docs are always up-to-date with your latest data.
+-   📊 **Connect Directly to Your Data:** Pull data from CSV files, JSON, Databricks, DuckDB, or your dbt models. No more manual data exports.
+-   ⚡ **Automate Your Reporting:** Stop the manual work. Reduce errors and save time. Your decks/docs/sheets are always up-to-date with your latest data.
 -   🚀 **Scale Instantly:** Need to create a presentation for every customer, region, or product? Generate hundreds of personalized presentations at once from a single template.
 -   🤖 **Production Automation Ready:** Run scheduled builds in GitHub Actions with the reusable SlideFlow workflow and machine-readable JSON outputs.
 
@@ -82,9 +82,9 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 
 SlideFlow works in three simple steps:
 
-1.  **Define:** You create a YAML file that defines your build target. This includes a Google Slides or Google Docs template, data sources, and per-section content (text, charts, etc.).
+1.  **Define:** You create a YAML file that defines your build target. This includes a Google Slides template, Google Docs template, or Google Sheets workbook schema, plus data sources and per-section/tab content.
 2.  **Connect & Transform:** SlideFlow connects to your specified data sources, fetches the data, and applies any transformations you\'ve defined.
-3.  **Build:** SlideFlow creates a new deck/document, populates it with your data and charts, and saves it to Google Drive.
+3.  **Build:** SlideFlow creates a new deck/document/workbook, populates it with your data and charts, and saves it to Google Drive.
 
 ---
 
@@ -114,16 +114,17 @@ pip install "slideflow-presentations[duckdb]"
 
 To create your first output, you\'ll need:
 
-1.  **A Template:** Use either:
+1.  **A Template/Target:** Use either:
     - Google Slides template with slide IDs for target slides, or
-    - Google Docs template with section markers like `{{SECTION:intro}}`.
+    - Google Docs template with section markers like `{{SECTION:intro}}`, or
+    - Google Sheets target (`spreadsheet_id`) or destination folder for workbook creation.
 2.  **Your Data:** Have your data ready in a CSV file, or have your Databricks credentials configured.
 3.  **A YAML Configuration File:** This is where you\'ll define your presentation. See the [Configuration](#-configuration) section for more details.
-4.  **Google Cloud Credentials:** You'll need a Google Cloud service account with access to the required Google APIs (Slides/Docs + Drive). Provide credentials with one of:
+4.  **Google Cloud Credentials:** You'll need a Google Cloud service account with access to the required Google APIs (Slides/Docs/Sheets + Drive as needed). Provide credentials with one of:
 
     -   Set the `credentials` field in your `config.yml` to the path of your JSON credentials file.
     -   Set the `credentials` field in your `config.yml` to the JSON content of your credentials file as a string.
-    -   Set `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`) or `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback) to a path/raw JSON.
+    -   Set `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`), `GOOGLE_SHEETS_CREDENTIALS` (for `google_sheets`), or `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback) to a path/raw JSON.
 
 Once you have these, you can run the `build` command:
 
@@ -198,6 +199,8 @@ citations: # optional
 
 template_paths:
   - "./templates"
+
+# For Sheets workflows, use `workbook:` schema and `slideflow sheets ...` commands.
 ```
 
 For provider-specific behavior, see:

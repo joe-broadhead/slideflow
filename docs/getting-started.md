@@ -6,8 +6,9 @@
 - Google Cloud project with:
   - Google Slides API enabled
   - Google Docs API enabled (if using `google_docs` provider)
+  - Google Sheets API enabled (if using `google_sheets` provider)
   - Google Drive API enabled
-- A service account with access to your target template deck/document and Drive folders
+- A service account with access to your target template deck/document/spreadsheet and Drive folders
 
 ## Install
 
@@ -32,7 +33,8 @@ SlideFlow accepts credentials via:
 
 1. `provider.config.credentials` in YAML
 2. `GOOGLE_DOCS_CREDENTIALS` environment variable (for `google_docs`)
-3. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable
+3. `GOOGLE_SHEETS_CREDENTIALS` environment variable (for `google_sheets`)
+4. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable (shared fallback)
 
 Environment credential values support either:
 
@@ -44,6 +46,7 @@ Example:
 ```bash
 export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/service-account.json
 export GOOGLE_DOCS_CREDENTIALS=/absolute/path/service-account.json
+export GOOGLE_SHEETS_CREDENTIALS=/absolute/path/service-account.json
 ```
 
 For production service-account and Shared Drive setup, follow the end-to-end
@@ -55,12 +58,14 @@ Create a template and decide provider mode:
 
 - `google_slides`: Google Slides template deck with placeholder text and target slide IDs.
 - `google_docs`: Google Docs template with explicit section markers (for example `{{SECTION:intro}}`).
+- `google_sheets`: Google Sheets workbook output (`workbook:` schema with tab write rules).
 
 You will need:
 
 - `template_id` (presentation/document ID from URL)
 - `google_slides`: slide IDs for each slide you modify
 - `google_docs`: marker ids that match `presentation.slides[].id`
+- `google_sheets`: either `spreadsheet_id` (reuse) or `drive_folder_id` (create destination)
 
 ## Minimal config
 
@@ -101,11 +106,34 @@ presentation:
             replacement: "Hello SlideFlow"
 ```
 
+Google Sheets variant:
+
+```yaml
+provider:
+  type: "google_sheets"
+  config:
+    spreadsheet_id: "your_existing_spreadsheet_id" # or use drive_folder_id for create
+
+workbook:
+  title: "My First SlideFlow Workbook"
+  tabs:
+    - name: "kpi_current"
+      mode: "replace"
+      start_cell: "A1"
+      include_header: true
+      data_source:
+        type: "csv"
+        name: "kpi_source"
+        file_path: "./data.csv"
+```
+
 ## Validate before build
 
 ```bash
 slideflow validate config.yml
 slideflow build config.yml
+slideflow sheets validate workbook.yml
+slideflow sheets build workbook.yml
 ```
 
 Validation should be treated as mandatory in CI and release workflows.
@@ -138,6 +166,7 @@ slideflow build config.yml --params-path params.csv --dry-run
 - Run the sample pipeline in [Quickstart](quickstart.md)
 - Configure real template/folder/sharing behavior in [Google Slides Provider](providers/google-slides.md)
 - Configure marker-based doc behavior in [Google Docs Provider](providers/google-docs.md)
+- Configure workbook/tab behavior in [Google Sheets Provider](providers/google-sheets.md)
 - Choose and harden source systems in [Data Connectors](data-connectors.md)
 - Add reusable preprocessing in [Data Transforms](data-transforms.md)
 - Configure LLM output in [AI Providers](ai-providers.md)
