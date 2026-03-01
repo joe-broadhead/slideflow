@@ -64,11 +64,13 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
     -   `slideflow build`: Generate one or many presentations.
     -   `slideflow validate`: Validate your configuration before you build.
     -   `slideflow doctor`: Run preflight diagnostics before validate/build.
+    -   `slideflow sheets validate|build|doctor`: Validate/build/diagnose workbook pipelines.
     -   `slideflow templates`: Inspect available template names and parameter contracts.
     -   Generate multiple presentations from a single template using a CSV parameter file.
 -   **Multiple Output Providers:**
     -   `google_slides`: Build slide decks from template slides.
     -   `google_docs`: Build marker-anchored documents for newsletter/report workflows.
+    -   `google_sheets`: Build workbook outputs with tab-level replace/append semantics.
 -   **Optional Source Citations:**
     -   Emit deterministic source provenance (`model` and/or `execution`) into output artifacts.
     -   Render `Sources` blocks in Slides speaker notes or Docs footnotes/document end.
@@ -136,6 +138,9 @@ SlideFlow comes with a simple CLI.
     -   supports strict fail mode (`--strict`) and JSON output
 -   `slideflow templates list|info`
     -   inspect available chart templates and contract metadata
+-   `slideflow sheets validate|build|doctor CONFIG_FILE [OPTIONS]`
+    -   workbook configuration workflows (`workbook:` schema)
+    -   machine-readable JSON supported via `--output-json`
 
 Examples:
 

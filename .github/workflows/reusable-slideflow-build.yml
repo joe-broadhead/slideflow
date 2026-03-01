@@ -3,6 +3,11 @@ name: Reusable Slideflow Build
 on:
   workflow_call:
     inputs:
+      artifact-kind:
+        description: "Artifact type to build: presentation or sheets"
+        required: false
+        default: "presentation"
+        type: string
       config-file:
         description: "Path to Slideflow YAML config"
         required: true
@@ -124,6 +129,12 @@ on:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
         value: ${{ jobs.build.outputs.presentation_urls }}
+      workbook-urls:
+        description: "Comma-separated workbook URLs extracted from sheets build JSON output"
+        value: ${{ jobs.build.outputs.workbook_urls }}
+      artifact-urls:
+        description: "Comma-separated artifact URLs extracted from build JSON output"
+        value: ${{ jobs.build.outputs.artifact_urls }}
       doctor-result-json:
         description: "JSON output emitted by slideflow doctor"
         value: ${{ jobs.build.outputs.doctor_result_json }}
@@ -152,6 +163,8 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
+      workbook_urls: ${{ steps.extract_urls.outputs.workbook_urls }}
+      artifact_urls: ${{ steps.extract_urls.outputs.artifact_urls }}
       doctor_result_json: ${{ steps.extract_json.outputs.doctor_result_json }}
       validate_result_json: ${{ steps.extract_json.outputs.validate_result_json }}
       build_result_json: ${{ steps.extract_json.outputs.build_result_json }}
@@ -206,8 +219,14 @@ jobs:
           DOCTOR_JSON_FILE: ${{ runner.temp }}/slideflow-doctor-result.json
           VALIDATE_JSON_FILE: ${{ runner.temp }}/slideflow-validate-result.json
           BUILD_JSON_FILE: ${{ runner.temp }}/slideflow-build-result.json
+          ARTIFACT_KIND: ${{ inputs.artifact-kind }}
         run: |
           set -euo pipefail
+          artifact_kind="${{ inputs.artifact-kind }}"
+          if [[ "$artifact_kind" != "presentation" && "$artifact_kind" != "sheets" ]]; then
+            echo "Unsupported artifact-kind: '$artifact_kind' (expected 'presentation' or 'sheets')" >&2
+            exit 1
+          fi
           : > "$LOG_FILE"
           : > "$URL_FILE"
           printf '{}\n' > "$DOCTOR_JSON_FILE"
@@ -225,7 +244,11 @@ jobs:
           fi
 
           if [[ "${{ inputs.run-doctor }}" == "true" ]]; then
-            doctor_cmd=(slideflow doctor --config-file "${{ inputs.config-file }}" --output-json "$DOCTOR_JSON_FILE")
+            if [[ "$artifact_kind" == "sheets" ]]; then
+              doctor_cmd=(slideflow sheets doctor "${{ inputs.config-file }}" --output-json "$DOCTOR_JSON_FILE")
+            else
+              doctor_cmd=(slideflow doctor --config-file "${{ inputs.config-file }}" --output-json "$DOCTOR_JSON_FILE")
+            fi
             if [[ ${#registry_args[@]} -gt 0 ]]; then
               doctor_cmd+=("${registry_args[@]}")
             fi
@@ -239,11 +262,15 @@ jobs:
           fi
 
           if [[ "${{ inputs.run-validate }}" == "true" ]]; then
-            validate_cmd=(slideflow validate "${{ inputs.config-file }}" --output-json "$VALIDATE_JSON_FILE")
+            if [[ "$artifact_kind" == "sheets" ]]; then
+              validate_cmd=(slideflow sheets validate "${{ inputs.config-file }}" --output-json "$VALIDATE_JSON_FILE")
+            else
+              validate_cmd=(slideflow validate "${{ inputs.config-file }}" --output-json "$VALIDATE_JSON_FILE")
+            fi
             if [[ ${#registry_args[@]} -gt 0 ]]; then
               validate_cmd+=("${registry_args[@]}")
             fi
-            if [[ "${{ inputs.run-provider-contract-check }}" == "true" ]]; then
+            if [[ "$artifact_kind" == "presentation" && "${{ inputs.run-provider-contract-check }}" == "true" ]]; then
               validate_cmd+=("--provider-contract-check")
               contract_params_path="${{ inputs.provider-contract-params-path }}"
               if [[ -z "$contract_params_path" && -n "${{ inputs.params-path }}" ]]; then
@@ -259,20 +286,24 @@ jobs:
             } 2>&1 | tee -a "$LOG_FILE"
           fi
 
-          build_cmd=(slideflow build "${{ inputs.config-file }}" --output-json "$BUILD_JSON_FILE")
+          if [[ "$artifact_kind" == "sheets" ]]; then
+            build_cmd=(slideflow sheets build "${{ inputs.config-file }}" --output-json "$BUILD_JSON_FILE")
+          else
+            build_cmd=(slideflow build "${{ inputs.config-file }}" --output-json "$BUILD_JSON_FILE")
+          fi
           if [[ ${#registry_args[@]} -gt 0 ]]; then
             build_cmd+=("${registry_args[@]}")
           fi
-          if [[ -n "${{ inputs.params-path }}" ]]; then
+          if [[ "$artifact_kind" == "presentation" && -n "${{ inputs.params-path }}" ]]; then
             build_cmd+=("--params-path" "${{ inputs.params-path }}")
           fi
-          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+          if [[ "$artifact_kind" == "presentation" && "${{ inputs.dry-run }}" == "true" ]]; then
             build_cmd+=("--dry-run")
           fi
-          if [[ -n "${{ inputs.threads }}" ]]; then
+          if [[ "$artifact_kind" == "presentation" && -n "${{ inputs.threads }}" ]]; then
             build_cmd+=("--threads" "${{ inputs.threads }}")
           fi
-          if [[ -n "${{ inputs.requests-per-second }}" ]]; then
+          if [[ "$artifact_kind" == "presentation" && -n "${{ inputs.requests-per-second }}" ]]; then
             build_cmd+=("--rps" "${{ inputs.requests-per-second }}")
           fi
 
@@ -288,6 +319,7 @@ jobs:
 
           build_json = Path(os.environ["BUILD_JSON_FILE"])
           url_file = Path(os.environ["URL_FILE"])
+          artifact_kind = os.environ.get("ARTIFACT_KIND", "presentation")
 
           urls = []
           if build_json.exists():
@@ -295,11 +327,18 @@ jobs:
                   payload = json.loads(build_json.read_text(encoding="utf-8"))
               except Exception:
                   payload = {}
-              for row in payload.get("results", []):
-                  if isinstance(row, dict):
-                      url = row.get("url")
-                      if isinstance(url, str) and url:
-                          urls.append(url)
+              if artifact_kind == "sheets":
+                  summary = payload.get("summary", {})
+                  if isinstance(summary, dict):
+                      workbook_url = summary.get("workbook_url")
+                      if isinstance(workbook_url, str) and workbook_url:
+                          urls.append(workbook_url)
+              else:
+                  for row in payload.get("results", []):
+                      if isinstance(row, dict):
+                          url = row.get("url")
+                          if isinstance(url, str) and url:
+                              urls.append(url)
 
           unique_urls = sorted(set(urls))
           text = "\n".join(unique_urls)
@@ -316,11 +355,19 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -s "$URL_FILE" ]]; then
-            presentation_urls="$(paste -sd, "$URL_FILE")"
+            extracted_urls="$(paste -sd, "$URL_FILE")"
           else
-            presentation_urls=""
+            extracted_urls=""
           fi
-          echo "presentation_urls=$presentation_urls" >> "$GITHUB_OUTPUT"
+          if [[ "${{ inputs.artifact-kind }}" == "sheets" ]]; then
+            echo "presentation_urls=" >> "$GITHUB_OUTPUT"
+            echo "workbook_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
+            echo "artifact_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
+          else
+            echo "presentation_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
+            echo "workbook_urls=" >> "$GITHUB_OUTPUT"
+            echo "artifact_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Extract JSON outputs
         id: extract_json

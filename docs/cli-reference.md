@@ -11,6 +11,7 @@ Commands:
 - `build`: validate + generate one or many presentations
 - `validate`: validate configuration and registries without rendering
 - `doctor`: run preflight diagnostics for runtime dependencies
+- `sheets`: validate/build/doctor commands for workbook pipelines
 - `templates`: inspect available chart templates and contracts
 
 ## Global options
@@ -147,6 +148,67 @@ slideflow doctor --config-file config.yml --registry registry.py
 slideflow doctor --config-file config.yml --strict --output-json doctor-result.json
 ```
 
+## `slideflow sheets validate`
+
+```bash
+slideflow sheets validate CONFIG_FILE [OPTIONS]
+```
+
+Options:
+
+| Option | Description |
+| --- | --- |
+| `-r`, `--registry` | One or more Python registry files |
+| `--output-json` | Write machine-readable validation summary JSON |
+
+Examples:
+
+```bash
+slideflow sheets validate workbook.yml
+slideflow sheets validate workbook.yml --registry registry.py --output-json sheets-validate.json
+```
+
+## `slideflow sheets build`
+
+```bash
+slideflow sheets build CONFIG_FILE [OPTIONS]
+```
+
+Options:
+
+| Option | Description |
+| --- | --- |
+| `-r`, `--registry` | One or more Python registry files |
+| `--output-json` | Write machine-readable build summary JSON |
+
+Examples:
+
+```bash
+slideflow sheets build workbook.yml
+slideflow sheets build workbook.yml --registry registry.py --output-json sheets-build.json
+```
+
+## `slideflow sheets doctor`
+
+```bash
+slideflow sheets doctor CONFIG_FILE [OPTIONS]
+```
+
+Options:
+
+| Option | Description |
+| --- | --- |
+| `-r`, `--registry` | Optional registry paths for config resolution |
+| `--strict` | Exit non-zero when error-severity checks fail |
+| `--output-json` | Write machine-readable doctor summary JSON |
+
+Examples:
+
+```bash
+slideflow sheets doctor workbook.yml
+slideflow sheets doctor workbook.yml --strict --output-json sheets-doctor.json
+```
+
 ## `slideflow templates list`
 
 ```bash
@@ -183,5 +245,6 @@ slideflow templates info bar_basic
 
 - Returns non-zero exit status on validation/build failures
 - `doctor --strict` returns non-zero when error checks fail
+- `sheets doctor --strict` returns non-zero when error checks fail
 - CLI failures include stable error codes in stderr output for automation parsing
 - CI should treat any non-zero status as a failed job

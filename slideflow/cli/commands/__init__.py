@@ -34,6 +34,7 @@ from slideflow.cli.commands.doctor import doctor_command
 from slideflow.cli.commands.sheets import (
     sheets_app,
     sheets_build_command,
+    sheets_doctor_command,
     sheets_validate_command,
 )
 from slideflow.cli.commands.templates import (
@@ -49,6 +50,7 @@ __all__ = [
     "doctor_command",
     "sheets_app",
     "sheets_build_command",
+    "sheets_doctor_command",
     "sheets_validate_command",
     "templates_app",
     "templates_list_command",

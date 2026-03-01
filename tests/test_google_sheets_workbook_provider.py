@@ -21,9 +21,15 @@ def _minimal_sheets_service():
     )
     spreadsheets_api = SimpleNamespace(
         values=lambda: values_api,
+        get=lambda **kwargs: ("spreadsheets.get", kwargs),
         batchUpdate=lambda **kwargs: ("spreadsheets.batchUpdate", kwargs),
     )
     return SimpleNamespace(spreadsheets=lambda: spreadsheets_api)
+
+
+def _minimal_drive_service():
+    files_api = SimpleNamespace(get=lambda **kwargs: ("drive.files.get", kwargs))
+    return SimpleNamespace(files=lambda: files_api)
 
 
 def test_load_run_key_cache_populates_and_reuses_cache():
@@ -267,3 +273,65 @@ def test_write_append_rows_keeps_reserved_key_if_cleanup_fails():
         )
 
     assert ("kpi_current", "wk_4") in run_keys
+
+
+def test_run_preflight_checks_with_spreadsheet_and_folder_access():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(
+        credentials="{}",
+        requests_per_second=1.0,
+        spreadsheet_id="sheet_123",
+        drive_folder_id="folder_456",
+    )
+    provider.sheets_service = _minimal_sheets_service()
+    provider.drive_service = _minimal_drive_service()
+    provider.rate_limiter = object()
+
+    requests: List[Tuple[str, Dict[str, Any]]] = []
+
+    def _exec(request):
+        requests.append(request)
+        if request[0] == "spreadsheets.get":
+            return {"spreadsheetId": "sheet_123"}
+        if request[0] == "drive.files.get":
+            return {
+                "id": "folder_456",
+                "mimeType": "application/vnd.google-apps.folder",
+                "trashed": False,
+            }
+        return {}
+
+    provider._execute_request = _exec
+    checks = provider.run_preflight_checks()
+    check_map = {name: ok for name, ok, _ in checks}
+
+    assert check_map["google_sheets_credentials_present"] is True
+    assert check_map["spreadsheet_access"] is True
+    assert check_map["drive_folder_access"] is True
+    assert [req[0] for req in requests] == ["spreadsheets.get", "drive.files.get"]
+
+
+def test_run_preflight_checks_reports_spreadsheet_access_failure():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(
+        credentials="{}",
+        requests_per_second=1.0,
+        spreadsheet_id="sheet_123",
+        drive_folder_id=None,
+    )
+    provider.sheets_service = _minimal_sheets_service()
+    provider.drive_service = _minimal_drive_service()
+    provider.rate_limiter = object()
+
+    def _exec(request):
+        if request[0] == "spreadsheets.get":
+            raise RuntimeError("not found")
+        return {}
+
+    provider._execute_request = _exec
+    checks = provider.run_preflight_checks()
+    check_details = {name: detail for name, _ok, detail in checks}
+    check_map = {name: ok for name, ok, _detail in checks}
+
+    assert check_map["spreadsheet_access"] is False
+    assert "not found" in check_details["spreadsheet_access"]
