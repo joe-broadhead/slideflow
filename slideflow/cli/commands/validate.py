@@ -186,6 +186,10 @@ def _execute_contract_request(contract_client: Any, request: Any) -> Any:
         return request.execute()
 
 
+def _coerce_marker_token(value: Any, default: str) -> str:
+    return value if isinstance(value, str) else default
+
+
 class ProviderContractValidationError(ValueError):
     """Raised when provider contract checks fail."""
 
@@ -562,20 +566,28 @@ def _run_google_docs_provider_contract_check(
     expected_contract = _collect_expected_contract(presentation_config)
     issues: List[Dict[str, Any]] = []
     checked_templates = 0
-    marker_prefix = getattr(contract_client, "marker_prefix", None)
-    marker_suffix = getattr(contract_client, "marker_suffix", None)
-    if not isinstance(marker_prefix, str):
-        marker_prefix = getattr(
-            getattr(contract_client, "config", object()),
-            "section_marker_prefix",
+    marker_prefix = _coerce_marker_token(
+        getattr(contract_client, "marker_prefix", None),
+        _coerce_marker_token(
+            getattr(
+                getattr(contract_client, "config", object()),
+                "section_marker_prefix",
+                None,
+            ),
             "{{SECTION:",
-        )
-    if not isinstance(marker_suffix, str):
-        marker_suffix = getattr(
-            getattr(contract_client, "config", object()),
-            "section_marker_suffix",
+        ),
+    )
+    marker_suffix = _coerce_marker_token(
+        getattr(contract_client, "marker_suffix", None),
+        _coerce_marker_token(
+            getattr(
+                getattr(contract_client, "config", object()),
+                "section_marker_suffix",
+                None,
+            ),
             "}}",
-        )
+        ),
+    )
 
     for template_id in template_ids:
         try:
