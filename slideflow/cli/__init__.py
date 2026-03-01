@@ -9,6 +9,7 @@ reporting.
 The CLI includes:
     - build: Generate presentations from YAML configurations
     - validate: Validate configurations without building
+    - sheets validate: Validate workbook configurations for sheet outputs
     - Comprehensive help system and error reporting
     - Rich terminal output with colors and formatting
     - Progress tracking for long-running operations
