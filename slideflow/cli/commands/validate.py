@@ -40,6 +40,8 @@ from typing import Annotated, Any, Dict, List, Optional, Set
 
 import typer
 import yaml  # type: ignore[import-untyped]
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.cli.error_codes import CliErrorCode, resolve_cli_error_code
@@ -53,11 +55,135 @@ from slideflow.cli.theme import (
 from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities import ConfigLoader
+from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.error_messages import safe_error_line
 
 _GOOGLE_SLIDES_CONTRACT_FIELDS = (
     "slides(objectId,pageElements(shape(text(textElements(textRun(content))))))"
 )
+_GOOGLE_SLIDES_CONTRACT_SCOPES = (
+    "https://www.googleapis.com/auth/presentations.readonly",
+)
+_GOOGLE_DOCS_CONTRACT_SCOPES = ("https://www.googleapis.com/auth/documents.readonly",)
+
+
+class _GoogleContractCheckClient:
+    """Minimal Google API client wrapper for provider contract checks."""
+
+    def __init__(
+        self,
+        *,
+        provider_type: str,
+        auth_mode: str,
+        slides_service: Any = None,
+        docs_service: Any = None,
+        marker_prefix: str = "{{SECTION:",
+        marker_suffix: str = "}}",
+    ) -> None:
+        self.provider_type = provider_type
+        self.auth_mode = auth_mode
+        self.slides_service = slides_service
+        self.docs_service = docs_service
+        self.marker_prefix = marker_prefix
+        self.marker_suffix = marker_suffix
+
+    @staticmethod
+    def execute_request(request: Any) -> Any:
+        try:
+            return request.execute(num_retries=3)
+        except TypeError:
+            return request.execute()
+
+
+def _build_readonly_google_contract_client(
+    presentation_config: PresentationConfig,
+) -> _GoogleContractCheckClient:
+    """Build least-privilege read-only Google clients for contract checks."""
+    provider_type = presentation_config.provider.type
+    provider_config = presentation_config.provider.config
+    credentials_input = (
+        provider_config.get("credentials")
+        if isinstance(provider_config, dict)
+        else None
+    )
+
+    if provider_type == "google_slides":
+        loaded_credentials = handle_google_credentials(credentials_input)
+        credentials = Credentials.from_service_account_info(
+            loaded_credentials,
+            scopes=list(_GOOGLE_SLIDES_CONTRACT_SCOPES),
+        )
+        slides_service = build("slides", "v1", credentials=credentials)
+        return _GoogleContractCheckClient(
+            provider_type="google_slides",
+            auth_mode="readonly",
+            slides_service=slides_service,
+        )
+
+    if provider_type == "google_docs":
+        loaded_credentials = handle_google_credentials(
+            credentials_input,
+            env_var_names=["GOOGLE_DOCS_CREDENTIALS", "GOOGLE_SLIDEFLOW_CREDENTIALS"],
+        )
+        credentials = Credentials.from_service_account_info(
+            loaded_credentials,
+            scopes=list(_GOOGLE_DOCS_CONTRACT_SCOPES),
+        )
+        docs_service = build("docs", "v1", credentials=credentials)
+        marker_prefix = (
+            provider_config.get("section_marker_prefix", "{{SECTION:")
+            if isinstance(provider_config, dict)
+            else "{{SECTION:"
+        )
+        marker_suffix = (
+            provider_config.get("section_marker_suffix", "}}")
+            if isinstance(provider_config, dict)
+            else "}}"
+        )
+        return _GoogleContractCheckClient(
+            provider_type="google_docs",
+            auth_mode="readonly",
+            docs_service=docs_service,
+            marker_prefix=(
+                marker_prefix if isinstance(marker_prefix, str) else "{{SECTION:"
+            ),
+            marker_suffix=(marker_suffix if isinstance(marker_suffix, str) else "}}"),
+        )
+
+    raise ValueError(
+        "Provider contract check is currently only supported for "
+        "provider types 'google_slides' and 'google_docs'."
+    )
+
+
+def _create_google_contract_check_client(
+    presentation_config: PresentationConfig,
+) -> Any:
+    """Create readonly contract-check clients with provider fallback."""
+    try:
+        return _build_readonly_google_contract_client(presentation_config)
+    except Exception:
+        from slideflow.presentations.providers.factory import ProviderFactory
+
+        provider = ProviderFactory.create_provider(presentation_config.provider)
+        setattr(provider, "auth_mode", "provider_fallback")
+        return provider
+
+
+def _execute_contract_request(contract_client: Any, request: Any) -> Any:
+    """Execute a Google request for contract checks across client types."""
+    execute_request = getattr(contract_client, "execute_request", None)
+    if callable(execute_request):
+        return execute_request(request)
+
+    provider_execute = getattr(contract_client, "_execute_request", None)
+    if callable(provider_execute):
+        return provider_execute(request)
+
+    try:
+        return request.execute(num_retries=3)
+    except TypeError:
+        return request.execute()
 
 
 class ProviderContractValidationError(ValueError):
@@ -191,7 +317,7 @@ def _extract_slide_text_map(presentation_payload: Dict[str, Any]) -> Dict[str, s
 
 def _run_google_provider_contract_check(
     presentation_config: PresentationConfig,
-    provider: Any,
+    contract_client: Any,
     params_path: Optional[Path],
 ) -> Dict[str, Any]:
     """Validate configured slide IDs/placeholders against Google Slides templates."""
@@ -207,11 +333,12 @@ def _run_google_provider_contract_check(
         slide_text_map = slide_text_cache.get(template_id)
         if slide_text_map is None:
             try:
-                response = provider._execute_request(  # noqa: SLF001
-                    provider.slides_service.presentations().get(
+                response = _execute_contract_request(
+                    contract_client,
+                    contract_client.slides_service.presentations().get(
                         presentationId=template_id,
                         fields=_GOOGLE_SLIDES_CONTRACT_FIELDS,
-                    )
+                    ),
                 )
                 slide_text_map = _extract_slide_text_map(response)
                 slide_text_cache[template_id] = slide_text_map
@@ -257,6 +384,7 @@ def _run_google_provider_contract_check(
     return {
         "enabled": True,
         "provider_type": presentation_config.provider.type,
+        "auth_mode": str(getattr(contract_client, "auth_mode", "unknown")),
         "checked_templates": checked_templates,
         "template_ids": template_ids,
         "checked_slides": sorted(expected_contract.keys()),
@@ -424,7 +552,7 @@ def _extract_google_docs_sections(
 
 def _run_google_docs_provider_contract_check(
     presentation_config: PresentationConfig,
-    provider: Any,
+    contract_client: Any,
     params_path: Optional[Path],
 ) -> Dict[str, Any]:
     """Validate configured marker IDs/placeholders against Google Docs templates."""
@@ -434,13 +562,26 @@ def _run_google_docs_provider_contract_check(
     expected_contract = _collect_expected_contract(presentation_config)
     issues: List[Dict[str, Any]] = []
     checked_templates = 0
-    marker_prefix = getattr(provider.config, "section_marker_prefix", "{{SECTION:")
-    marker_suffix = getattr(provider.config, "section_marker_suffix", "}}")
+    marker_prefix = getattr(contract_client, "marker_prefix", None)
+    marker_suffix = getattr(contract_client, "marker_suffix", None)
+    if not isinstance(marker_prefix, str):
+        marker_prefix = getattr(
+            getattr(contract_client, "config", object()),
+            "section_marker_prefix",
+            "{{SECTION:",
+        )
+    if not isinstance(marker_suffix, str):
+        marker_suffix = getattr(
+            getattr(contract_client, "config", object()),
+            "section_marker_suffix",
+            "}}",
+        )
 
     for template_id in template_ids:
         try:
-            response = provider._execute_request(  # noqa: SLF001
-                provider.docs_service.documents().get(documentId=template_id)
+            response = _execute_contract_request(
+                contract_client,
+                contract_client.docs_service.documents().get(documentId=template_id),
             )
             document_segments = _extract_google_docs_text_segments(response)
             sections_payload = _extract_google_docs_sections(
@@ -510,6 +651,7 @@ def _run_google_docs_provider_contract_check(
     return {
         "enabled": True,
         "provider_type": presentation_config.provider.type,
+        "auth_mode": str(getattr(contract_client, "auth_mode", "unknown")),
         "checked_templates": checked_templates,
         "template_ids": template_ids,
         "checked_slides": sorted(expected_contract.keys()),
@@ -664,17 +806,17 @@ def validate_command(
                     "provider types 'google_slides' and 'google_docs'."
                 )
 
-            provider = ProviderFactory.create_provider(presentation_config.provider)
+            contract_client = _create_google_contract_check_client(presentation_config)
             if provider_type == "google_slides":
                 provider_contract_summary = _run_google_provider_contract_check(
                     presentation_config=presentation_config,
-                    provider=provider,
+                    contract_client=contract_client,
                     params_path=params_path,
                 )
             else:
                 provider_contract_summary = _run_google_docs_provider_contract_check(
                     presentation_config=presentation_config,
-                    provider=provider,
+                    contract_client=contract_client,
                     params_path=params_path,
                 )
             if provider_contract_summary["issues"]:

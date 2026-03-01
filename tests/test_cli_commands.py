@@ -74,6 +74,138 @@ def test_validate_first_error_line_falls_back_to_exception_type_when_empty():
     assert validate_command_module._first_error_line(error) == "RuntimeError"
 
 
+def test_build_readonly_google_contract_client_slides_uses_read_scope(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "handle_google_credentials",
+        lambda credentials_input, **_kwargs: {"credentials_input": credentials_input},
+    )
+
+    def _fake_from_service_account_info(info, scopes):
+        captured["info"] = info
+        captured["scopes"] = scopes
+        return "readonly-creds"
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "Credentials",
+        types.SimpleNamespace(
+            from_service_account_info=staticmethod(_fake_from_service_account_info)
+        ),
+    )
+
+    build_calls = []
+
+    def _fake_build(service_name, version, credentials):
+        build_calls.append((service_name, version, credentials))
+        return "slides-service"
+
+    monkeypatch.setattr(validate_command_module, "build", _fake_build)
+
+    presentation_config = types.SimpleNamespace(
+        provider=types.SimpleNamespace(
+            type="google_slides",
+            config={"credentials": "inline-creds"},
+        )
+    )
+
+    client = validate_command_module._build_readonly_google_contract_client(
+        presentation_config
+    )
+
+    assert captured["scopes"] == list(
+        validate_command_module._GOOGLE_SLIDES_CONTRACT_SCOPES
+    )
+    assert build_calls == [("slides", "v1", "readonly-creds")]
+    assert client.auth_mode == "readonly"
+    assert client.slides_service == "slides-service"
+
+
+def test_build_readonly_google_contract_client_docs_uses_read_scope(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "handle_google_credentials",
+        lambda credentials_input, **_kwargs: {"credentials_input": credentials_input},
+    )
+
+    def _fake_from_service_account_info(info, scopes):
+        captured["info"] = info
+        captured["scopes"] = scopes
+        return "readonly-creds"
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "Credentials",
+        types.SimpleNamespace(
+            from_service_account_info=staticmethod(_fake_from_service_account_info)
+        ),
+    )
+
+    build_calls = []
+
+    def _fake_build(service_name, version, credentials):
+        build_calls.append((service_name, version, credentials))
+        return "docs-service"
+
+    monkeypatch.setattr(validate_command_module, "build", _fake_build)
+
+    presentation_config = types.SimpleNamespace(
+        provider=types.SimpleNamespace(
+            type="google_docs",
+            config={
+                "credentials": "inline-creds",
+                "section_marker_prefix": "<<SECTION:",
+                "section_marker_suffix": ">>",
+            },
+        )
+    )
+
+    client = validate_command_module._build_readonly_google_contract_client(
+        presentation_config
+    )
+
+    assert captured["scopes"] == list(
+        validate_command_module._GOOGLE_DOCS_CONTRACT_SCOPES
+    )
+    assert build_calls == [("docs", "v1", "readonly-creds")]
+    assert client.auth_mode == "readonly"
+    assert client.docs_service == "docs-service"
+    assert client.marker_prefix == "<<SECTION:"
+    assert client.marker_suffix == ">>"
+
+
+def test_create_google_contract_check_client_falls_back_to_provider(monkeypatch):
+    monkeypatch.setattr(
+        validate_command_module,
+        "_build_readonly_google_contract_client",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("readonly failed")
+        ),
+    )
+
+    sentinel_provider = types.SimpleNamespace()
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(lambda _provider_config: sentinel_provider),
+    )
+
+    presentation_config = types.SimpleNamespace(
+        provider=types.SimpleNamespace(type="google_slides", config={})
+    )
+
+    result = validate_command_module._create_google_contract_check_client(
+        presentation_config
+    )
+
+    assert result is sentinel_provider
+    assert result.auth_mode == "provider_fallback"
+
+
 def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
     tmp_path, monkeypatch
 ):
