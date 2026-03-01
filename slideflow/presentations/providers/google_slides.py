@@ -502,11 +502,13 @@ class GoogleSlidesProvider(PresentationProvider):
                 text_elements = (
                     text.get("textElements", []) if isinstance(text, dict) else []
                 )
-                end_indexes = [
-                    int(entry.get("endIndex"))
-                    for entry in text_elements
-                    if isinstance(entry, dict) and entry.get("endIndex") is not None
-                ]
+                end_indexes: List[int] = []
+                for entry in text_elements:
+                    if not isinstance(entry, dict):
+                        continue
+                    end_index = entry.get("endIndex")
+                    if isinstance(end_index, int):
+                        end_indexes.append(end_index)
                 if end_indexes:
                     insertion_index = max(max(end_indexes) - 1, 0)
                 break
