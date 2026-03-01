@@ -31,7 +31,10 @@ def _normalize_cell_value(value: Any) -> Any:
         return None
     if isinstance(value, Decimal):
         # Google Sheets API payloads must be JSON serializable scalars.
-        return float(value)
+        try:
+            value = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return str(value)
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return None

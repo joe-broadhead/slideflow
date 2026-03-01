@@ -147,6 +147,22 @@ def test_dataframe_to_sheet_rows_normalizes_decimal_values():
     assert rows[1] == ["WEUR", 123.45]
 
 
+def test_dataframe_to_sheet_rows_normalizes_non_finite_decimal_values():
+    df = pd.DataFrame(
+        {
+            "region": ["A", "B", "C"],
+            "gmv": [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")],
+        }
+    )
+
+    rows = dataframe_to_sheet_rows(df, include_header=True)
+
+    assert rows[0] == ["region", "gmv"]
+    assert rows[1] == ["A", None]
+    assert rows[2] == ["B", None]
+    assert rows[3] == ["C", None]
+
+
 def test_workbook_builder_build_success(tmp_path, monkeypatch):
     csv_path = tmp_path / "kpi.csv"
     csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
