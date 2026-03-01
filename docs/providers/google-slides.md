@@ -14,6 +14,9 @@ It can create a blank deck or copy a template, insert chart images, run text/tab
    - `provider.config.credentials` in YAML (file path or raw JSON), or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable.
 
+For production Shared Drive setup and command-by-command service-account
+bootstrap, see [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
+
 ## Template Design for Automation
 
 Use a template deck that is stable and automation-friendly:
@@ -74,6 +77,9 @@ Sharing is performed by the service account, not your personal user.
 - Google may send notification emails when sharing is executed.
 - Ownership transfer is explicit opt-in and only works for files in **My Drive** (not Shared Drives).
 - Transfer uses Google Drive ownership APIs and may notify the target owner.
+
+For Shared Drive-first permission patterns and ownership-transfer constraints,
+see [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
 
 ## Cleanup Semantics
 

@@ -124,6 +124,7 @@ nav:
       - Automation: automation.md
       - Testing: testing.md
       - Security: security.md
+      - Google Service Accounts & Shared Drives: google-service-accounts-shared-drives.md
       - Release: release-process.md
       - Changelog: changelog.md
   - Development:
