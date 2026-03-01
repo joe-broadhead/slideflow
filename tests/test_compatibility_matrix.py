@@ -7,6 +7,7 @@ from pydantic import TypeAdapter
 import slideflow
 from slideflow.cli.commands import (
     build_command,
+    sheets_build_command,
     sheets_validate_command,
     validate_command,
 )
@@ -44,6 +45,7 @@ def test_public_identity_contracts_remain_stable():
 def test_cli_commands_remain_available():
     assert callable(build_command)
     assert callable(validate_command)
+    assert callable(sheets_build_command)
     assert callable(sheets_validate_command)
 
 

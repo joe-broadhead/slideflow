@@ -31,7 +31,11 @@ Usage:
 
 from slideflow.cli.commands.build import build_command
 from slideflow.cli.commands.doctor import doctor_command
-from slideflow.cli.commands.sheets import sheets_app, sheets_validate_command
+from slideflow.cli.commands.sheets import (
+    sheets_app,
+    sheets_build_command,
+    sheets_validate_command,
+)
 from slideflow.cli.commands.templates import (
     templates_app,
     templates_info_command,
@@ -44,6 +48,7 @@ __all__ = [
     "build_command",
     "doctor_command",
     "sheets_app",
+    "sheets_build_command",
     "sheets_validate_command",
     "templates_app",
     "templates_list_command",
