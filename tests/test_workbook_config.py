@@ -107,6 +107,22 @@ def test_workbook_config_rejects_same_sheet_summary_target_mismatch():
         WorkbookConfig.model_validate(payload)
 
 
+def test_workbook_config_rejects_summary_tab_without_target_tab():
+    payload = _base_workbook_config()
+    _add_tab_local_summary(
+        payload,
+        placement_type="summary_tab",
+        target_tab=None,
+        anchor_cell=None,
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="target_tab is required when placement.type='summary_tab'",
+    ):
+        WorkbookConfig.model_validate(payload)
+
+
 def test_workbook_config_rejects_same_sheet_summary_range_overlap():
     payload = _base_workbook_config()
     _add_tab_local_summary(

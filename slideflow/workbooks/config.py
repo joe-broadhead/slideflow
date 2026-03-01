@@ -206,6 +206,11 @@ class WorkbookSummaryPlacement(BaseModel):
                 "workbook.tabs[].ai.summaries[].config.placement.anchor_cell is "
                 "required when placement.type='same_sheet'"
             )
+        if self.type == "summary_tab" and not self.target_tab:
+            raise ValueError(
+                "workbook.tabs[].ai.summaries[].config.placement.target_tab is "
+                "required when placement.type='summary_tab'"
+            )
         return self
 
 

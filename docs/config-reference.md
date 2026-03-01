@@ -139,7 +139,7 @@ workbook:
               mode: "latest"               # latest|history
               placement:
                 type: "same_sheet"         # same_sheet|summary_tab
-                target_tab: "kpi_current"  # optional; defaults to source tab
+                target_tab: "kpi_current"  # required for summary_tab; optional for same_sheet
                 anchor_cell: "H2"
                 clear_range: "H2:H20"      # latest mode only
 ```

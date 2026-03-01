@@ -66,7 +66,7 @@ workbook:
               mode: "latest"                    # latest|history
               placement:
                 type: "same_sheet"              # same_sheet|summary_tab
-                target_tab: "kpi_current"       # optional; defaults to source tab
+                target_tab: "kpi_current"       # required for summary_tab; optional for same_sheet
                 anchor_cell: "H2"               # required for same_sheet
                 clear_range: "H2:H20"           # optional; latest mode only
 
@@ -107,8 +107,10 @@ Placement:
 
 - `placement.type: summary_tab`
   - writes summary to a dedicated target tab/cell
+  - requires `placement.target_tab`
 - `placement.type: same_sheet`
   - writes summary into the source tab
+  - `placement.target_tab` is optional; defaults to source tab
   - only supported when source tab `mode == replace`
   - runtime guard blocks writes when anchor/clear-range overlaps rendered data
 
