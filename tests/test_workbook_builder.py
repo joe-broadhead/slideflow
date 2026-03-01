@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -116,6 +117,34 @@ def test_dataframe_to_sheet_rows_normalizes_nan_values():
     assert rows[0] == ["month", "value"]
     assert rows[1] == ["Jan", 10.0]
     assert rows[2] == ["Feb", None]
+
+
+def test_dataframe_to_sheet_rows_handles_pandas_index_without_truthiness_error():
+    class _AmbiguousColumns:
+        def __iter__(self):
+            return iter(["region", "gmv"])
+
+        def __bool__(self):
+            raise ValueError("ambiguous truth value")
+
+    class _DataFrameLike:
+        columns = _AmbiguousColumns()
+        values = []
+
+    df = _DataFrameLike()
+
+    rows = dataframe_to_sheet_rows(df, include_header=True)
+
+    assert rows == [["region", "gmv"]]
+
+
+def test_dataframe_to_sheet_rows_normalizes_decimal_values():
+    df = pd.DataFrame({"region": ["WEUR"], "gmv": [Decimal("123.45")]})
+
+    rows = dataframe_to_sheet_rows(df, include_header=True)
+
+    assert rows[0] == ["region", "gmv"]
+    assert rows[1] == ["WEUR", 123.45]
 
 
 def test_workbook_builder_build_success(tmp_path, monkeypatch):

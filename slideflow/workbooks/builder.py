@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +29,9 @@ def _normalize_cell_value(value: Any) -> Any:
     """Convert DataFrame cell values into Google Sheets-compatible scalar values."""
     if value is None:
         return None
+    if isinstance(value, Decimal):
+        # Google Sheets API payloads must be JSON serializable scalars.
+        return float(value)
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return None
@@ -39,17 +43,32 @@ def _normalize_cell_value(value: Any) -> Any:
             return _normalize_cell_value(value.item())
         except Exception:
             return str(value)
+    # Catch NaN-like scalar sentinels without importing pandas/numpy directly.
+    try:
+        if value != value:  # noqa: PLR0124
+            return None
+    except Exception:
+        pass
     return value
 
 
 def dataframe_to_sheet_rows(df: Any, include_header: bool) -> List[List[Any]]:
     """Convert a DataFrame-like object to list-of-rows for Sheets API writes."""
     rows: List[List[Any]] = []
-    columns = list(getattr(df, "columns", []) or [])
+    raw_columns = getattr(df, "columns", None)
+    columns = list(raw_columns) if raw_columns is not None else []
     if include_header and columns:
         rows.append([str(column) for column in columns])
 
-    for row in list(getattr(df, "values", []) or []):
+    raw_values = getattr(df, "values", None)
+    if raw_values is None:
+        iterable_rows: List[Any] = []
+    elif hasattr(raw_values, "tolist") and callable(getattr(raw_values, "tolist")):
+        iterable_rows = list(raw_values.tolist())
+    else:
+        iterable_rows = list(raw_values)
+
+    for row in iterable_rows:
         rows.append([_normalize_cell_value(value) for value in list(row)])
 
     return rows
