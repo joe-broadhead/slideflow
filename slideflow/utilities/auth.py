@@ -51,7 +51,9 @@ def handle_google_credentials(
             with open(creds_source, "r") as f:
                 return json.load(f)
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
-            raise AuthenticationError("Credentials file is not a valid JSON.") from error
+            raise AuthenticationError(
+                "Credentials file is not a valid JSON."
+            ) from error
     else:
         try:
             return json.loads(creds_source)
