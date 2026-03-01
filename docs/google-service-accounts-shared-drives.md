@@ -109,8 +109,6 @@ provider:
     credentials: null
     drive_folder_id: "<shared_drive_folder_id>"
     requests_per_second: 1.0
-    # transfer_ownership_to: omit for Shared Drive outputs
-    # transfer_ownership_strict: omit for Shared Drive outputs
 ```
 
 Set credentials through:
