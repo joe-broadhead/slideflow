@@ -417,6 +417,7 @@ warehouse:
   project_id: "my-gcp-project"
   location: "US"
   credentials_path: "/path/to/service-account.json"
+```
 
 DuckDB variant example:
 
@@ -436,7 +437,6 @@ warehouse:
   file_search_path:
     - "/tmp/dbt_project"
     - "/tmp/data"
-```
 ```
 
 ### Legacy dbt on Databricks (`databricks_dbt`)
