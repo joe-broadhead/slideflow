@@ -61,6 +61,7 @@ Supported values:
 | `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
+| `chart_image_sharing_mode` | `str` | no | `public` (default) or `restricted` for uploaded chart-image ACL behavior |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
@@ -82,6 +83,7 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 | `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
+| `chart_image_sharing_mode` | `str` | no | `public` (default) or `restricted` for uploaded chart-image ACL behavior |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 

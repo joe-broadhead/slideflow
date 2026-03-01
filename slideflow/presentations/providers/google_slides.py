@@ -174,6 +174,13 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         False,
         description="If true, fail rendering when uploaded chart images cannot be cleaned up.",
     )
+    chart_image_sharing_mode: Literal["public", "restricted"] = Field(
+        "public",
+        description=(
+            "Chart image sharing mode. 'public' grants anyone:reader (default); "
+            "'restricted' skips public sharing for tighter access control."
+        ),
+    )
     transfer_ownership_to: Optional[str] = Field(
         None,
         description="Optional email address that should become the owner after rendering completes.",
@@ -893,17 +900,23 @@ class GoogleSlidesProvider(PresentationProvider):
 
             file_id = uploaded_file.get("id")
 
-            # Make public
-            self._execute_request(
-                self.drive_service.permissions().create(
-                    fileId=file_id,
-                    body={"role": "reader", "type": "anyone"},
-                    supportsAllDrives=True,
+            sharing_mode = getattr(self.config, "chart_image_sharing_mode", "public")
+            if sharing_mode == "public":
+                self._execute_request(
+                    self.drive_service.permissions().create(
+                        fileId=file_id,
+                        body={"role": "reader", "type": "anyone"},
+                        supportsAllDrives=True,
+                    )
                 )
-            )
-
-            if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
-                time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
+                if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
+                    time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
+            else:
+                logger.info(
+                    "Chart image sharing mode is restricted; skipping public Drive permission "
+                    "(file_id=%s).",
+                    file_id,
+                )
 
             public_url = f"https://drive.google.com/uc?id={file_id}"
             duration = time.time() - start_time

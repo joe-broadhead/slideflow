@@ -1021,6 +1021,23 @@ class Presentation(BaseModel):
                             f"Failed to delete chart image {file_id}: {cleanup_error}"
                         )
 
+                deleted_cleanup_count = len(uploaded_file_ids) - len(failed_cleanup_ids)
+                if failed_cleanup_ids:
+                    logger.warning(
+                        "Chart image cleanup completed with %d failure(s): deleted %d/%d. "
+                        "Failed IDs: %s",
+                        len(failed_cleanup_ids),
+                        deleted_cleanup_count,
+                        len(uploaded_file_ids),
+                        failed_cleanup_ids,
+                    )
+                else:
+                    logger.info(
+                        "Chart image cleanup completed: deleted %d/%d chart image(s).",
+                        deleted_cleanup_count,
+                        len(uploaded_file_ids),
+                    )
+
             if strict_cleanup and failed_cleanup_ids and original_error is None:
                 raise RenderingError(
                     f"Strict cleanup enabled and {len(failed_cleanup_ids)} chart image(s) "

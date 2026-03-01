@@ -58,6 +58,7 @@ provider:
     share_role: "reader"
     transfer_ownership_to: "owner@example.com"
     transfer_ownership_strict: false
+    chart_image_sharing_mode: "public" # public | restricted
     requests_per_second: 1.0
     strict_cleanup: false
 ```
@@ -71,6 +72,9 @@ Field behavior:
 - `share_with` / `share_role`: post-render sharing.
 - `transfer_ownership_to`: optional ownership handoff target after successful render/share.
 - `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
+- `chart_image_sharing_mode`: uploaded chart-image ACL mode:
+  - `public` (default): grants `anyone:reader` before insertion.
+  - `restricted`: skips public ACL grant (tighter access; insertion compatibility depends on your Drive permissions model).
 - `requests_per_second`: API pacing control.
 - `strict_cleanup`: fail run if chart-image cleanup fails.
 
@@ -148,6 +152,7 @@ presentation:
 - Start with conservative concurrency/rate settings and tune gradually.
 - Keep markers stable after config wiring.
 - Validate with `--provider-contract-check` in CI for template safety.
+- Cleanup logs include deleted/failed chart-image totals and failed file IDs when applicable.
 
 Related references:
 
