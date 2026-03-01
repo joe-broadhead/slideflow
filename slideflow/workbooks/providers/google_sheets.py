@@ -169,48 +169,58 @@ class GoogleSheetsProvider(WorkbookProvider):
                         f"Accessible spreadsheet_id '{sheet_id}'",
                     )
                 )
-                if self.drive_service is not None:
-                    write_response = self._execute_request(
-                        self.drive_service.files().get(
-                            fileId=self.config.spreadsheet_id,
-                            fields="id,trashed,capabilities(canEdit)",
-                            supportsAllDrives=True,
-                        )
-                    )
-                    capabilities = (
-                        write_response.get("capabilities", {})
-                        if isinstance(write_response, dict)
-                        else {}
-                    )
-                    can_edit = bool(
-                        isinstance(capabilities, dict)
-                        and capabilities.get("canEdit", False)
-                    )
-                    is_trashed = (
-                        bool(write_response.get("trashed"))
-                        if isinstance(write_response, dict)
-                        else False
-                    )
-                    checks.append(
-                        (
-                            "spreadsheet_write_access",
-                            can_edit and not is_trashed,
-                            (
-                                f"Spreadsheet '{self.config.spreadsheet_id}' is writable"
-                                if can_edit and not is_trashed
-                                else (
-                                    f"Spreadsheet '{self.config.spreadsheet_id}' is not writable "
-                                    "(missing canEdit capability or file is trashed)"
-                                )
-                            ),
-                        )
-                    )
             except Exception as error:
                 checks.append(
                     (
                         "spreadsheet_access",
                         False,
                         f"Cannot access spreadsheet_id '{self.config.spreadsheet_id}': {error}",
+                    )
+                )
+
+        if self.drive_service is not None and self.config.spreadsheet_id:
+            try:
+                write_response = self._execute_request(
+                    self.drive_service.files().get(
+                        fileId=self.config.spreadsheet_id,
+                        fields="id,trashed,capabilities(canEdit)",
+                        supportsAllDrives=True,
+                    )
+                )
+                capabilities = (
+                    write_response.get("capabilities", {})
+                    if isinstance(write_response, dict)
+                    else {}
+                )
+                can_edit = bool(
+                    isinstance(capabilities, dict)
+                    and capabilities.get("canEdit", False)
+                )
+                is_trashed = (
+                    bool(write_response.get("trashed"))
+                    if isinstance(write_response, dict)
+                    else False
+                )
+                checks.append(
+                    (
+                        "spreadsheet_write_access",
+                        can_edit and not is_trashed,
+                        (
+                            f"Spreadsheet '{self.config.spreadsheet_id}' is writable"
+                            if can_edit and not is_trashed
+                            else (
+                                f"Spreadsheet '{self.config.spreadsheet_id}' is not writable "
+                                "(missing canEdit capability or file is trashed)"
+                            )
+                        ),
+                    )
+                )
+            except Exception as error:
+                checks.append(
+                    (
+                        "spreadsheet_write_access",
+                        False,
+                        f"Cannot verify write access for spreadsheet_id '{self.config.spreadsheet_id}': {error}",
                     )
                 )
 

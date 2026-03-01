@@ -373,7 +373,41 @@ def test_run_preflight_checks_reports_spreadsheet_access_failure():
 
     assert check_map["spreadsheet_access"] is False
     assert "not found" in check_details["spreadsheet_access"]
-    assert "spreadsheet_write_access" not in check_map
+    assert check_map["spreadsheet_write_access"] is False
+    assert "not writable" in check_details["spreadsheet_write_access"]
+
+
+def test_run_preflight_checks_write_lookup_failure_does_not_flip_spreadsheet_access():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(
+        credentials="{}",
+        requests_per_second=1.0,
+        spreadsheet_id="sheet_123",
+        drive_folder_id=None,
+    )
+    provider.sheets_service = _minimal_sheets_service()
+    provider.drive_service = _minimal_drive_service()
+    provider.rate_limiter = object()
+
+    def _exec(request):
+        if request[0] == "spreadsheets.get":
+            return {"spreadsheetId": "sheet_123"}
+        if request[0] == "drive.files.get":
+            raise RuntimeError("drive denied")
+        return {}
+
+    provider._execute_request = _exec
+    checks = provider.run_preflight_checks()
+    check_details = {name: detail for name, _ok, detail in checks}
+    check_map = {name: ok for name, ok, _detail in checks}
+    spreadsheet_access_entries = [
+        name for name, _ok, _detail in checks if name == "spreadsheet_access"
+    ]
+
+    assert spreadsheet_access_entries == ["spreadsheet_access"]
+    assert check_map["spreadsheet_access"] is True
+    assert check_map["spreadsheet_write_access"] is False
+    assert "drive denied" in check_details["spreadsheet_write_access"]
 
 
 def test_create_or_open_workbook_falls_back_to_drive_create_on_sheets_create_failure(
