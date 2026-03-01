@@ -5,9 +5,10 @@
 For Google provider auth, SlideFlow reads credentials from:
 
 1. `provider.config.credentials`
-2. `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`)
-3. `GOOGLE_SHEETS_CREDENTIALS` (for `google_sheets`)
-4. `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback)
+2. Provider-specific env:
+   - `GOOGLE_DOCS_CREDENTIALS` (`google_docs`)
+   - `GOOGLE_SHEETS_CREDENTIALS` (`google_sheets`)
+3. `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback)
 
 Credential value can be:
 

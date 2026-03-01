@@ -187,7 +187,7 @@ presentation:
         # ... chart definitions
 
 provider:
-  type: "google_slides" # or "google_docs" or "google_sheets"
+  type: "google_slides" # or "google_docs"
   config:
     credentials: "/path/to/your/credentials.json"
     template_id: "your_google_slides_template_id"
