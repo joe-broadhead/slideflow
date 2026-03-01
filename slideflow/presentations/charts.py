@@ -71,7 +71,9 @@ from slideflow.builtins.template_engine import get_template_engine
 from slideflow.constants import FileExtensions, GoogleSlides, Timing
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 from slideflow.presentations.positioning import safe_eval_expression
-from slideflow.presentations.providers.google_slides import _get_rate_limiter
+from slideflow.presentations.rate_limiter import (
+    get_google_api_rate_limiter as _get_rate_limiter,
+)
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import ChartGenerationError
 
