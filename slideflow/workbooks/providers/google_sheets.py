@@ -93,7 +93,9 @@ class GoogleSheetsProvider(WorkbookProvider):
                 loaded_credentials, scopes=self.SCOPES
             )
         except Exception as error_msg:  # pragma: no cover - exercised via tests
-            raise AuthenticationError(f"Credentials authentication failed: {error_msg}")
+            raise AuthenticationError(
+                f"Credentials authentication failed: {error_msg}"
+            ) from error_msg
 
         self.sheets_service = build("sheets", "v4", credentials=credentials)
         self.drive_service = build("drive", "v3", credentials=credentials)
