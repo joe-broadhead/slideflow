@@ -237,9 +237,10 @@ def test_sheets_validate_rejects_summary_tab_without_target_tab(tmp_path, monkey
     payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "SLIDEFLOW_SHEETS_VALIDATE_FAILED"
-    assert "target_tab is required when placement.type='summary_tab'" in payload[
-        "error"
-    ]["message"]
+    assert (
+        "target_tab is required when placement.type='summary_tab'"
+        in payload["error"]["message"]
+    )
 
 
 def test_sheets_validate_rejects_summary_tab_target_matching_source(
@@ -287,6 +288,7 @@ def test_sheets_validate_rejects_summary_tab_target_matching_source(
     payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "SLIDEFLOW_SHEETS_VALIDATE_FAILED"
-    assert "must differ from the source tab when placement.type='summary_tab'" in payload[
-        "error"
-    ]["message"]
+    assert (
+        "must differ from the source tab when placement.type='summary_tab'"
+        in payload["error"]["message"]
+    )
