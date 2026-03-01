@@ -468,6 +468,8 @@ class GoogleSlidesProvider(PresentationProvider):
                 presentationId=presentation_id,
                 fields=(
                     "slides(objectId,"
+                    "slideProperties(notesPage(notesProperties(speakerNotesObjectId),"
+                    "pageElements(objectId,shape(text(textElements(endIndex))))),"
                     "notesPage(notesProperties(speakerNotesObjectId),"
                     "pageElements(objectId,shape(text(textElements(endIndex)))))"
                     ")"
@@ -480,7 +482,15 @@ class GoogleSlidesProvider(PresentationProvider):
             if not isinstance(slide, dict):
                 continue
             slide_id = slide.get("objectId")
-            notes_page = slide.get("notesPage", {})
+            slide_properties = slide.get("slideProperties", {})
+            if not isinstance(slide_properties, dict):
+                slide_properties = {}
+            notes_page = slide_properties.get("notesPage")
+            if not isinstance(notes_page, dict):
+                legacy_notes_page = slide.get("notesPage", {})
+                notes_page = (
+                    legacy_notes_page if isinstance(legacy_notes_page, dict) else {}
+                )
             if not isinstance(notes_page, dict) or not slide_id:
                 continue
 
