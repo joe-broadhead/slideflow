@@ -83,23 +83,44 @@ class WorkbookBuilder:
             try:
                 df = tab.data_source.fetch_data()
                 df = apply_data_transforms(tab.data_transforms, df)
-                rows = dataframe_to_sheet_rows(df, include_header=tab.include_header)
-                rows_written_payload = self.provider.write_replace_rows(
-                    workbook_id=workbook_id,
-                    tab_name=tab.name,
-                    start_cell=tab.start_cell,
-                    rows=rows,
-                )
-                data_rows_written = max(
-                    0,
-                    rows_written_payload - (1 if tab.include_header and rows else 0),
-                )
+                run_key = tab.idempotency_key if tab.mode == "append" else None
+                if tab.mode == "append":
+                    # Avoid duplicate headers on repeated append runs.
+                    rows = dataframe_to_sheet_rows(df, include_header=False)
+                    rows_written_payload, rows_skipped_payload = (
+                        self.provider.write_append_rows(
+                            workbook_id=workbook_id,
+                            tab_name=tab.name,
+                            start_cell=tab.start_cell,
+                            rows=rows,
+                            run_key=run_key or "",
+                        )
+                    )
+                    data_rows_written = rows_written_payload
+                else:
+                    rows = dataframe_to_sheet_rows(
+                        df, include_header=tab.include_header
+                    )
+                    rows_written_payload = self.provider.write_replace_rows(
+                        workbook_id=workbook_id,
+                        tab_name=tab.name,
+                        start_cell=tab.start_cell,
+                        rows=rows,
+                    )
+                    rows_skipped_payload = 0
+                    data_rows_written = max(
+                        0,
+                        rows_written_payload
+                        - (1 if tab.include_header and rows else 0),
+                    )
                 tab_results.append(
                     WorkbookTabResult(
                         tab_name=tab.name,
                         mode=tab.mode,
                         status="success",
                         rows_written=data_rows_written,
+                        rows_skipped=rows_skipped_payload,
+                        run_key=run_key,
                     )
                 )
             except Exception as error:

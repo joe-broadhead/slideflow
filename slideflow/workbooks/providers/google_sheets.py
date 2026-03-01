@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import threading
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -16,6 +17,7 @@ from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError, RenderingError
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
+from slideflow.workbooks.config import RESERVED_METADATA_TAB
 from slideflow.workbooks.providers.base import WorkbookProvider, WorkbookProviderConfig
 
 logger = get_logger(__name__)
@@ -73,6 +75,7 @@ class GoogleSheetsProvider(WorkbookProvider):
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/drive.file",
     ]
+    _METADATA_HEADERS = ["tab_name", "run_key", "rows_written", "recorded_at"]
 
     def __init__(self, config: GoogleSheetsProviderConfig):
         super().__init__(config)
@@ -96,6 +99,7 @@ class GoogleSheetsProvider(WorkbookProvider):
         self.sheets_service = build("sheets", "v4", credentials=credentials)
         self.drive_service = build("drive", "v3", credentials=credentials)
         self.rate_limiter = _get_rate_limiter(self.config.requests_per_second)
+        self._run_key_cache: Dict[str, Set[Tuple[str, str]]] = {}
 
     def _execute_request(self, request):
         """Execute Google API request with shared rate limiting."""
@@ -220,6 +224,85 @@ class GoogleSheetsProvider(WorkbookProvider):
             )
         )
 
+    def _ensure_metadata_tab(self, workbook_id: str) -> None:
+        titles = self._fetch_sheet_titles(workbook_id)
+        if RESERVED_METADATA_TAB not in titles:
+            self._execute_request(
+                self.sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=workbook_id,
+                    body={
+                        "requests": [
+                            {
+                                "addSheet": {
+                                    "properties": {"title": RESERVED_METADATA_TAB}
+                                }
+                            }
+                        ]
+                    },
+                )
+            )
+
+        header_range = self._sheet_range(RESERVED_METADATA_TAB, "A1:D1")
+        self._execute_request(
+            self.sheets_service.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=workbook_id,
+                range=header_range,
+                valueInputOption="RAW",
+                body={"values": [self._METADATA_HEADERS]},
+            )
+        )
+
+    def _load_run_key_cache(self, workbook_id: str) -> Set[Tuple[str, str]]:
+        if workbook_id in self._run_key_cache:
+            return self._run_key_cache[workbook_id]
+
+        self._ensure_metadata_tab(workbook_id)
+        metadata_range = self._sheet_range(RESERVED_METADATA_TAB, "A2:B")
+        response = self._execute_request(
+            self.sheets_service.spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=workbook_id,
+                range=metadata_range,
+            )
+        )
+        values = response.get("values", []) if isinstance(response, dict) else []
+        keys: Set[Tuple[str, str]] = set()
+        for row in values:
+            if not isinstance(row, list) or len(row) < 2:
+                continue
+            tab_name, run_key = row[0], row[1]
+            if isinstance(tab_name, str) and isinstance(run_key, str):
+                keys.add((tab_name, run_key))
+        self._run_key_cache[workbook_id] = keys
+        return keys
+
+    def _record_run_key(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        run_key: str,
+        rows_written: int,
+    ) -> None:
+        metadata_range = self._sheet_range(RESERVED_METADATA_TAB, "A1")
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        self._execute_request(
+            self.sheets_service.spreadsheets()
+            .values()
+            .append(
+                spreadsheetId=workbook_id,
+                range=metadata_range,
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={
+                    "values": [[tab_name, run_key, str(rows_written), recorded_at]],
+                },
+            )
+        )
+        self._run_key_cache.setdefault(workbook_id, set()).add((tab_name, run_key))
+
     def write_replace_rows(
         self,
         workbook_id: str,
@@ -255,6 +338,42 @@ class GoogleSheetsProvider(WorkbookProvider):
             )
         )
         return len(rows)
+
+    def write_append_rows(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        start_cell: str,
+        rows: List[List[Any]],
+        run_key: str,
+    ) -> Tuple[int, int]:
+        self._ensure_sheet_exists(workbook_id, tab_name)
+        run_keys = self._load_run_key_cache(workbook_id)
+        dedupe_key = (tab_name, run_key)
+        if dedupe_key in run_keys:
+            return 0, len(rows)
+
+        if rows:
+            target_range = self._sheet_range(tab_name, start_cell)
+            self._execute_request(
+                self.sheets_service.spreadsheets()
+                .values()
+                .append(
+                    spreadsheetId=workbook_id,
+                    range=target_range,
+                    valueInputOption="RAW",
+                    insertDataOption="INSERT_ROWS",
+                    body={"values": rows},
+                )
+            )
+
+        self._record_run_key(
+            workbook_id=workbook_id,
+            tab_name=tab_name,
+            run_key=run_key,
+            rows_written=len(rows),
+        )
+        return len(rows), 0
 
     def finalize_workbook(self, workbook_id: str) -> None:
         if not self.config.share_with:
