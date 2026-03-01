@@ -38,7 +38,7 @@ For Google identity and Shared Drive setup, see
 
 | Error / Symptom | Likely Cause | Remediation |
 |---|---|---|
-| `storageQuotaExceeded` | writing into service-account My Drive | write to Shared Drive output folders (`presentation_folder_id`, `document_folder_id`, `spreadsheet_folder_id`) |
+| `storageQuotaExceeded` | writing into service-account My Drive | write to Shared Drive output folders (`presentation_folder_id`, `document_folder_id`, `drive_folder_id`) |
 | `consentRequiredForOwnershipTransfer` | domain policy blocks transfer in My Drive | use Shared Drive outputs or disable transfer settings |
 | `Ownership transfer is not supported for files in Shared Drives` | transfer settings enabled for Shared Drive outputs | remove `transfer_ownership_to` and `transfer_ownership_strict` |
 | `File not found` for template/folder | runtime service account cannot access target | add service account to Shared Drive and share template/output folders |
