@@ -75,12 +75,18 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from slideflow.constants import Environment, GoogleSlides, Timing
 from slideflow.presentations.providers.base import (
     PresentationProvider,
     PresentationProviderConfig,
+)
+from slideflow.presentations.providers.google_drive_ownership import (
+    append_transfer_owner_preflight_check,
+    is_shared_drive_file,
+    normalize_transfer_owner_email,
+    transfer_drive_file_ownership,
 )
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
@@ -167,6 +173,19 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         False,
         description="If true, fail rendering when uploaded chart images cannot be cleaned up.",
     )
+    transfer_ownership_to: Optional[str] = Field(
+        None,
+        description="Optional email address that should become the owner after rendering completes.",
+    )
+    transfer_ownership_strict: bool = Field(
+        False,
+        description="If true, fail rendering when ownership transfer fails.",
+    )
+
+    @field_validator("transfer_ownership_to")
+    @classmethod
+    def _validate_transfer_ownership_to(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_transfer_owner_email(value)
 
 
 class GoogleSlidesProvider(PresentationProvider):
@@ -283,7 +302,6 @@ class GoogleSlidesProvider(PresentationProvider):
         has_credentials = bool(self.config.credentials) or bool(
             os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
         )
-
         checks: List[Tuple[str, bool, str]] = [
             (
                 "google_credentials_present",
@@ -322,6 +340,11 @@ class GoogleSlidesProvider(PresentationProvider):
                 ),
             ),
         ]
+
+        append_transfer_owner_preflight_check(
+            checks,
+            getattr(self.config, "transfer_ownership_to", None),
+        )
 
         return checks
 
@@ -464,6 +487,38 @@ class GoogleSlidesProvider(PresentationProvider):
             except HttpError as error:
                 logger.error(f"Error sharing presentation: {error}")
                 raise
+
+    def _is_shared_drive_file(self, file_id: str) -> bool:
+        """Return True when the file is backed by a Shared Drive."""
+        return is_shared_drive_file(
+            execute_request=self._execute_request,
+            drive_service=self.drive_service,
+            file_id=file_id,
+        )
+
+    def transfer_presentation_ownership(
+        self, presentation_id: str, new_owner_email: str
+    ) -> None:
+        """Transfer ownership of a generated presentation to another user.
+
+        Ownership transfer is only supported for files in My Drive.
+        """
+        if self._is_shared_drive_file(presentation_id):
+            raise ValueError(
+                "Ownership transfer is not supported for files in Shared Drives"
+            )
+
+        transfer_drive_file_ownership(
+            execute_request=self._execute_request,
+            drive_service=self.drive_service,
+            file_id=presentation_id,
+            new_owner_email=new_owner_email,
+        )
+        logger.info(
+            "Transferred presentation ownership to %s (presentation_id=%s)",
+            new_owner_email,
+            presentation_id,
+        )
 
     def get_presentation_url(self, presentation_id: str) -> str:
         """Get the public URL for a Google Slides presentation.

@@ -423,6 +423,27 @@ class PresentationProvider(ABC):
         """
         pass
 
+    def transfer_presentation_ownership(
+        self, presentation_id: str, new_owner_email: str
+    ) -> None:
+        """Transfer ownership of a presentation/document to another user.
+
+        This is an optional hook used by providers that support ownership
+        transfer semantics (for example, Google Drive-backed providers).
+
+        Args:
+            presentation_id: Unique identifier of the artifact.
+            new_owner_email: Target user email that should become owner.
+
+        Raises:
+            NotImplementedError: If the provider does not support ownership
+                transfer operations.
+        """
+        del presentation_id, new_owner_email
+        raise NotImplementedError(
+            f"Provider '{type(self).__name__}' does not support ownership transfer"
+        )
+
     @abstractmethod
     def get_presentation_url(self, presentation_id: str) -> str:
         """Get the public URL for accessing a presentation.
