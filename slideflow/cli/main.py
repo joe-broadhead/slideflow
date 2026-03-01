@@ -23,7 +23,15 @@ Example:
 
 import typer
 
-from slideflow.cli.commands import build_command, doctor_command, validate_command
+from slideflow.cli.commands import (
+    build_command,
+    doctor_command,
+    sheets_app,
+    sheets_build_command,
+    sheets_doctor_command,
+    sheets_validate_command,
+    validate_command,
+)
 from slideflow.cli.commands.templates import (
     templates_app,
     templates_info,
@@ -109,9 +117,13 @@ app.command("validate")(validate_command)
 app.command("build")(build_command)
 app.command("doctor")(doctor_command)
 if hasattr(app, "add_typer"):
+    app.add_typer(sheets_app, name="sheets")
     app.add_typer(templates_app, name="templates")
 else:
     # Compatibility fallback for minimal Typer stubs used in tests.
+    app.command("sheets-validate")(sheets_validate_command)
+    app.command("sheets-build")(sheets_build_command)
+    app.command("sheets-doctor")(sheets_doctor_command)
     app.command("templates-list")(templates_list)
     app.command("templates-info")(templates_info)
 

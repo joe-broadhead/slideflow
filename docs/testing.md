@@ -37,6 +37,12 @@
    - validates inline chart insertion in rendered docs
    - validates deterministic AI and table replacement behavior
    - trashes created files on teardown
+6. Live Google Sheets tests (`@pytest.mark.live_google_sheets`, `tests/live_tests/`)
+   - creates a real workbook via Google Sheets API
+   - validates replace-mode writes for current snapshot tabs
+   - validates append-mode idempotency using `_slideflow_meta` run-key tracking
+   - verifies rerun skip behavior prevents duplicate appended rows
+   - trashes created files on teardown
 
 ## Local commands
 
@@ -111,6 +117,24 @@ export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
 pytest -q tests/live_tests -m live_google_docs
 ```
 
+Run live Google Sheets tests locally:
+
+```bash
+export SLIDEFLOW_RUN_LIVE=1
+export GOOGLE_SHEETS_CREDENTIALS=/absolute/path/to/service-account.json
+export SLIDEFLOW_LIVE_SHEETS_FOLDER_ID=<drive-folder-id>
+# optional override:
+export SLIDEFLOW_LIVE_DRIVE_FOLDER_ID=<drive-folder-id>
+# optional comma-separated emails to share rendered workbook with:
+export SLIDEFLOW_LIVE_SHARE_EMAIL=<you@example.com>
+# optional permission role for shared workbook (reader|writer|commenter):
+export SLIDEFLOW_LIVE_SHARE_ROLE=reader
+# optional retention toggle; defaults to 1 when sharing is enabled:
+export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
+
+pytest -q tests/live_tests -m live_google_sheets
+```
+
 ## CI quality gates
 
 - CI enforces version consistency checks.
@@ -120,6 +144,7 @@ pytest -q tests/live_tests -m live_google_docs
 - Distribution artifacts are built for every CI run.
 - Live Google Slides tests run in a separate workflow (`Live Google Slides`) so PR CI remains deterministic.
 - Live Google Docs tests run in a separate workflow (`Live Google Docs`) so PR CI remains deterministic.
+- Live Google Sheets tests run in a separate workflow (`Live Google Sheets`) so PR CI remains deterministic.
 
 ## Orchestrated runtime note
 

@@ -104,6 +104,7 @@ nav:
       - Cookbooks: cookbooks.md
       - Troubleshooting: troubleshooting.md
   - How-To:
+      - Google Sheets Provider: providers/google-sheets.md
       - Google Docs Provider: providers/google-docs.md
       - Google Slides Provider: providers/google-slides.md
       - Data Connectors: data-connectors.md

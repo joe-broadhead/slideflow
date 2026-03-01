@@ -1,6 +1,6 @@
 # Automation
 
-Use Slideflow's reusable workflow to run scheduled deck/doc builds for business teams.
+Use Slideflow's reusable workflow to run scheduled presentation/doc/workbook builds for business teams.
 
 ## Reusable Workflow
 
@@ -39,6 +39,7 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }} # optional; writes ADC credentials file
     with:
       config-file: config/weekly_exec_report.yml
+      artifact-kind: presentation
       registry-files: |
         registries/base_registry.py
         registries/team_registry.py
@@ -56,6 +57,7 @@ jobs:
 ## Inputs
 
 - `config-file` (required): Path to Slideflow YAML config.
+- `artifact-kind` (optional): `presentation` (default) or `sheets`.
 - `registry-files` (optional): Comma/newline-separated registry file paths.
 - `params-path` (optional): CSV file for multi-variant builds.
 - `working-directory` (optional): Command working directory. Default `.`.
@@ -63,10 +65,10 @@ jobs:
 - `slideflow-package-spec` (optional): Package to install. Default `slideflow-presentations`.
 - `extra-pip-packages` (optional): Newline-separated additional packages.
 - `run-pip-check` (optional): Run `pip check`. Default `true`.
-- `run-doctor` (optional): Run `slideflow doctor` before validate/build. Default `true`.
+- `run-doctor` (optional): Run preflight doctor before validate/build (`slideflow doctor` for `presentation`, `slideflow sheets doctor` for `sheets`). Default `true`.
 - `strict-doctor` (optional): Make doctor fail on error-severity findings. Default `false`.
-- `run-validate` (optional): Run `slideflow validate` before build. Default `true`.
-- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate (`google_slides` and `google_docs`). Default `false`.
+- `run-validate` (optional): Run validate before build (`slideflow validate` for `presentation`, `slideflow sheets validate` for `sheets`). Default `true`.
+- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate for `presentation` builds (`google_slides` and `google_docs`). Ignored for `sheets`. Default `false`.
 - `provider-contract-params-path` (optional): CSV path for validate contract checks; falls back to `params-path` when unset.
 - `dry-run` (optional): Run build with `--dry-run`. Default `false`.
 - `threads` (optional): Value passed to `--threads`.
@@ -76,10 +78,12 @@ jobs:
 
 ## Outputs
 
-- `presentation-urls`: Comma-separated build URLs extracted from build JSON output (Google Slides or Google Docs).
-- `doctor-result-json`: JSON summary emitted by `slideflow doctor --output-json`.
-- `validate-result-json`: JSON summary emitted by `slideflow validate --output-json`.
-- `build-result-json`: JSON summary emitted by `slideflow build --output-json`.
+- `presentation-urls`: Comma-separated URLs for `presentation` builds.
+- `workbook-urls`: Comma-separated URLs for `sheets` builds.
+- `artifact-urls`: Comma-separated URLs for whichever artifact-kind was built.
+- `doctor-result-json`: JSON summary emitted by doctor command (`slideflow doctor` or `slideflow sheets doctor`).
+- `validate-result-json`: JSON summary emitted by validate command (`slideflow validate` or `slideflow sheets validate`).
+- `build-result-json`: JSON summary emitted by build command (`slideflow build` or `slideflow sheets build`).
 
 Example downstream usage:
 
@@ -95,7 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - run: echo "URLs: ${{ needs.build.outputs['presentation-urls'] }}"
+      - run: echo "Artifact URLs: ${{ needs.build.outputs['artifact-urls'] }}"
       - run: echo '${{ needs.build.outputs["build-result-json"] }}' > build-result.json
 ```
 
