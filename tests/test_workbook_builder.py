@@ -376,6 +376,57 @@ def test_workbook_builder_history_mode_appends_timestamped_summary(
     assert write_payload["text"].count("\n\n") == 1
 
 
+def test_workbook_builder_append_source_can_write_summary_to_summary_tab(
+    tmp_path, monkeypatch
+):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["tabs"][0]["mode"] = "append"
+    payload["workbook"]["tabs"][0]["include_header"] = False
+    payload["workbook"]["tabs"][0]["idempotency_key"] = "wk_10"
+    payload["workbook"]["summaries"] = [
+        {
+            "name": "append_summary",
+            "source_tab": "kpi_current",
+            "provider": "openai",
+            "provider_args": {},
+            "prompt": "Summarize append source",
+            "placement": {
+                "type": "summary_tab",
+                "tab_name": "summary",
+            },
+        }
+    ]
+    config = WorkbookConfig.model_validate(payload)
+
+    fake_provider = _FakeProvider()
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: fake_provider),
+    )
+
+    class _FakeAIProvider:
+        def generate_text(self, prompt: str):
+            del prompt
+            return "Append summary output"
+
+    monkeypatch.setattr(
+        workbook_builder_module,
+        "create_ai_provider",
+        lambda provider_name, **kwargs: _FakeAIProvider(),
+    )
+
+    result = WorkbookBuilder.from_config(config).build()
+
+    assert result.status == "success"
+    assert result.tabs_succeeded == 1
+    assert result.summaries_succeeded == 1
+    assert fake_provider.summary_calls[0]["tab_name"] == "summary"
+    assert fake_provider.summary_calls[0]["text"] == "Append summary output"
+
+
 def test_workbook_builder_marks_error_when_same_sheet_anchor_overlaps_data(
     tmp_path, monkeypatch
 ):

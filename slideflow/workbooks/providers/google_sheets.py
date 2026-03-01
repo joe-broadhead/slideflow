@@ -21,19 +21,18 @@ from slideflow.workbooks.config import RESERVED_METADATA_TAB
 from slideflow.workbooks.providers.base import WorkbookProvider, WorkbookProviderConfig
 
 logger = get_logger(__name__)
-_sheets_rate_limiter: Optional[RateLimiter] = None
+_sheets_rate_limiters: Dict[float, RateLimiter] = {}
 _rate_limiter_lock = threading.Lock()
 
 
-def _get_rate_limiter(rps: float, force_update: bool = False) -> RateLimiter:
-    """Get or create the global Google Sheets API rate limiter."""
-    global _sheets_rate_limiter
+def _get_rate_limiter(rps: float) -> RateLimiter:
+    """Get or create a shared Google Sheets API rate limiter for a target rate."""
+    global _sheets_rate_limiters
+    rps_key = round(float(rps), 6)
     with _rate_limiter_lock:
-        if _sheets_rate_limiter is None:
-            _sheets_rate_limiter = RateLimiter(rps)
-        elif force_update:
-            _sheets_rate_limiter.set_rate(rps)
-        return _sheets_rate_limiter
+        if rps_key not in _sheets_rate_limiters:
+            _sheets_rate_limiters[rps_key] = RateLimiter(rps_key)
+        return _sheets_rate_limiters[rps_key]
 
 
 class GoogleSheetsProviderConfig(WorkbookProviderConfig):

@@ -241,7 +241,7 @@ class WorkbookBuilder:
                     )
                 bounds = _rows_to_bounds(tab.start_cell, rows)
                 tab_dataframes[tab.name] = df
-                if bounds is not None:
+                if tab.mode == "replace" and bounds is not None:
                     tab_write_bounds[tab.name] = bounds
                 tab_results.append(
                     WorkbookTabResult(

@@ -188,6 +188,10 @@ slideflow sheets build workbook.yml
 slideflow sheets build workbook.yml --registry registry.py --output-json sheets-build.json
 ```
 
+Workbook schema details (tabs, append idempotency, summaries, and summary modes):
+
+- [Google Sheets Provider](providers/google-sheets.md)
+
 ## `slideflow sheets doctor`
 
 ```bash

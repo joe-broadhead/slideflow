@@ -312,6 +312,12 @@ class WorkbookSpec(BaseModel):
                     )
 
                 source_tab = tab_by_name[summary.source_tab]
+                if source_tab.mode == "append":
+                    raise ValueError(
+                        "workbook.summaries[] with placement.type='same_sheet' is "
+                        "not supported for append-mode source tabs; use "
+                        "placement.type='summary_tab' instead"
+                    )
                 if placement.anchor_cell == source_tab.start_cell:
                     raise ValueError(
                         "Summary anchor cell cannot overlap the tab data start_cell"

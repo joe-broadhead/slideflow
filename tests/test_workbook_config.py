@@ -125,6 +125,29 @@ def test_workbook_config_rejects_history_mode_with_clear_range():
         WorkbookConfig.model_validate(payload)
 
 
+def test_workbook_config_rejects_same_sheet_summary_for_append_mode_source():
+    payload = _base_workbook_config()
+    payload["workbook"]["tabs"][0]["mode"] = "append"
+    payload["workbook"]["tabs"][0]["include_header"] = False
+    payload["workbook"]["tabs"][0]["idempotency_key"] = "wk_1"
+    payload["workbook"]["summaries"] = [
+        {
+            "name": "append_same_sheet_summary",
+            "source_tab": "kpi_current",
+            "provider": "openai",
+            "prompt": "Summarize append data",
+            "placement": {
+                "type": "same_sheet",
+                "tab_name": "kpi_current",
+                "anchor_cell": "H2",
+            },
+        }
+    ]
+
+    with pytest.raises(ValidationError, match="not supported for append-mode"):
+        WorkbookConfig.model_validate(payload)
+
+
 def test_workbook_config_rejects_reserved_tab_name():
     payload = _base_workbook_config()
     payload["workbook"]["tabs"][0]["name"] = "_slideflow_meta"

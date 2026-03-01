@@ -187,6 +187,7 @@ template_paths:
 
 For provider-specific behavior, see:
 
+- [Google Sheets Provider](https://joe-broadhead.github.io/slideflow/providers/google-sheets/)
 - [Google Slides Provider](https://joe-broadhead.github.io/slideflow/providers/google-slides/)
 - [Google Docs Provider](https://joe-broadhead.github.io/slideflow/providers/google-docs/)
 

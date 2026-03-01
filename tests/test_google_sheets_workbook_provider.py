@@ -33,6 +33,24 @@ def _minimal_drive_service():
     return SimpleNamespace(files=lambda: files_api)
 
 
+def test_get_rate_limiter_reuses_existing_limiter_for_same_rate(monkeypatch):
+    monkeypatch.setattr(sheets_provider_module, "_sheets_rate_limiters", {})
+
+    first = sheets_provider_module._get_rate_limiter(1.0)
+    second = sheets_provider_module._get_rate_limiter(1.0)
+
+    assert first is second
+
+
+def test_get_rate_limiter_creates_distinct_limiters_for_distinct_rates(monkeypatch):
+    monkeypatch.setattr(sheets_provider_module, "_sheets_rate_limiters", {})
+
+    one_rps = sheets_provider_module._get_rate_limiter(1.0)
+    two_rps = sheets_provider_module._get_rate_limiter(2.0)
+
+    assert one_rps is not two_rps
+
+
 def test_load_run_key_cache_populates_and_reuses_cache():
     provider = _provider_without_init()
     provider._run_key_cache = {}
