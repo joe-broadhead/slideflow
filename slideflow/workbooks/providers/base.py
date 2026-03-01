@@ -52,6 +52,18 @@ class WorkbookProvider(ABC):
         """Append rows with idempotency and return (rows_written, rows_skipped)."""
         raise NotImplementedError
 
+    @abstractmethod
+    def write_summary_text(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        anchor_cell: str,
+        text: str,
+        clear_range: str | None = None,
+    ) -> None:
+        """Write a summary string to a tab/cell, optionally clearing a range first."""
+        raise NotImplementedError
+
     def finalize_workbook(self, workbook_id: str) -> None:
         """Run provider-specific finalize hooks after tab writes."""
         del workbook_id

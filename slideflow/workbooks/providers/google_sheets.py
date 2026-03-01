@@ -493,6 +493,38 @@ class GoogleSheetsProvider(WorkbookProvider):
             raise
         return len(rows), 0
 
+    def write_summary_text(
+        self,
+        workbook_id: str,
+        tab_name: str,
+        anchor_cell: str,
+        text: str,
+        clear_range: str | None = None,
+    ) -> None:
+        self._ensure_sheet_exists(workbook_id, tab_name)
+
+        if clear_range:
+            self._execute_request(
+                self.sheets_service.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=workbook_id,
+                    range=self._sheet_range(tab_name, clear_range),
+                    body={},
+                )
+            )
+
+        self._execute_request(
+            self.sheets_service.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=workbook_id,
+                range=self._sheet_range(tab_name, anchor_cell),
+                valueInputOption="RAW",
+                body={"values": [[text]]},
+            )
+        )
+
     def finalize_workbook(self, workbook_id: str) -> None:
         if not self.config.share_with:
             return

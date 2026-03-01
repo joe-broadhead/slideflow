@@ -176,6 +176,9 @@ def sheets_build_command(
             "tabs_succeeded": result.tabs_succeeded,
             "tabs_failed": result.tabs_failed,
             "idempotent_skips": result.idempotent_skips,
+            "summaries_total": result.summaries_total,
+            "summaries_succeeded": result.summaries_succeeded,
+            "summaries_failed": result.summaries_failed,
         }
         payload = {
             "command": "sheets build",
@@ -186,13 +189,22 @@ def sheets_build_command(
             "registry_files": [str(path) for path in resolved_registry_paths],
             "summary": summary,
             "tabs": [tab.model_dump() for tab in result.tab_results],
+            "summaries": [summary_result.model_dump() for summary_result in result.summary_results],
         }
 
         if result.status == "error":
-            error_message = (
-                f"Workbook build completed with tab errors "
-                f"({result.tabs_failed}/{result.tabs_total} failed)."
-            )
+            failure_messages: List[str] = []
+            if result.tabs_failed:
+                failure_messages.append(
+                    f"tab errors ({result.tabs_failed}/{result.tabs_total} failed)"
+                )
+            if result.summaries_failed:
+                failure_messages.append(
+                    "summary errors "
+                    f"({result.summaries_failed}/{result.summaries_total} failed)"
+                )
+            failure_suffix = " and ".join(failure_messages) or "unknown errors"
+            error_message = f"Workbook build completed with {failure_suffix}."
             payload["error"] = {
                 "code": CliErrorCode.SHEETS_BUILD_FAILED,
                 "message": error_message,

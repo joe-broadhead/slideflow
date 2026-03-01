@@ -12,6 +12,7 @@ class _FakeProvider:
         self.fail_tab = fail_tab
         self.calls = []
         self.append_calls = []
+        self.summary_calls = []
         self.finalized_ids = []
         self._seen_run_keys = set()
 
@@ -49,6 +50,21 @@ class _FakeProvider:
             }
         )
         return len(rows), 0
+
+    def write_summary_text(
+        self, workbook_id, tab_name, anchor_cell, text, clear_range=None
+    ):
+        if self.fail_tab == tab_name:
+            raise RuntimeError("summary write failed")
+        self.summary_calls.append(
+            {
+                "workbook_id": workbook_id,
+                "tab_name": tab_name,
+                "anchor_cell": anchor_cell,
+                "text": text,
+                "clear_range": clear_range,
+            }
+        )
 
     def finalize_workbook(self, workbook_id: str):
         self.finalized_ids.append(workbook_id)
@@ -181,3 +197,170 @@ def test_workbook_builder_append_mode_tracks_idempotent_skips(tmp_path, monkeypa
     assert second_result.tab_results[0].rows_skipped == 2
     assert second_result.idempotent_skips == 2
     assert fake_provider.append_calls[0]["rows"][0] == ["Jan", "10"]
+
+
+def test_workbook_builder_generates_and_writes_same_sheet_summary(
+    tmp_path, monkeypatch
+):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\nFeb,20\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["summaries"] = [
+        {
+            "name": "kpi_summary",
+            "source_tab": "kpi_current",
+            "provider": "openai",
+            "provider_args": {"model": "gpt-4o-mini"},
+            "prompt": "Summarize the latest metrics",
+            "placement": {
+                "type": "same_sheet",
+                "tab_name": "kpi_current",
+                "anchor_cell": "H2",
+                "clear_range": "H2:H20",
+            },
+        }
+    ]
+    config = WorkbookConfig.model_validate(payload)
+
+    fake_provider = _FakeProvider()
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: fake_provider),
+    )
+
+    class _FakeAIProvider:
+        def __init__(self):
+            self.prompts = []
+
+        def generate_text(self, prompt: str):
+            self.prompts.append(prompt)
+            return "AI summary output"
+
+    ai_provider = _FakeAIProvider()
+    monkeypatch.setattr(
+        workbook_builder_module,
+        "create_ai_provider",
+        lambda provider_name, **kwargs: ai_provider,
+    )
+
+    result = WorkbookBuilder.from_config(config).build()
+
+    assert result.status == "success"
+    assert result.summaries_total == 1
+    assert result.summaries_succeeded == 1
+    assert result.summaries_failed == 0
+    assert result.summary_results[0].chars_written == len("AI summary output")
+    assert fake_provider.summary_calls == [
+        {
+            "workbook_id": "sheet_123",
+            "tab_name": "kpi_current",
+            "anchor_cell": "H2",
+            "text": "AI summary output",
+            "clear_range": "H2:H20",
+        }
+    ]
+    assert "Data:" in ai_provider.prompts[0]
+
+
+def test_workbook_builder_marks_error_when_summary_write_fails(tmp_path, monkeypatch):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["summaries"] = [
+        {
+            "name": "kpi_summary",
+            "source_tab": "kpi_current",
+            "provider": "openai",
+            "provider_args": {"model": "gpt-4o-mini"},
+            "prompt": "Summarize",
+            "placement": {
+                "type": "summary_tab",
+                "tab_name": "summary",
+            },
+        }
+    ]
+    config = WorkbookConfig.model_validate(payload)
+
+    fake_provider = _FakeProvider(fail_tab="summary")
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: fake_provider),
+    )
+
+    class _FakeAIProvider:
+        def generate_text(self, prompt: str):
+            del prompt
+            return "AI summary output"
+
+    monkeypatch.setattr(
+        workbook_builder_module,
+        "create_ai_provider",
+        lambda provider_name, **kwargs: _FakeAIProvider(),
+    )
+
+    result = WorkbookBuilder.from_config(config).build()
+
+    assert result.status == "error"
+    assert result.tabs_failed == 0
+    assert result.summaries_failed == 1
+    assert result.summary_results[0].status == "error"
+    assert result.summary_results[0].error == "summary write failed"
+
+
+def test_workbook_builder_marks_error_when_summary_source_tab_has_no_data(
+    tmp_path, monkeypatch
+):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["tabs"].append(
+        {
+            "name": "failing_tab",
+            "mode": "replace",
+            "start_cell": "A1",
+            "include_header": True,
+            "data_source": {
+                "type": "csv",
+                "name": "kpi_source_fail",
+                "file_path": str(csv_path),
+            },
+        }
+    )
+    payload["workbook"]["summaries"] = [
+        {
+            "name": "failing_tab_summary",
+            "source_tab": "failing_tab",
+            "provider": "openai",
+            "provider_args": {},
+            "prompt": "Summarize",
+            "placement": {
+                "type": "summary_tab",
+                "tab_name": "summary",
+            },
+        }
+    ]
+    config = WorkbookConfig.model_validate(payload)
+
+    fake_provider = _FakeProvider(fail_tab="failing_tab")
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: fake_provider),
+    )
+    monkeypatch.setattr(
+        workbook_builder_module,
+        "create_ai_provider",
+        lambda provider_name, **kwargs: (_ for _ in ()).throw(
+            AssertionError("AI provider should not be created when source tab fails")
+        ),
+    )
+
+    result = WorkbookBuilder.from_config(config).build()
+
+    assert result.status == "error"
+    assert result.tabs_failed == 1
+    assert result.summaries_failed == 1
+    assert result.summary_results[0].status == "error"
+    assert "did not produce data" in (result.summary_results[0].error or "")

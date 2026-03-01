@@ -18,6 +18,7 @@ def _minimal_sheets_service():
         get=lambda **kwargs: ("values.get", kwargs),
         update=lambda **kwargs: ("values.update", kwargs),
         append=lambda **kwargs: ("values.append", kwargs),
+        clear=lambda **kwargs: ("values.clear", kwargs),
     )
     spreadsheets_api = SimpleNamespace(
         values=lambda: values_api,
@@ -335,3 +336,57 @@ def test_run_preflight_checks_reports_spreadsheet_access_failure():
 
     assert check_map["spreadsheet_access"] is False
     assert "not found" in check_details["spreadsheet_access"]
+
+
+def test_write_summary_text_clears_range_before_write():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+    provider._ensure_sheet_exists = lambda workbook_id, tab_name: None
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+    requests: List[Tuple[str, Dict[str, Any]]] = []
+
+    def _exec(request):
+        requests.append(request)
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.write_summary_text(
+        workbook_id="sheet_123",
+        tab_name="kpi_current",
+        anchor_cell="H2",
+        text="Summary text",
+        clear_range="H2:H20",
+    )
+
+    assert requests[0][0] == "values.clear"
+    assert requests[0][1]["range"] == "kpi_current!H2:H20"
+    assert requests[1][0] == "values.update"
+    assert requests[1][1]["range"] == "kpi_current!H2"
+    assert requests[1][1]["body"]["values"] == [["Summary text"]]
+
+
+def test_write_summary_text_writes_without_clear_range():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+    provider._ensure_sheet_exists = lambda workbook_id, tab_name: None
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+    requests: List[Tuple[str, Dict[str, Any]]] = []
+
+    def _exec(request):
+        requests.append(request)
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.write_summary_text(
+        workbook_id="sheet_123",
+        tab_name="summary",
+        anchor_cell="A1",
+        text="Weekly summary",
+    )
+
+    assert len(requests) == 1
+    assert requests[0][0] == "values.update"
+    assert requests[0][1]["range"] == "summary!A1"
+    assert requests[0][1]["body"]["values"] == [["Weekly summary"]]
