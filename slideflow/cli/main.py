@@ -27,6 +27,8 @@ from slideflow.cli.commands import (
     build_command,
     doctor_command,
     sheets_app,
+    sheets_build_command,
+    sheets_doctor_command,
     sheets_validate_command,
     validate_command,
 )
@@ -120,6 +122,8 @@ if hasattr(app, "add_typer"):
 else:
     # Compatibility fallback for minimal Typer stubs used in tests.
     app.command("sheets-validate")(sheets_validate_command)
+    app.command("sheets-build")(sheets_build_command)
+    app.command("sheets-doctor")(sheets_doctor_command)
     app.command("templates-list")(templates_list)
     app.command("templates-info")(templates_info)
 

@@ -149,6 +149,74 @@ class GoogleSheetsProvider(WorkbookProvider):
                 ),
             ),
         ]
+
+        if self.sheets_service is not None and self.config.spreadsheet_id:
+            try:
+                response = self._execute_request(
+                    self.sheets_service.spreadsheets().get(
+                        spreadsheetId=self.config.spreadsheet_id,
+                        fields="spreadsheetId,properties/title",
+                    )
+                )
+                sheet_id = (
+                    response.get("spreadsheetId")
+                    if isinstance(response, dict)
+                    else self.config.spreadsheet_id
+                )
+                checks.append(
+                    (
+                        "spreadsheet_access",
+                        True,
+                        f"Accessible spreadsheet_id '{sheet_id}'",
+                    )
+                )
+            except Exception as error:
+                checks.append(
+                    (
+                        "spreadsheet_access",
+                        False,
+                        f"Cannot access spreadsheet_id '{self.config.spreadsheet_id}': {error}",
+                    )
+                )
+
+        if self.drive_service is not None and self.config.drive_folder_id:
+            try:
+                response = self._execute_request(
+                    self.drive_service.files().get(
+                        fileId=self.config.drive_folder_id,
+                        fields="id,mimeType,name,trashed",
+                        supportsAllDrives=True,
+                    )
+                )
+                mime_type = (
+                    response.get("mimeType") if isinstance(response, dict) else ""
+                )
+                is_folder = mime_type == "application/vnd.google-apps.folder"
+                is_trashed = (
+                    bool(response.get("trashed"))
+                    if isinstance(response, dict)
+                    else False
+                )
+                checks.append(
+                    (
+                        "drive_folder_access",
+                        is_folder and not is_trashed,
+                        (
+                            f"Accessible Drive folder '{self.config.drive_folder_id}'"
+                            if is_folder and not is_trashed
+                            else f"Configured drive_folder_id '{self.config.drive_folder_id}' is not an active folder"
+                        ),
+                    )
+                )
+            except Exception as error:
+                checks.append(
+                    (
+                        "drive_folder_access",
+                        False,
+                        f"Cannot access drive_folder_id '{self.config.drive_folder_id}': {error}",
+                    )
+                )
+
         return checks
 
     def create_or_open_workbook(self, title: str) -> str:

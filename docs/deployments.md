@@ -49,6 +49,7 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }} # optional; writes ADC file in reusable workflow
     with:
       config-file: config/weekly_exec_report.yml
+      artifact-kind: presentation
       registry-files: registries/base_registry.py
       params-path: config/weekly_variants.csv
       run-doctor: true
@@ -96,10 +97,12 @@ jobs:
 
 The reusable workflow exposes:
 
-- `presentation-urls`: comma-separated build URLs extracted from JSON output (Google Slides or Google Docs)
-- `build-result-json`: JSON summary from `slideflow build --output-json`
-- `validate-result-json`: JSON summary from `slideflow validate --output-json`
-- `doctor-result-json`: JSON summary from `slideflow doctor --output-json`
+- `presentation-urls`: comma-separated URLs for `presentation` builds
+- `workbook-urls`: comma-separated URLs for `sheets` builds
+- `artifact-urls`: comma-separated URLs for whichever artifact-kind was built
+- `build-result-json`: JSON summary from `slideflow build --output-json` or `slideflow sheets build --output-json`
+- `validate-result-json`: JSON summary from `slideflow validate --output-json` or `slideflow sheets validate --output-json`
+- `doctor-result-json`: JSON summary from `slideflow doctor --output-json` or `slideflow sheets doctor --output-json`
 
 ```yaml
 jobs:
@@ -113,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - run: echo "URLs: ${{ needs.build.outputs['presentation-urls'] }}"
+      - run: echo "Artifact URLs: ${{ needs.build.outputs['artifact-urls'] }}"
       - run: echo '${{ needs.build.outputs["build-result-json"] }}' > build-result.json
       - run: |
           python - <<'PY'
