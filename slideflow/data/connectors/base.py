@@ -28,12 +28,14 @@ Example:
     ...     connector_class = MyConnector
 """
 
+import json
 from abc import ABC, abstractmethod
 from typing import Annotated, Any, ClassVar, Optional, Type
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
+from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.data.cache import get_data_cache
 
 
@@ -296,3 +298,34 @@ class BaseSourceConfig(BaseModel):
             loader=lambda: self.get_connector().fetch_data(),
             **cache_kwargs,
         )
+
+    def _citation_identity(self) -> str:
+        """Return a stable identity payload for citation source IDs."""
+        payload = self.model_dump(mode="json")
+        return json.dumps(payload, sort_keys=True, default=str)
+
+    def get_citation_entries(
+        self, mode: str = "model", include_query_text: bool = False
+    ) -> list[CitationEntry]:
+        """Return provenance entries for this source configuration.
+
+        Args:
+            mode: Citation mode (`model`, `execution`, or `both`).
+            include_query_text: Include raw query text in metadata when supported.
+
+        Returns:
+            A list of CitationEntry objects. Defaults to one generic source-level
+            citation for connectors that do not provide richer metadata.
+        """
+        del mode, include_query_text
+        source_id = (
+            f"{self.type}:{self.name}:{fingerprint_text(self._citation_identity())}"
+        )
+        return [
+            CitationEntry(
+                source_id=source_id,
+                provider=self.type,
+                display_name=f"{self.name} ({self.type})",
+                metadata={"source_name": self.name, "source_type": self.type},
+            )
+        ]

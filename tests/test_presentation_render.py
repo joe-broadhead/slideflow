@@ -1,7 +1,9 @@
 import pandas as pd
 import pytest
 
+from slideflow.citations import CitationEntry
 from slideflow.presentations.base import Presentation, Slide
+from slideflow.presentations.config import CitationConfig
 from slideflow.utilities.exceptions import RenderingError
 
 
@@ -221,3 +223,143 @@ def test_render_raises_when_strict_transfer_fails():
 
     with pytest.raises(RenderingError, match="Ownership transfer failed"):
         presentation.render()
+
+
+def test_render_emits_citations_and_calls_provider_hook():
+    class CitationSource:
+        type = "stub"
+        name = "sales_model"
+
+        @staticmethod
+        def get_citation_entries(mode: str = "model", include_query_text: bool = False):
+            metadata = {"mode": mode, "ref": "main"}
+            if include_query_text:
+                metadata["query_text"] = "SELECT * FROM mart.sales"
+            return [
+                CitationEntry(
+                    source_id="dbt:sales:model:model.pkg.sales:main",
+                    provider="databricks_dbt",
+                    display_name="sales_model (dbt model)",
+                    repo_url="https://github.com/org/repo",
+                    model_path="models/marts/sales.sql",
+                    metadata=metadata,
+                )
+            ]
+
+        @staticmethod
+        def fetch_data():
+            return pd.DataFrame()
+
+    class CitationProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=False, fail_cleanup=False)
+            self.citation_calls = []
+
+        def render_citations(self, presentation_id, citations_by_scope, location):
+            self.citation_calls.append((presentation_id, citations_by_scope, location))
+
+    provider = CitationProvider()
+    chart = FakeChart()
+    chart.data_source = CitationSource()
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[chart]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo",
+        name_fn=None,
+        slides=[slide],
+        provider=provider,
+        citations=CitationConfig(
+            enabled=True,
+            mode="model",
+            location="per_slide",
+            include_query_text=True,
+            repo_url_template="{repo_url}/blob/{ref}/{model_path}",
+        ),
+    )
+
+    result = presentation.render()
+
+    assert result.citations_enabled is True
+    assert result.citations_total_sources == 1
+    assert result.citations_emitted_sources == 1
+    assert result.citations_truncated is False
+    assert result.citations[0]["provider"] == "databricks_dbt"
+    assert result.citations[0]["metadata"]["query_text"] == "SELECT * FROM mart.sales"
+    assert (
+        result.citations[0]["file_url"]
+        == "https://github.com/org/repo/blob/main/models/marts/sales.sql"
+    )
+    assert result.citations_by_scope == {
+        "slide-1": ["dbt:sales:model:model.pkg.sales:main"]
+    }
+    assert provider.citation_calls
+    assert provider.citation_calls[0][2] == "per_slide"
+    assert "slide-1" in provider.citation_calls[0][1]
+
+
+def test_render_aggregates_document_end_citations_to_document_scope():
+    class CitationSource:
+        type = "stub"
+        name = "source"
+
+        def __init__(self, source_id: str):
+            self._source_id = source_id
+
+        def get_citation_entries(
+            self, mode: str = "model", include_query_text: bool = False
+        ):
+            del mode, include_query_text
+            return [
+                CitationEntry(
+                    source_id=self._source_id,
+                    provider="csv",
+                    display_name=f"{self._source_id} (csv)",
+                )
+            ]
+
+        @staticmethod
+        def fetch_data():
+            return pd.DataFrame()
+
+    class CitationProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=False, fail_cleanup=False)
+            self.citation_calls = []
+
+        def render_citations(self, presentation_id, citations_by_scope, location):
+            self.citation_calls.append((presentation_id, citations_by_scope, location))
+
+    provider = CitationProvider()
+    chart_one = FakeChart()
+    chart_one.data_source = CitationSource("src-1")
+    chart_two = FakeChart()
+    chart_two.data_source = CitationSource("src-2")
+
+    slides = [
+        Slide.model_construct(
+            id="slide-1", title="S1", replacements=[], charts=[chart_one]
+        ),
+        Slide.model_construct(
+            id="slide-2", title="S2", replacements=[], charts=[chart_two]
+        ),
+    ]
+    presentation = Presentation.model_construct(
+        name="Demo",
+        name_fn=None,
+        slides=slides,
+        provider=provider,
+        citations=CitationConfig(
+            enabled=True,
+            mode="model",
+            location="document_end",
+        ),
+    )
+
+    result = presentation.render()
+
+    assert result.citations_by_scope == {"__document__": ["src-1", "src-2"]}
+    assert provider.citation_calls
+    _, payload, location = provider.citation_calls[0]
+    assert location == "document_end"
+    assert "__document__" in payload

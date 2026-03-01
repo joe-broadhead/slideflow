@@ -22,6 +22,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from pydantic import Field, field_validator
 
+from slideflow.citations import CitationEntry, format_citation_line
 from slideflow.constants import Environment, GoogleSlides, Timing
 from slideflow.presentations.providers.base import (
     PresentationProvider,
@@ -635,6 +636,143 @@ class GoogleDocsProvider(PresentationProvider):
             )
         )
         return len(placeholder_occurrences)
+
+    def _render_document_end_citations(
+        self, document_id: str, citations: List[Dict[str, Any]]
+    ) -> None:
+        if not citations:
+            return
+
+        content = self._get_document_content(document_id)
+        end_index = 1
+        for element in content:
+            if not isinstance(element, dict):
+                continue
+            candidate = element.get("endIndex")
+            if isinstance(candidate, int):
+                end_index = max(end_index, candidate)
+        insertion_index = max(end_index - 1, 1)
+
+        lines = ["", "Sources"]
+        for citation_payload in citations:
+            try:
+                entry = CitationEntry.model_validate(citation_payload)
+            except Exception:
+                continue
+            lines.append(format_citation_line(entry))
+        if len(lines) <= 2:
+            return
+
+        self._execute_request(
+            self.docs_service.documents().batchUpdate(
+                documentId=document_id,
+                body={
+                    "requests": [
+                        {
+                            "insertText": {
+                                "location": {"index": insertion_index},
+                                "text": "\n".join(lines) + "\n",
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+
+    def _render_section_footnote_citations(
+        self,
+        document_id: str,
+        section_id: str,
+        citations: List[Dict[str, Any]],
+    ) -> None:
+        if not citations:
+            return
+        try:
+            anchor, _ = self._resolve_section_anchor(document_id, section_id)
+        except RenderingError:
+            logger.warning(
+                "Skipping citation footnote for unknown section '%s'", section_id
+            )
+            return
+
+        create_response = self._execute_request(
+            self.docs_service.documents().batchUpdate(
+                documentId=document_id,
+                body={
+                    "requests": [
+                        {
+                            "createFootnote": {
+                                "location": {"index": max(anchor.section_end - 1, 1)}
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+        replies = create_response.get("replies", [])
+        if not replies:
+            return
+        footnote = replies[0].get("createFootnote", {})
+        footnote_id = footnote.get("footnoteId")
+        if not footnote_id:
+            return
+
+        lines = ["Sources"]
+        for citation_payload in citations:
+            try:
+                entry = CitationEntry.model_validate(citation_payload)
+            except Exception:
+                continue
+            lines.append(format_citation_line(entry))
+        if len(lines) <= 1:
+            return
+
+        self._execute_request(
+            self.docs_service.documents().batchUpdate(
+                documentId=document_id,
+                body={
+                    "requests": [
+                        {
+                            "insertText": {
+                                "endOfSegmentLocation": {"segmentId": footnote_id},
+                                "text": "\n".join(lines),
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+
+    def render_citations(
+        self,
+        presentation_id: str,
+        citations_by_scope: Dict[str, List[Dict[str, Any]]],
+        location: str,
+    ) -> None:
+        """Render citations into Docs output (footnotes or document-end block)."""
+        if not citations_by_scope:
+            return
+
+        if location == "document_end":
+            combined: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            for citations in citations_by_scope.values():
+                for citation in citations:
+                    source_id = str(citation.get("source_id", ""))
+                    if source_id in seen:
+                        continue
+                    seen.add(source_id)
+                    combined.append(citation)
+            self._render_document_end_citations(presentation_id, combined)
+            return
+
+        # per_slide/per_section both map to section markers for Google Docs
+        for section_id, citations in citations_by_scope.items():
+            self._render_section_footnote_citations(
+                presentation_id,
+                section_id,
+                citations,
+            )
 
     def share_presentation(
         self, presentation_id: str, emails: List[str], role: str = "writer"

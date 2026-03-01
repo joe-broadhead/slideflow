@@ -32,7 +32,7 @@ Example:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -225,6 +225,19 @@ class PresentationProvider(ABC):
             presentation_id: Unique identifier of the rendered presentation.
         """
         del presentation_id
+
+    def render_citations(
+        self,
+        presentation_id: str,
+        citations_by_scope: Dict[str, List[Dict[str, Any]]],
+        location: str,
+    ) -> None:
+        """Render citation blocks into provider output.
+
+        Providers can override this hook to apply source citations once chart and
+        replacement operations are complete.
+        """
+        del presentation_id, citations_by_scope, location
 
     @abstractmethod
     def create_presentation(self, name: str, template_id: Optional[str] = None) -> str:

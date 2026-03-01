@@ -398,6 +398,22 @@ def build_command(
                     result_dict["ownership_transfer_error"] = getattr(
                         result, "ownership_transfer_error", None
                     )
+                    result_dict["citations_enabled"] = getattr(
+                        result, "citations_enabled", False
+                    )
+                    result_dict["citations_total_sources"] = getattr(
+                        result, "citations_total_sources", 0
+                    )
+                    result_dict["citations_emitted_sources"] = getattr(
+                        result, "citations_emitted_sources", 0
+                    )
+                    result_dict["citations_truncated"] = getattr(
+                        result, "citations_truncated", False
+                    )
+                    result_dict["citations"] = getattr(result, "citations", [])
+                    result_dict["citations_by_scope"] = getattr(
+                        result, "citations_by_scope", {}
+                    )
                     results.append(result_dict)
 
                     completed_count += 1
@@ -426,6 +442,18 @@ def build_command(
             print(f"  • {res['presentation_name']}: {res['url']}")
 
         print_build_success()
+        citations_enabled_any = any(
+            bool(res.get("citations_enabled", False)) for res in results
+        )
+        citations_total_sources = sum(
+            int(res.get("citations_total_sources", 0)) for res in results
+        )
+        citations_emitted_sources = sum(
+            int(res.get("citations_emitted_sources", 0)) for res in results
+        )
+        citations_truncated_any = any(
+            bool(res.get("citations_truncated", False)) for res in results
+        )
         write_output_json(
             output_json,
             {
@@ -438,6 +466,10 @@ def build_command(
                 "registry_files": [str(path) for path in registry_files],
                 "total_presentations": total_presentations,
                 "generated_presentations": len(results),
+                "citations_enabled": citations_enabled_any,
+                "citations_total_sources": citations_total_sources,
+                "citations_emitted_sources": citations_emitted_sources,
+                "citations_truncated": citations_truncated_any,
                 "results": results,
             },
         )

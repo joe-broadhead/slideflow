@@ -439,3 +439,67 @@ def test_delete_chart_image_handles_permission_and_other_errors():
         _http_error("server", status=500)
     )
     provider.delete_chart_image("file-2")
+
+
+def test_render_citations_inserts_sources_into_speaker_notes():
+    provider = _provider_without_init()
+    provider._get_speaker_notes_targets = lambda _presentation_id: {
+        "slide-1": ("notes-1", 4)
+    }
+    captured_requests: List[Dict[str, Any]] = []
+    provider._batch_update = (
+        lambda _presentation_id, requests: captured_requests.extend(requests) or {}
+    )
+
+    provider.render_citations(
+        "pres-1",
+        {
+            "slide-1": [
+                {
+                    "source_id": "source-1",
+                    "provider": "csv",
+                    "display_name": "CSV Source",
+                    "file_url": "https://example.com/source.csv",
+                }
+            ]
+        },
+        location="per_slide",
+    )
+
+    assert len(captured_requests) == 1
+    insert_request = captured_requests[0]["insertText"]
+    assert insert_request["objectId"] == "notes-1"
+    assert insert_request["insertionIndex"] == 4
+    assert "Sources" in insert_request["text"]
+    assert "CSV Source" in insert_request["text"]
+
+
+def test_render_citations_document_end_uses_first_slide_notes():
+    provider = _provider_without_init()
+    provider._get_speaker_notes_targets = lambda _presentation_id: {
+        "slide-a": ("notes-a", 1),
+        "slide-b": ("notes-b", 2),
+    }
+    captured_requests: List[Dict[str, Any]] = []
+    provider._batch_update = (
+        lambda _presentation_id, requests: captured_requests.extend(requests) or {}
+    )
+
+    provider.render_citations(
+        "pres-1",
+        {
+            "slide-a": [
+                {"source_id": "src-1", "provider": "csv", "display_name": "One"}
+            ],
+            "slide-b": [
+                {"source_id": "src-2", "provider": "csv", "display_name": "Two"}
+            ],
+        },
+        location="document_end",
+    )
+
+    assert len(captured_requests) == 1
+    insert_request = captured_requests[0]["insertText"]
+    assert insert_request["objectId"] == "notes-a"
+    assert "One" in insert_request["text"]
+    assert "Two" in insert_request["text"]

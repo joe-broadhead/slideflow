@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Optional citation/provenance pipeline for rendered outputs with new top-level config:
+  - `citations.enabled`
+  - `citations.mode` (`model` | `execution` | `both`)
+  - `citations.location` (`per_slide` | `per_section` | `document_end`)
+  - `citations.max_items`
+  - `citations.dedupe`
+  - `citations.include_query_text`
+- Provider citation rendering hooks:
+  - Google Slides speaker-notes `Sources` rendering
+  - Google Docs section footnote or document-end `Sources` rendering
+- Deterministic citation registry + URL normalization helpers for source provenance modeling.
+
+### Changed
+
+- Build JSON output now includes citation summary fields and per-result citation payloads.
+- Source connectors now expose citation entries across csv/json/databricks/duckdb/dbt sources.
+
 ## [0.0.6] - 2026-02-26
 
 ### Added

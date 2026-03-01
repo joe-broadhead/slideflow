@@ -77,6 +77,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from pydantic import Field, field_validator
 
+from slideflow.citations import CitationEntry, format_citation_line
 from slideflow.constants import Environment, GoogleSlides, Timing
 from slideflow.presentations.providers.base import (
     PresentationProvider,
@@ -457,6 +458,122 @@ class GoogleSlidesProvider(PresentationProvider):
                 return reply["replaceAllText"].get("occurrencesChanged", 0)
 
         return 0
+
+    def _get_speaker_notes_targets(
+        self, presentation_id: str
+    ) -> Dict[str, Tuple[str, int]]:
+        """Return slide -> (speaker_notes_shape_id, insertion_index) map."""
+        response = self._execute_request(
+            self.slides_service.presentations().get(
+                presentationId=presentation_id,
+                fields=(
+                    "slides(objectId,"
+                    "notesPage(notesProperties(speakerNotesObjectId),"
+                    "pageElements(objectId,shape(text(textElements(endIndex)))))"
+                    ")"
+                ),
+            )
+        )
+
+        targets: Dict[str, Tuple[str, int]] = {}
+        for slide in response.get("slides", []):
+            if not isinstance(slide, dict):
+                continue
+            slide_id = slide.get("objectId")
+            notes_page = slide.get("notesPage", {})
+            if not isinstance(notes_page, dict) or not slide_id:
+                continue
+
+            notes_properties = notes_page.get("notesProperties", {})
+            if not isinstance(notes_properties, dict):
+                continue
+            speaker_object_id = notes_properties.get("speakerNotesObjectId")
+            if not speaker_object_id:
+                continue
+
+            insertion_index = 0
+            for element in notes_page.get("pageElements", []):
+                if not isinstance(element, dict):
+                    continue
+                if element.get("objectId") != speaker_object_id:
+                    continue
+                shape = element.get("shape", {})
+                text = shape.get("text", {}) if isinstance(shape, dict) else {}
+                text_elements = (
+                    text.get("textElements", []) if isinstance(text, dict) else []
+                )
+                end_indexes: List[int] = []
+                for entry in text_elements:
+                    if not isinstance(entry, dict):
+                        continue
+                    end_index = entry.get("endIndex")
+                    if isinstance(end_index, int):
+                        end_indexes.append(end_index)
+                if end_indexes:
+                    insertion_index = max(max(end_indexes) - 1, 0)
+                break
+
+            targets[str(slide_id)] = (str(speaker_object_id), insertion_index)
+        return targets
+
+    def render_citations(
+        self,
+        presentation_id: str,
+        citations_by_scope: Dict[str, List[Dict[str, Any]]],
+        location: str,
+    ) -> None:
+        """Render source citations into slide speaker notes."""
+        if not citations_by_scope:
+            return
+
+        notes_targets = self._get_speaker_notes_targets(presentation_id)
+        if not notes_targets:
+            logger.warning("No speaker notes targets found for presentation citations")
+            return
+
+        if location == "document_end":
+            combined: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            for citations in citations_by_scope.values():
+                for citation in citations:
+                    source_id = str(citation.get("source_id", ""))
+                    if source_id in seen:
+                        continue
+                    seen.add(source_id)
+                    combined.append(citation)
+            first_slide_id = next(iter(notes_targets.keys()))
+            scope_mapping = {first_slide_id: combined}
+        else:
+            scope_mapping = citations_by_scope
+
+        requests: List[Dict[str, Any]] = []
+        for scope_id, citations in scope_mapping.items():
+            target = notes_targets.get(scope_id)
+            if not target or not citations:
+                continue
+            object_id, insertion_index = target
+            lines = ["", "Sources"]
+            for citation_payload in citations:
+                try:
+                    entry = CitationEntry.model_validate(citation_payload)
+                except Exception:
+                    continue
+                lines.append(format_citation_line(entry))
+            if len(lines) <= 2:
+                continue
+
+            requests.append(
+                {
+                    "insertText": {
+                        "objectId": object_id,
+                        "insertionIndex": insertion_index,
+                        "text": "\n".join(lines),
+                    }
+                }
+            )
+
+        if requests:
+            self._batch_update(presentation_id, requests)
 
     def share_presentation(
         self,

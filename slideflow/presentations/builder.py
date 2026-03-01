@@ -254,6 +254,7 @@ class PresentationBuilder:
             name_fn=config.presentation.name_fn,
             slides=slides,
             provider=provider,
+            citations=config.citations,
         )
 
         return presentation

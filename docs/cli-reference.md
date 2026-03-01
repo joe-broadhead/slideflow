@@ -75,6 +75,22 @@ Options:
 | `--rps` | Override provider requests/second |
 | `--output-json` | Write machine-readable build summary JSON |
 
+Build JSON highlights (`--output-json`):
+
+- top-level:
+  - `generated_presentations`
+  - `citations_enabled`
+  - `citations_total_sources`
+  - `citations_emitted_sources`
+  - `citations_truncated`
+- per-result:
+  - `ownership_transfer_attempted`
+  - `ownership_transfer_succeeded`
+  - `ownership_transfer_target`
+  - `ownership_transfer_error`
+  - `citations`
+  - `citations_by_scope`
+
 Registry resolution order:
 
 1. CLI `--registry` paths (if provided)

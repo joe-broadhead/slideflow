@@ -65,6 +65,12 @@ from dbt.cli.main import dbtRunner
 from git import Repo
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from slideflow.citations import (
+    CitationEntry,
+    build_repo_file_url,
+    canonical_repo_web_url,
+    fingerprint_text,
+)
 from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.data.connectors.bigquery import BigQuerySQLExecutor
@@ -96,6 +102,7 @@ class _ManifestNodeIndexEntry:
     package_name: Optional[str]
     model_name: Optional[str]
     compiled_path: Optional[str]
+    original_file_path: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +111,22 @@ class _ManifestIndex:
 
     by_alias: dict[str, list[_ManifestNodeIndexEntry]]
     by_unique_id: dict[str, _ManifestNodeIndexEntry]
+
+
+@dataclass(frozen=True)
+class DBTCompiledModelInfo:
+    """Compiled dbt model metadata and SQL payload."""
+
+    sql_text: str
+    unique_id: str
+    alias: str
+    package_name: Optional[str]
+    model_name: Optional[str]
+    compiled_path: Optional[str]
+    model_path: Optional[str]
+    repo_url: Optional[str]
+    file_url: Optional[str]
+    ref: Optional[str]
 
 
 def _manifest_cache_key(clone_dir: Path) -> Path:
@@ -153,6 +176,11 @@ def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
             package_name=node.get("package_name"),
             model_name=node.get("name"),
             compiled_path=str(compiled_path) if compiled_path else None,
+            original_file_path=(
+                str(node.get("original_file_path"))
+                if node.get("original_file_path")
+                else None
+            ),
         )
 
         by_alias.setdefault(entry.alias, []).append(entry)
@@ -232,6 +260,15 @@ def _format_selector_context(
 def _sanitize_git_url(git_url: str) -> str:
     """Redact embedded basic-auth credentials from Git URLs."""
     return re.sub(r"(https?://)([^/@]+)@", r"\1***@", git_url)
+
+
+def _resolve_repo_ref(clone_dir: Path, branch: Optional[str]) -> Optional[str]:
+    """Return immutable commit SHA when available, otherwise branch/default."""
+    try:
+        repo = Repo(clone_dir)
+        return repo.head.commit.hexsha
+    except Exception:
+        return branch or "default"
 
 
 def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
@@ -884,37 +921,24 @@ class DBTManifestConnector(BaseModel, DataConnector):
         model_package_name: Optional[str] = None,
         model_selector_name: Optional[str] = None,
     ) -> Optional[str]:
-        """Extract compiled SQL query for a specific DBT model.
+        """Extract compiled SQL query for a specific DBT model alias."""
+        model_info = self.get_compiled_model_info(
+            model_name,
+            model_unique_id=model_unique_id,
+            model_package_name=model_package_name,
+            model_selector_name=model_selector_name,
+        )
+        return model_info.sql_text if model_info else None
 
-        Compiles the DBT project if needed and parses the manifest.json file
-        to find the compiled SQL for the specified model alias. Returns the
-        SQL content as a string for execution by other connectors.
-
-        Args:
-            model_name: The alias of the DBT model to retrieve SQL for.
-                This should match the alias defined in the model's configuration.
-            model_unique_id: Optional dbt unique_id selector to disambiguate
-                aliases that appear in multiple packages.
-            model_package_name: Optional package_name selector for alias
-                disambiguation.
-            model_selector_name: Optional dbt model name selector (node.name)
-                for alias disambiguation.
-
-        Returns:
-            The compiled SQL query as a string, or None if the model is not found.
-
-        Raises:
-            DataSourceError: If the manifest.json file is not found or invalid.
-
-        Example:
-            >>> connector = DBTManifestConnector(
-            ...     package_url="https://github.com/company/dbt-project.git",
-            ...     project_dir="/tmp/dbt_project",
-            ...     target="prod"
-            ... )
-            >>> sql = connector.get_compiled_query("monthly_revenue")
-            >>> print(f"Found SQL query with {len(sql)} characters")
-        """
+    def get_compiled_model_info(
+        self,
+        model_name: str,
+        *,
+        model_unique_id: Optional[str] = None,
+        model_package_name: Optional[str] = None,
+        model_selector_name: Optional[str] = None,
+    ) -> Optional[DBTCompiledModelInfo]:
+        """Extract compiled SQL and manifest metadata for a specific dbt model."""
         with _compiled_project_lease(
             package_url=self.package_url,
             project_dir=self.project_dir,
@@ -986,7 +1010,26 @@ class DBTManifestConnector(BaseModel, DataConnector):
                 else None
             )
             if full and full.exists():
-                return full.read_text()
+                sql_text = full.read_text()
+                repo_url = canonical_repo_web_url(self.package_url)
+                ref = _resolve_repo_ref(clone_dir, self.branch)
+                file_url = build_repo_file_url(
+                    repo_web_url=repo_url,
+                    ref=ref,
+                    file_path=selected.original_file_path,
+                )
+                return DBTCompiledModelInfo(
+                    sql_text=sql_text,
+                    unique_id=selected.unique_id,
+                    alias=selected.alias,
+                    package_name=selected.package_name,
+                    model_name=selected.model_name,
+                    compiled_path=selected.compiled_path,
+                    model_path=selected.original_file_path,
+                    repo_url=repo_url,
+                    file_url=file_url,
+                    ref=ref,
+                )
 
             logger.warning(
                 "Missing compiled file for %s: %s",
@@ -1231,6 +1274,78 @@ class DBTDuckDBConnector(BaseModel, DataConnector):
         return executor.execute(sql_text)
 
 
+def _build_dbt_citation_entries(
+    *,
+    source_name: str,
+    provider: str,
+    mode: str,
+    model_info: Optional[DBTCompiledModelInfo],
+    execution_metadata: Optional[dict[str, Any]] = None,
+    include_query_text: bool = False,
+) -> list[CitationEntry]:
+    """Build model/execution citation entries for dbt-backed sources."""
+    normalized_mode = mode if mode in {"model", "execution", "both"} else "model"
+    entries: list[CitationEntry] = []
+
+    if model_info and normalized_mode in {"model", "both"}:
+        model_source_id = (
+            f"{provider}:{source_name}:model:{model_info.unique_id}:{model_info.ref}"
+        )
+        entries.append(
+            CitationEntry(
+                source_id=model_source_id,
+                provider=provider,
+                display_name=f"{source_name} (dbt model)",
+                repo_url=model_info.repo_url,
+                file_url=model_info.file_url,
+                model_unique_id=model_info.unique_id,
+                model_path=model_info.model_path,
+                metadata={
+                    "alias": model_info.alias,
+                    "package_name": model_info.package_name,
+                    "model_name": model_info.model_name,
+                    "ref": model_info.ref,
+                },
+            )
+        )
+
+    if model_info and normalized_mode in {"execution", "both"}:
+        query_fingerprint = fingerprint_text(model_info.sql_text)
+        execution_source_id = (
+            f"{provider}:{source_name}:execution:{query_fingerprint}:{model_info.ref}"
+        )
+        metadata = dict(execution_metadata or {})
+        metadata["query_fingerprint"] = query_fingerprint
+        metadata["ref"] = model_info.ref
+        if include_query_text:
+            metadata["query_text"] = model_info.sql_text
+        entries.append(
+            CitationEntry(
+                source_id=execution_source_id,
+                provider=provider,
+                display_name=f"{source_name} (dbt execution)",
+                model_unique_id=model_info.unique_id,
+                model_path=model_info.model_path,
+                query_fingerprint=query_fingerprint,
+                metadata=metadata,
+            )
+        )
+
+    if entries:
+        return entries
+
+    fallback_source_id = (
+        f"{provider}:{source_name}:dbt:{fingerprint_text(f'{provider}|{source_name}')}"
+    )
+    return [
+        CitationEntry(
+            source_id=fallback_source_id,
+            provider=provider,
+            display_name=f"{source_name} (dbt source)",
+        )
+    ]
+
+
 class DBTDatabricksSourceConfig(BaseSourceConfig):
     """Configuration model for DBT models executed on Databricks.
 
@@ -1325,6 +1440,44 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
 
     model_config = ConfigDict(extra="forbid")
+
+    def get_citation_entries(
+        self, mode: str = "model", include_query_text: bool = False
+    ) -> list[CitationEntry]:
+        provider_name = "databricks_dbt"
+        try:
+            manifest = DBTManifestConnector(
+                package_url=self.package_url,
+                project_dir=self.project_dir,
+                profile_name=self.profile_name,
+                branch=self.branch,
+                target=self.target,
+                vars=self.vars,
+                profiles_dir=self.profiles_dir,
+                compile=self.compile,
+            )
+            model_info = manifest.get_compiled_model_info(
+                self.model_alias,
+                model_unique_id=self.model_unique_id,
+                model_package_name=self.model_package_name,
+                model_selector_name=self.model_selector_name,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to build dbt citation metadata for source '%s': %s",
+                self.name,
+                error,
+            )
+            model_info = None
+
+        return _build_dbt_citation_entries(
+            source_name=self.name,
+            provider=provider_name,
+            mode=mode,
+            model_info=model_info,
+            execution_metadata={"warehouse": "databricks", "target": self.target},
+            include_query_text=include_query_text,
+        )
 
 
 class DBTProjectConfig(BaseModel):
@@ -1493,3 +1646,44 @@ class DBTSourceConfig(BaseSourceConfig):
                 file_search_path=self.warehouse.file_search_path,
             )
         raise DataSourceError(f"Unsupported DBT warehouse type '{self.warehouse.type}'")
+
+    def get_citation_entries(
+        self, mode: str = "model", include_query_text: bool = False
+    ) -> list[CitationEntry]:
+        provider_name = f"{self.warehouse.type}_dbt"
+        try:
+            manifest = DBTManifestConnector(
+                package_url=self.dbt.package_url,
+                project_dir=self.dbt.project_dir,
+                profile_name=self.dbt.profile_name,
+                branch=self.dbt.branch,
+                target=self.dbt.target,
+                vars=self.dbt.vars,
+                profiles_dir=self.dbt.profiles_dir,
+                compile=self.dbt.compile,
+            )
+            model_info = manifest.get_compiled_model_info(
+                self.model_alias,
+                model_unique_id=self.model_unique_id,
+                model_package_name=self.model_package_name,
+                model_selector_name=self.model_selector_name,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to build dbt citation metadata for source '%s': %s",
+                self.name,
+                error,
+            )
+            model_info = None
+
+        return _build_dbt_citation_entries(
+            source_name=self.name,
+            provider=provider_name,
+            mode=mode,
+            model_info=model_info,
+            execution_metadata={
+                "warehouse": self.warehouse.type,
+                "target": self.dbt.target,
+            },
+            include_query_text=include_query_text,
+        )

@@ -487,6 +487,81 @@ def test_build_error_writes_output_json_with_error_code(tmp_path, monkeypatch):
     assert payload["error"]["code"] == "SLIDEFLOW_BUILD_FAILED"
 
 
+def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "build-citations.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    def _fake_build_single(
+        _config_file,
+        _registry_files,
+        params,
+        index,
+        _total,
+        _print_lock,
+        _rps,
+    ):
+        return (
+            "Demo Deck",
+            types.SimpleNamespace(
+                presentation_url="https://example.com/deck",
+                citations_enabled=True,
+                citations_total_sources=3,
+                citations_emitted_sources=2,
+                citations_truncated=False,
+                citations=[
+                    {
+                        "source_id": "src-1",
+                        "provider": "csv",
+                        "display_name": "source one",
+                    },
+                    {
+                        "source_id": "src-2",
+                        "provider": "csv",
+                        "display_name": "source two",
+                    },
+                ],
+                citations_by_scope={"slide-1": ["src-1", "src-2"]},
+            ),
+            index,
+            params,
+        )
+
+    monkeypatch.setattr(
+        build_command_module, "build_single_presentation", _fake_build_single
+    )
+
+    build_command_module.build_command(
+        config_file=config_file,
+        registry_files=None,
+        params_path=None,
+        dry_run=False,
+        output_json=output_file,
+        threads=1,
+    )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "success"
+    assert payload["citations_enabled"] is True
+    assert payload["citations_total_sources"] == 3
+    assert payload["citations_emitted_sources"] == 2
+    assert payload["citations_truncated"] is False
+    assert payload["results"][0]["citations_enabled"] is True
+    assert payload["results"][0]["citations_by_scope"] == {
+        "slide-1": ["src-1", "src-2"]
+    }
+
+
 def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypatch):
     _stub_cli_output(monkeypatch)
 

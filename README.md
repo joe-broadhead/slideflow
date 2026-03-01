@@ -69,6 +69,10 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 -   **Multiple Output Providers:**
     -   `google_slides`: Build slide decks from template slides.
     -   `google_docs`: Build marker-anchored documents for newsletter/report workflows.
+-   **Optional Source Citations:**
+    -   Emit deterministic source provenance (`model` and/or `execution`) into output artifacts.
+    -   Render `Sources` blocks in Slides speaker notes or Docs footnotes/document end.
+    -   Capture citation payloads in `slideflow build --output-json` for downstream audit workflows.
 
 ---
 
@@ -166,6 +170,11 @@ provider:
   config:
     credentials: "/path/to/your/credentials.json"
     template_id: "your_google_slides_template_id"
+
+citations: # optional
+  enabled: true
+  mode: "both" # model | execution | both
+  location: "document_end" # per_slide | per_section | document_end
 
 template_paths:
   - "./templates"

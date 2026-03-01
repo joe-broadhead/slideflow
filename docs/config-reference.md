@@ -12,6 +12,8 @@ provider:
   type: "google_slides" # or "google_docs"
   config: {...}
 
+citations: {...} # optional source provenance output
+
 template_paths: ["./templates"] # optional additional paths (prepended before defaults)
 registry: ["./registry.py"] # optional
 ```
@@ -89,6 +91,51 @@ Credential precedence for `google_docs`:
 3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
 
 For provider setup and marker behavior, see [Google Docs Provider](providers/google-docs.md).
+
+## `citations`
+
+Optional provenance/citation block for rendered output and machine-readable build JSON.
+
+```yaml
+citations:
+  enabled: true
+  mode: "model" # model | execution | both
+  location: "per_slide" # per_slide | per_section | document_end
+  max_items: 25
+  dedupe: true
+  include_query_text: false
+  repo_url_template: null
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `enabled` | `bool` | no | Enables citation extraction/rendering when `true` |
+| `mode` | `str` | no | `model`, `execution`, or `both` |
+| `location` | `str` | no | `per_slide`, `per_section`, or `document_end` |
+| `max_items` | `int` | no | Maximum emitted citations per presentation (`>=1`) |
+| `dedupe` | `bool` | no | Deduplicate repeated citations by `source_id` |
+| `include_query_text` | `bool` | no | Adds raw SQL text to citation metadata for SQL/dbt execution entries |
+| `repo_url_template` | `str\|null` | no | Reserved for custom repository URL formatting |
+
+Rendering behavior by provider:
+
+- `google_slides`: citations are added to speaker notes.
+  - `per_slide`: each slide gets its own `Sources` block.
+  - `document_end`: consolidated `Sources` block is attached to the first slide notes.
+- `google_docs`: citations are added as section footnotes or appended document-end block.
+  - `per_slide`/`per_section`: rendered as section footnotes (section marker based).
+  - `document_end`: appended to the end of the document.
+
+Build JSON output includes:
+
+- Top-level summary fields:
+  - `citations_enabled`
+  - `citations_total_sources`
+  - `citations_emitted_sources`
+  - `citations_truncated`
+- Per-result fields:
+  - `citations`
+  - `citations_by_scope`
 
 ## Replacements
 

@@ -62,7 +62,9 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from slideflow.citations import CitationEntry, CitationRegistry
 from slideflow.constants import GoogleSlides, Timing
+from slideflow.presentations.config import CitationConfig
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
@@ -158,6 +160,39 @@ class PresentationResult(BaseModel):
         Field(
             default=None,
             description="Single-line transfer error when ownership transfer fails",
+        ),
+    ]
+    citations_enabled: Annotated[
+        bool,
+        Field(default=False, description="Whether citation collection was enabled"),
+    ]
+    citations_total_sources: Annotated[
+        int,
+        Field(
+            default=0,
+            description="Total citation entries encountered before truncation/dedupe",
+        ),
+    ]
+    citations_emitted_sources: Annotated[
+        int,
+        Field(default=0, description="Number of citation entries emitted"),
+    ]
+    citations_truncated: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Whether citation output was truncated by max_items",
+        ),
+    ]
+    citations: Annotated[
+        List[Dict[str, Any]],
+        Field(default_factory=list, description="Emitted citation entries"),
+    ]
+    citations_by_scope: Annotated[
+        Dict[str, List[str]],
+        Field(
+            default_factory=dict,
+            description="Citation source IDs grouped by slide/section scope",
         ),
     ]
 
@@ -470,6 +505,10 @@ class Presentation(BaseModel):
         PresentationProvider,
         Field(..., exclude=True, description="Presentation provider instance"),
     ]
+    citations: Annotated[
+        CitationConfig,
+        Field(default_factory=CitationConfig, description="Citation configuration"),
+    ]
 
     @model_validator(mode="after")
     def apply_name_fn(self):
@@ -513,6 +552,27 @@ class Presentation(BaseModel):
             raise RenderingError(
                 "Provider preflight checks failed: " + "; ".join(failed_checks)
             )
+
+    @staticmethod
+    def _collect_slide_sources(slide: Slide) -> List[Any]:
+        """Collect data sources referenced by charts/replacements on a slide."""
+        collected: List[Any] = []
+
+        for chart in slide.charts:
+            source = getattr(chart, "data_source", None)
+            if source is not None:
+                collected.append(source)
+
+        for replacement in slide.replacements:
+            source = getattr(replacement, "data_source", None)
+            if source is None:
+                continue
+            if isinstance(source, list):
+                collected.extend(source)
+            else:
+                collected.append(source)
+
+        return collected
 
     def render(self) -> PresentationResult:
         """Render the complete presentation with all content and styling.
@@ -574,10 +634,88 @@ class Presentation(BaseModel):
         ownership_transfer_succeeded: Optional[bool] = None
         ownership_transfer_target: Optional[str] = None
         ownership_transfer_error: Optional[str] = None
+        citations_enabled = bool(self.citations.enabled)
+        citation_registry = CitationRegistry(
+            max_items=self.citations.max_items,
+            dedupe=self.citations.dedupe,
+        )
+        citations_total_sources = 0
 
         try:
             # Pre-fetch all data sources (uses caching)
             self._prefetch_data_sources()
+
+            if citations_enabled:
+                for slide in self.slides:
+                    slide_sources = self._collect_slide_sources(slide)
+                    scope_id = (
+                        "__document__"
+                        if self.citations.location == "document_end"
+                        else slide.id
+                    )
+                    for source in slide_sources:
+                        get_citations = getattr(source, "get_citation_entries", None)
+                        if not callable(get_citations):
+                            continue
+                        try:
+                            try:
+                                entries = get_citations(
+                                    mode=self.citations.mode,
+                                    include_query_text=self.citations.include_query_text,
+                                )
+                            except TypeError:
+                                # Backward compatibility for custom connectors that
+                                # only accept ``mode``.
+                                entries = get_citations(mode=self.citations.mode)
+                        except Exception as citation_error:
+                            logger.warning(
+                                "Citation generation failed for source '%s': %s",
+                                getattr(source, "name", type(source).__name__),
+                                citation_error,
+                            )
+                            continue
+
+                        for entry in entries:
+                            try:
+                                citation_entry = (
+                                    entry
+                                    if isinstance(entry, CitationEntry)
+                                    else CitationEntry.model_validate(entry)
+                                )
+                            except Exception as citation_entry_error:
+                                logger.warning(
+                                    "Skipping invalid citation entry for source '%s': %s",
+                                    getattr(source, "name", type(source).__name__),
+                                    citation_entry_error,
+                                )
+                                continue
+                            template = self.citations.repo_url_template
+                            if template:
+                                try:
+                                    citation_entry = citation_entry.model_copy(
+                                        update={
+                                            "file_url": template.format(
+                                                repo_url=citation_entry.repo_url or "",
+                                                model_path=citation_entry.model_path
+                                                or "",
+                                                model_unique_id=citation_entry.model_unique_id
+                                                or "",
+                                                ref=str(
+                                                    citation_entry.metadata.get(
+                                                        "ref", ""
+                                                    )
+                                                ),
+                                            )
+                                        }
+                                    )
+                                except Exception as template_error:
+                                    logger.warning(
+                                        "Citation repo_url_template formatting failed for source '%s': %s",
+                                        getattr(source, "name", type(source).__name__),
+                                        template_error,
+                                    )
+                            citations_total_sources += 1
+                            citation_registry.add(citation_entry, scope_id=scope_id)
 
             for slide in self.slides:
                 # Generate charts for this slide
@@ -729,6 +867,54 @@ class Presentation(BaseModel):
                         # Continue with other replacements rather than failing entirely
                         continue
 
+            citation_summary = citation_registry.summary(
+                enabled=citations_enabled,
+                total_sources=citations_total_sources,
+            )
+            if citations_enabled and citation_summary.citations:
+                entry_by_source_id = {
+                    entry.source_id: entry for entry in citation_summary.citations
+                }
+                provider_citations_by_scope: Dict[str, List[Dict[str, Any]]] = {}
+                for scope_id, source_ids in citation_summary.citations_by_scope.items():
+                    provider_citations_by_scope[scope_id] = [
+                        entry_by_source_id[source_id].model_dump(mode="json")
+                        for source_id in source_ids
+                        if source_id in entry_by_source_id
+                    ]
+                if (
+                    self.citations.location == "document_end"
+                    and "__document__" not in provider_citations_by_scope
+                ):
+                    provider_citations_by_scope["__document__"] = [
+                        entry.model_dump(mode="json")
+                        for entry in citation_summary.citations
+                    ]
+
+                render_citations = getattr(self.provider, "render_citations", None)
+                if callable(render_citations):
+                    try:
+                        render_citations(
+                            presentation_id,
+                            provider_citations_by_scope,
+                            self.citations.location,
+                        )
+                    except Exception as citation_render_error:
+                        logger.warning(
+                            "Provider citation rendering failed: %s",
+                            citation_render_error,
+                        )
+                else:
+                    logger.debug(
+                        "Provider '%s' does not implement citation rendering",
+                        type(self.provider).__name__,
+                    )
+            else:
+                citation_summary = citation_registry.summary(
+                    enabled=citations_enabled,
+                    total_sources=citations_total_sources,
+                )
+
             finalize_presentation = getattr(
                 self.provider, "finalize_presentation", None
             )
@@ -808,6 +994,15 @@ class Presentation(BaseModel):
                 ownership_transfer_succeeded=ownership_transfer_succeeded,
                 ownership_transfer_target=ownership_transfer_target,
                 ownership_transfer_error=ownership_transfer_error,
+                citations_enabled=citation_summary.enabled,
+                citations_total_sources=citation_summary.total_sources,
+                citations_emitted_sources=citation_summary.emitted_sources,
+                citations_truncated=citation_summary.truncated,
+                citations=[
+                    citation.model_dump(mode="json")
+                    for citation in citation_summary.citations
+                ],
+                citations_by_scope=citation_summary.citations_by_scope,
             )
         except Exception as e:
             original_error = e
