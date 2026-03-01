@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 import slideflow.data.cache as data_cache_module
+import slideflow.presentations.rate_limiter as presentation_rate_limiter_module
 import slideflow.utilities.rate_limiter as rate_limiter_module
 from slideflow.constants import Environment
 from slideflow.data.cache import DataSourceCache, get_data_cache
@@ -358,3 +359,16 @@ def test_rate_limiter_wait_sleeps_only_when_needed(monkeypatch):
     limiter.wait()  # no sleep
 
     assert sleep_calls == [0.5, 0.4]
+
+
+def test_google_api_rate_limiter_shared_singleton_update():
+    presentation_rate_limiter_module.reset_google_api_rate_limiter()
+
+    rl1 = presentation_rate_limiter_module.get_google_api_rate_limiter(1.0)
+    rl2 = presentation_rate_limiter_module.get_google_api_rate_limiter(3.0)
+    rl3 = presentation_rate_limiter_module.get_google_api_rate_limiter(
+        3.0, force_update=True
+    )
+
+    assert rl1 is rl2 is rl3
+    assert rl3.rate == 3.0

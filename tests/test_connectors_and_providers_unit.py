@@ -11,6 +11,7 @@ import slideflow.data.connectors.base as base_connectors_module
 import slideflow.data.connectors.databricks as databricks_module
 import slideflow.presentations.providers.factory as provider_factory_module
 import slideflow.presentations.providers.google_slides as google_provider_module
+import slideflow.presentations.rate_limiter as presentation_rate_limiter_module
 from slideflow.constants import Defaults
 from slideflow.presentations.config import ProviderConfig
 from slideflow.presentations.providers.base import (
@@ -597,8 +598,8 @@ def test_google_provider_upload_image_uses_configured_propagation_delay(monkeypa
     assert len(executed) == 2
 
 
-def test_google_rate_limiter_singleton_update(monkeypatch):
-    monkeypatch.setattr(google_provider_module, "_api_rate_limiter", None)
+def test_google_rate_limiter_singleton_update():
+    presentation_rate_limiter_module.reset_google_api_rate_limiter()
     rl1 = google_provider_module._get_rate_limiter(1.0)
     rl2 = google_provider_module._get_rate_limiter(5.0)
     rl3 = google_provider_module._get_rate_limiter(5.0, force_update=True)

@@ -89,6 +89,7 @@ from slideflow.presentations.providers.google_drive_ownership import (
     normalize_transfer_owner_email,
     transfer_drive_file_ownership,
 )
+from slideflow.presentations.rate_limiter import get_google_api_rate_limiter
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.logging import get_logger, log_api_operation
@@ -97,19 +98,11 @@ from slideflow.utilities.rate_limiter import RateLimiter
 logger = get_logger(__name__)
 _folder_creation_lock = threading.Lock()
 _folder_id_cache: Dict[Tuple[str, str], str] = {}
-_api_rate_limiter: Optional[RateLimiter] = None
-_rate_limiter_lock = threading.Lock()
 
 
 def _get_rate_limiter(rps: float, force_update: bool = False) -> RateLimiter:
     """Get or create the global rate limiter."""
-    global _api_rate_limiter
-    with _rate_limiter_lock:
-        if _api_rate_limiter is None:
-            _api_rate_limiter = RateLimiter(rps)
-        elif force_update:
-            _api_rate_limiter.set_rate(rps)
-        return _api_rate_limiter
+    return get_google_api_rate_limiter(rps, force_update=force_update)
 
 
 class GoogleSlidesProviderConfig(PresentationProviderConfig):
