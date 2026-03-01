@@ -49,6 +49,7 @@ provider:
     share_role: "reader"
     transfer_ownership_to: "owner@example.com"
     transfer_ownership_strict: false
+    chart_image_sharing_mode: "public" # public | restricted
     requests_per_second: 1.0
     strict_cleanup: false
 ```
@@ -65,6 +66,9 @@ Field behavior:
 - `share_with` + `share_role`: shares the rendered deck after generation.
 - `transfer_ownership_to`: optional ownership handoff target after successful render/share.
 - `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
+- `chart_image_sharing_mode`: uploaded chart-image ACL mode:
+  - `public` (default): grants `anyone:reader` before insertion.
+  - `restricted`: skips public ACL grant (tighter access; insertion compatibility depends on your Drive permissions model).
 - `requests_per_second`: throttles API calls.
 - `strict_cleanup`: if `true`, cleanup failures (chart image trash) fail the render.
 
@@ -88,6 +92,7 @@ After render, SlideFlow attempts to trash those images.
 
 - Default behavior: cleanup issues are logged but do not fail the run.
 - With `strict_cleanup: true`: cleanup failure raises an error and fails the run.
+- Cleanup now emits a summary log with deleted/failed counts and failed file IDs when applicable.
 
 ## Citation Rendering
 

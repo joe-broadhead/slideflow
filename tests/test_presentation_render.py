@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 import pytest
 
@@ -125,6 +127,29 @@ def test_render_raises_when_strict_cleanup_enabled_and_delete_fails():
 
     with pytest.raises(RenderingError, match="Strict cleanup enabled"):
         presentation.render()
+
+
+def test_render_logs_cleanup_summary_on_success(caplog):
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=False)
+    presentation, _chart = _build_presentation(provider)
+
+    with caplog.at_level(logging.INFO):
+        presentation.render()
+
+    assert "Chart image cleanup completed: deleted 1/1 chart image(s)." in caplog.text
+
+
+def test_render_logs_cleanup_summary_on_failure(caplog):
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=True)
+    presentation, _chart = _build_presentation(provider)
+
+    with caplog.at_level(logging.WARNING):
+        presentation.render()
+
+    assert (
+        "Chart image cleanup completed with 1 failure(s): deleted 0/1." in caplog.text
+    )
+    assert "Failed IDs: ['file-1']" in caplog.text
 
 
 def test_render_uses_provider_page_dimensions_for_relative_chart():

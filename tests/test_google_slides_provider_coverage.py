@@ -375,7 +375,9 @@ def test_copy_template_success_and_error():
 
 def test_upload_image_to_drive_success_and_error(monkeypatch):
     provider = _provider_without_init()
-    provider.config = SimpleNamespace(drive_folder_id=None)
+    provider.config = SimpleNamespace(
+        drive_folder_id=None, chart_image_sharing_mode="public"
+    )
     provider._get_or_create_destination_folder = lambda: "folder-1"
 
     provider.drive_service = SimpleNamespace(
@@ -391,12 +393,17 @@ def test_upload_image_to_drive_success_and_error(monkeypatch):
     )
     monkeypatch.setattr(google_provider_module.time, "sleep", lambda _seconds: None)
 
-    provider._execute_request = lambda request: (
-        {"id": "file-123"} if request[0] == "files-create" else {}
-    )
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        return {"id": "file-123"} if request[0] == "files-create" else {}
+
+    provider._execute_request = _exec
     public_url, file_id = provider._upload_image_to_drive(b"png-bytes", "chart.png")
     assert public_url == "https://drive.google.com/uc?id=file-123"
     assert file_id == "file-123"
+    assert len([call for call in calls if call[0] == "perm-create"]) == 1
     assert logs[-1][0][2] is True
 
     provider._execute_request = lambda _request: (_ for _ in ()).throw(
@@ -404,6 +411,41 @@ def test_upload_image_to_drive_success_and_error(monkeypatch):
     )
     with pytest.raises(google_provider_module.HttpError):
         provider._upload_image_to_drive(b"png-bytes", "chart.png")
+
+
+def test_upload_image_to_drive_restricted_mode_skips_public_permission(monkeypatch):
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(
+        drive_folder_id=None, chart_image_sharing_mode="restricted"
+    )
+    provider._get_or_create_destination_folder = lambda: "folder-1"
+    provider.drive_service = SimpleNamespace(
+        files=lambda: SimpleNamespace(create=lambda **kwargs: ("files-create", kwargs)),
+        permissions=lambda: SimpleNamespace(
+            create=lambda **kwargs: ("perm-create", kwargs)
+        ),
+    )
+
+    sleep_calls: List[float] = []
+    monkeypatch.setattr(
+        google_provider_module.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        return {"id": "file-123"} if request[0] == "files-create" else {}
+
+    provider._execute_request = _exec
+
+    public_url, file_id = provider._upload_image_to_drive(b"png-bytes", "chart.png")
+    assert public_url == "https://drive.google.com/uc?id=file-123"
+    assert file_id == "file-123"
+    assert [call for call in calls if call[0] == "perm-create"] == []
+    assert sleep_calls == []
 
 
 def test_batch_update_error_logs_and_raises(monkeypatch):
