@@ -14,6 +14,25 @@ Use these in any `data_source` block for charts or replacements.
 For a step-by-step migration from legacy `databricks_dbt` to composable
 `dbt`, see [DBT Migration Guide](dbt-migration.md).
 
+## Installation extras
+
+Install connector dependencies based on the connectors you use:
+
+```bash
+# Base package
+pip install slideflow-presentations
+
+# Databricks SQL connector
+pip install "slideflow-presentations[databricks]"
+
+# dbt connectors (includes dbt-core adapter stack + Git clone support)
+pip install "slideflow-presentations[dbt]"
+
+# Optional dbt warehouse backends
+pip install "slideflow-presentations[bigquery]"
+pip install "slideflow-presentations[duckdb]"
+```
+
 ## Connector Matrix
 
 | Type | Best for | Requires network | Required env vars |

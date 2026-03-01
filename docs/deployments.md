@@ -11,9 +11,17 @@ This guide covers production execution patterns for SlideFlow in:
 For all orchestrated environments, ensure:
 
 - Python 3.12+
-- SlideFlow package installed (and `ai` extras if using `ai_text` providers)
+- SlideFlow package installed (plus connector/provider extras used by your config)
 - Access to required data systems (Drive/Slides/Docs/Databricks/Git)
 - Correct environment variables and secrets
+
+Typical extras:
+
+- `pip install "slideflow-presentations[ai]"` for `ai_text`
+- `pip install "slideflow-presentations[databricks]"` for `type: databricks`
+- `pip install "slideflow-presentations[dbt]"` for `type: dbt` / `type: databricks_dbt`
+- `pip install "slideflow-presentations[bigquery]"` for BigQuery execution backends
+- `pip install "slideflow-presentations[duckdb]"` for DuckDB execution backends
 
 For chart image rendering, provide a Chrome/Chromium binary available to Kaleido.
 Headless environments still need a browser runtime present.
@@ -68,6 +76,7 @@ Security notes:
 - Prefer pinning reusable workflow refs to a commit SHA.
 - Treat inherited or explicitly-mapped secrets as privileged; only call trusted workflows.
 - Keep secrets out of YAML files.
+- The reusable workflow installs `slideflow-install-extras` by default (`dbt,databricks,bigquery,duckdb`). Override this input if you need a narrower runtime footprint.
 
 Supported reusable-workflow secret mappings:
 

@@ -109,11 +109,22 @@ jobs:
       - name: Install optional connector dependencies (locked)
         run: |
           uv lock --check
-          uv sync --extra dev --extra ai --extra bigquery --extra duckdb --locked
+          uv sync --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --locked
 
       - name: Validate dependency resolution
         run: |
           uv pip check
+
+      - name: Verify optional connector extras importability
+        run: |
+          uv run python - <<'PY'
+          import dbt.cli.main  # noqa: F401
+          import databricks.sql  # noqa: F401
+          import git  # noqa: F401
+          import google.cloud.bigquery  # noqa: F401
+          import duckdb  # noqa: F401
+          print("Optional connector extras importability check passed.")
+          PY
 
       - name: Run optional connector tests
         run: |

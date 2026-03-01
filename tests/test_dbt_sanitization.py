@@ -36,6 +36,20 @@ def test_sanitize_git_url_redacts_embedded_credentials():
     assert redacted == "https://***@github.com/org/repo.git"
 
 
+def test_require_dbt_runner_class_raises_without_optional_dependency(monkeypatch):
+    monkeypatch.setattr(dbt_module, "dbtRunner", None)
+
+    with pytest.raises(DataSourceError, match=r"slideflow-presentations\[dbt\]"):
+        dbt_module._require_dbt_runner_class()
+
+
+def test_require_repo_class_raises_without_optional_dependency(monkeypatch):
+    monkeypatch.setattr(dbt_module, "Repo", None)
+
+    with pytest.raises(DataSourceError, match=r"slideflow-presentations\[dbt\]"):
+        dbt_module._require_repo_class()
+
+
 def test_clone_repo_error_message_redacts_token_value(monkeypatch, tmp_path):
     monkeypatch.setenv("GIT_PAT", "secret-token-123")
 

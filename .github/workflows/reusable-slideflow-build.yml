@@ -37,6 +37,11 @@ on:
         required: false
         default: "slideflow-presentations"
         type: string
+      slideflow-install-extras:
+        description: "Optional comma-separated extras to install with slideflow-package-spec"
+        required: false
+        default: "dbt,databricks,bigquery,duckdb"
+        type: string
       extra-pip-packages:
         description: "Optional newline-separated pip packages"
         required: false
@@ -186,7 +191,23 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install "${{ inputs.slideflow-package-spec }}"
+          package_spec="${{ inputs.slideflow-package-spec }}"
+          extras="${{ inputs.slideflow-install-extras }}"
+          install_spec="$package_spec"
+
+          if [[ -n "$extras" ]]; then
+            if [[ "$package_spec" == *"["* ]]; then
+              install_spec="$package_spec"
+            elif [[ "$package_spec" == *"=="* ]]; then
+              package_name="${package_spec%%==*}"
+              package_version="${package_spec#*==}"
+              install_spec="${package_name}[${extras}]==${package_version}"
+            else
+              install_spec="${package_spec}[${extras}]"
+            fi
+          fi
+
+          python -m pip install "$install_spec"
 
           if [[ -n "${{ inputs.extra-pip-packages }}" ]]; then
             while IFS= read -r pkg; do

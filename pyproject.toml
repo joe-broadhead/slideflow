@@ -26,15 +26,13 @@ dependencies = [
     "google-auth-oauthlib>=1.0,<2.0",
     "google-auth-httplib2>=0.2,<1.0",
     "httplib2>=0.22,<1.0",
-    "gitpython>=3.1.41,<4.0",
-    "dbt-core>=1.10,<1.12",
-    "dbt-databricks>=1.10,<1.12",
-    "databricks-sql-connector>=4.0,<5.0",
 ]
 requires-python = ">=3.12"
 
 [project.optional-dependencies]
 ai = ["openai>=1.0,<3.0", "google-genai>=1.0,<2.0"]
+databricks = ["databricks-sql-connector>=4.0,<5.0"]
+dbt = ["dbt-core>=1.10,<1.12", "dbt-databricks>=1.10,<1.12", "gitpython>=3.1.41,<4.0"]
 bigquery = ["google-cloud-bigquery>=3.0,<4.0", "dbt-bigquery>=1.10,<1.12"]
 duckdb = ["duckdb>=1.0,<2.0", "dbt-duckdb>=1.9,<1.12"]
 docs = [
