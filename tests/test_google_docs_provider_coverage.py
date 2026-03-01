@@ -749,3 +749,70 @@ def test_delete_chart_image_raises_when_strict_cleanup_enabled():
 
     with pytest.raises(google_docs_module.HttpError):
         provider.delete_chart_image("file-strict")
+
+
+def test_render_citations_document_end_dedupes_and_appends(monkeypatch):
+    provider = _provider_without_init()
+    appended: List[Tuple[str, List[Dict[str, Any]]]] = []
+    monkeypatch.setattr(
+        provider,
+        "_render_document_end_citations",
+        lambda document_id, citations: appended.append((document_id, citations)),
+    )
+
+    provider.render_citations(
+        "doc-1",
+        {
+            "intro": [
+                {"source_id": "src-1", "provider": "csv", "display_name": "One"},
+            ],
+            "details": [
+                {"source_id": "src-1", "provider": "csv", "display_name": "One"},
+                {"source_id": "src-2", "provider": "csv", "display_name": "Two"},
+            ],
+        },
+        location="document_end",
+    )
+
+    assert appended
+    document_id, citations = appended[0]
+    assert document_id == "doc-1"
+    assert [entry["source_id"] for entry in citations] == ["src-1", "src-2"]
+
+
+def test_render_citations_per_section_routes_to_footnotes(monkeypatch):
+    provider = _provider_without_init()
+    calls: List[Tuple[str, str, List[Dict[str, Any]]]] = []
+    monkeypatch.setattr(
+        provider,
+        "_render_section_footnote_citations",
+        lambda document_id, section_id, citations: calls.append(
+            (document_id, section_id, citations)
+        ),
+    )
+
+    provider.render_citations(
+        "doc-2",
+        {
+            "intro": [
+                {"source_id": "src-1", "provider": "csv", "display_name": "One"},
+            ],
+            "details": [
+                {"source_id": "src-2", "provider": "csv", "display_name": "Two"},
+            ],
+        },
+        location="per_section",
+    )
+
+    assert calls == [
+        (
+            "doc-2",
+            "intro",
+            [{"source_id": "src-1", "provider": "csv", "display_name": "One"}],
+        ),
+        (
+            "doc-2",
+            "details",
+            [{"source_id": "src-2", "provider": "csv", "display_name": "Two"}],
+        ),
+    ]

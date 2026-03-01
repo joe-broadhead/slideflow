@@ -47,6 +47,7 @@ import pandas as pd
 from databricks import sql
 from pydantic import ConfigDict, Field
 
+from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.constants import Defaults, Environment
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.utilities.error_messages import safe_error_line
@@ -475,3 +476,29 @@ class DatabricksSourceConfig(BaseSourceConfig):
     connector_class: ClassVar[Type[DataConnector]] = DatabricksConnector
 
     model_config = ConfigDict(extra="forbid")
+
+    def get_citation_entries(
+        self, mode: str = "model", include_query_text: bool = False
+    ) -> list[CitationEntry]:
+        del mode
+        query_fingerprint = fingerprint_text(self.query)
+        workspace_host = os.getenv(Environment.DATABRICKS_HOST)
+        http_path = os.getenv(Environment.DATABRICKS_HTTP_PATH)
+        source_id = f"databricks:{self.name}:{query_fingerprint}"
+        metadata: dict[str, Any] = {"query_fingerprint": query_fingerprint}
+        if workspace_host:
+            metadata["workspace_host"] = workspace_host
+        if http_path:
+            metadata["warehouse_http_path"] = http_path
+        if include_query_text:
+            metadata["query_text"] = self.query
+
+        return [
+            CitationEntry(
+                source_id=source_id,
+                provider="databricks",
+                display_name=f"{self.name} (databricks query)",
+                query_fingerprint=query_fingerprint,
+                metadata=metadata,
+            )
+        ]

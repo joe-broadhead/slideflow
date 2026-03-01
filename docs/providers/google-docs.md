@@ -84,6 +84,18 @@ Current implementation notes:
 - The build result `url` points to `https://docs.google.com/document/d/<id>`.
 - Ownership transfer is explicit opt-in and only supported for files in **My Drive** (not Shared Drives).
 
+## Citation Rendering
+
+When `citations.enabled: true`, Google Docs rendering supports two modes:
+
+- `citations.location: per_section` (or `per_slide`):
+  - creates section-scoped footnotes with a `Sources` block.
+- `citations.location: document_end`:
+  - appends a deduplicated `Sources` section to the document end.
+
+Citation payloads are also included in build JSON output for downstream audit
+or notification workflows.
+
 ## Contract Validation
 
 Use provider contract checks before build:

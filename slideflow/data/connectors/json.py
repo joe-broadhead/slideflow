@@ -40,6 +40,7 @@ from typing import Annotated, ClassVar, Literal, Type, cast
 import pandas as pd
 from pydantic import ConfigDict, Field
 
+from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector
 from slideflow.utilities.logging import log_data_operation
@@ -186,3 +187,21 @@ class JSONSourceConfig(BaseSourceConfig):
     connector_class: ClassVar[Type[DataConnector]] = JSONConnector
 
     model_config = ConfigDict(extra="forbid")
+
+    def get_citation_entries(
+        self, mode: str = "model", include_query_text: bool = False
+    ) -> list[CitationEntry]:
+        del mode, include_query_text
+        resolved_path = str(self.file_path.expanduser().resolve())
+        source_id = (
+            f"json:{self.name}:{fingerprint_text(f'{resolved_path}|{self.orient}')}"
+        )
+        return [
+            CitationEntry(
+                source_id=source_id,
+                provider="json",
+                display_name=f"{self.name} (json)",
+                model_path=resolved_path,
+                metadata={"file_path": resolved_path, "orient": self.orient},
+            )
+        ]

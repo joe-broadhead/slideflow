@@ -462,6 +462,78 @@ class ProviderConfig(BaseModel):
     ]
 
 
+class CitationConfig(BaseModel):
+    """Optional citation output configuration for provenance rendering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Enable source citation collection and rendering",
+        ),
+    ]
+    mode: Annotated[
+        str,
+        Field(
+            default="model",
+            description="Citation mode: model, execution, or both",
+        ),
+    ]
+    location: Annotated[
+        str,
+        Field(
+            default="per_slide",
+            description="Citation rendering location: per_slide, per_section, document_end",
+        ),
+    ]
+    max_items: Annotated[
+        int,
+        Field(
+            default=25,
+            ge=1,
+            description="Maximum number of emitted citations per presentation",
+        ),
+    ]
+    dedupe: Annotated[
+        bool,
+        Field(default=True, description="Deduplicate repeated source citations"),
+    ]
+    include_query_text: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Include raw query text in citation metadata payloads",
+        ),
+    ]
+    repo_url_template: Annotated[
+        Optional[str],
+        Field(
+            default=None,
+            description="Optional URL template override for repository file links",
+        ),
+    ]
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"model", "execution", "both"}:
+            raise ValueError("citations.mode must be one of: model, execution, both")
+        return normalized
+
+    @field_validator("location")
+    @classmethod
+    def _validate_location(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"per_slide", "per_section", "document_end"}:
+            raise ValueError(
+                "citations.location must be one of: per_slide, per_section, document_end"
+            )
+        return normalized
+
+
 class PresentationConfig(BaseModel):
     """Root configuration model for complete presentation generation.
 
@@ -569,6 +641,10 @@ class PresentationConfig(BaseModel):
     registry: Annotated[
         Optional[List[str]],
         Field(None, description="Paths to custom function registry files"),
+    ]
+    citations: Annotated[
+        CitationConfig,
+        Field(default_factory=CitationConfig, description="Source citation settings"),
     ]
 
     @field_validator("registry", mode="before")

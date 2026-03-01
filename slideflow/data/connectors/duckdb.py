@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Literal, Optional, Type
 import pandas as pd
 from pydantic import ConfigDict, Field
 
+from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
@@ -207,3 +208,27 @@ class DuckDBSourceConfig(BaseSourceConfig):
     connector_class: ClassVar[Type[DataConnector]] = DuckDBConnector
 
     model_config = ConfigDict(extra="forbid")
+
+    def get_citation_entries(
+        self, mode: str = "model", include_query_text: bool = False
+    ) -> list[CitationEntry]:
+        del mode
+        query_fingerprint = fingerprint_text(self.query)
+        database_name = self.database or ":memory:"
+        source_id = f"duckdb:{self.name}:{fingerprint_text(f'{database_name}|{query_fingerprint}')}"
+        metadata: dict[str, Any] = {
+            "database": database_name,
+            "read_only": self.read_only,
+            "file_search_path": self.file_search_path,
+        }
+        if include_query_text:
+            metadata["query_text"] = self.query
+        return [
+            CitationEntry(
+                source_id=source_id,
+                provider="duckdb",
+                display_name=f"{self.name} (duckdb query)",
+                query_fingerprint=query_fingerprint,
+                metadata=metadata,
+            )
+        ]

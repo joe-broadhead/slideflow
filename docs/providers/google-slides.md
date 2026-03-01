@@ -83,6 +83,18 @@ After render, SlideFlow attempts to trash those images.
 - Default behavior: cleanup issues are logged but do not fail the run.
 - With `strict_cleanup: true`: cleanup failure raises an error and fails the run.
 
+## Citation Rendering
+
+When `citations.enabled: true`, SlideFlow renders a `Sources` block into
+speaker notes.
+
+- `citations.location: per_slide`:
+  - each slide receives its own notes-level citation block.
+- `citations.location: document_end`:
+  - citations are deduplicated and written to the first slide notes.
+
+For Google Slides, `per_section` behaves the same as `per_slide`.
+
 ## Performance and Quotas
 
 For bulk generation, tune both concurrency and API pacing:
