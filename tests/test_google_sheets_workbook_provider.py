@@ -23,13 +23,18 @@ def _minimal_sheets_service():
     spreadsheets_api = SimpleNamespace(
         values=lambda: values_api,
         get=lambda **kwargs: ("spreadsheets.get", kwargs),
+        create=lambda **kwargs: ("spreadsheets.create", kwargs),
         batchUpdate=lambda **kwargs: ("spreadsheets.batchUpdate", kwargs),
     )
     return SimpleNamespace(spreadsheets=lambda: spreadsheets_api)
 
 
 def _minimal_drive_service():
-    files_api = SimpleNamespace(get=lambda **kwargs: ("drive.files.get", kwargs))
+    files_api = SimpleNamespace(
+        get=lambda **kwargs: ("drive.files.get", kwargs),
+        create=lambda **kwargs: ("drive.files.create", kwargs),
+        update=lambda **kwargs: ("drive.files.update", kwargs),
+    )
     return SimpleNamespace(files=lambda: files_api)
 
 
@@ -313,10 +318,18 @@ def test_run_preflight_checks_with_spreadsheet_and_folder_access():
         if request[0] == "spreadsheets.get":
             return {"spreadsheetId": "sheet_123"}
         if request[0] == "drive.files.get":
+            file_id = request[1].get("fileId")
+            if file_id == "sheet_123":
+                return {
+                    "id": "sheet_123",
+                    "trashed": False,
+                    "capabilities": {"canEdit": True},
+                }
             return {
                 "id": "folder_456",
                 "mimeType": "application/vnd.google-apps.folder",
                 "trashed": False,
+                "capabilities": {"canAddChildren": True},
             }
         return {}
 
@@ -326,8 +339,14 @@ def test_run_preflight_checks_with_spreadsheet_and_folder_access():
 
     assert check_map["google_sheets_credentials_present"] is True
     assert check_map["spreadsheet_access"] is True
+    assert check_map["spreadsheet_write_access"] is True
     assert check_map["drive_folder_access"] is True
-    assert [req[0] for req in requests] == ["spreadsheets.get", "drive.files.get"]
+    assert check_map["drive_folder_write_access"] is True
+    assert [req[0] for req in requests] == [
+        "spreadsheets.get",
+        "drive.files.get",
+        "drive.files.get",
+    ]
 
 
 def test_run_preflight_checks_reports_spreadsheet_access_failure():
@@ -354,6 +373,39 @@ def test_run_preflight_checks_reports_spreadsheet_access_failure():
 
     assert check_map["spreadsheet_access"] is False
     assert "not found" in check_details["spreadsheet_access"]
+    assert "spreadsheet_write_access" not in check_map
+
+
+def test_create_or_open_workbook_falls_back_to_drive_create_on_sheets_create_failure(
+    monkeypatch,
+):
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(
+        spreadsheet_id=None,
+        drive_folder_id="folder_456",
+    )
+    provider.sheets_service = _minimal_sheets_service()
+    provider.drive_service = _minimal_drive_service()
+
+    # Exercise fallback path without constructing google HttpError payloads.
+    monkeypatch.setattr(sheets_provider_module, "HttpError", RuntimeError)
+
+    requests: List[Tuple[str, Dict[str, Any]]] = []
+
+    def _exec(request):
+        requests.append(request)
+        if request[0] == "spreadsheets.create":
+            raise RuntimeError("forbidden")
+        if request[0] == "drive.files.create":
+            return {"id": "sheet_via_drive"}
+        return {}
+
+    provider._execute_request = _exec
+
+    workbook_id = provider.create_or_open_workbook("Weekly KPI Snapshot")
+
+    assert workbook_id == "sheet_via_drive"
+    assert [req[0] for req in requests] == ["spreadsheets.create", "drive.files.create"]
 
 
 def test_write_summary_text_clears_range_before_write():

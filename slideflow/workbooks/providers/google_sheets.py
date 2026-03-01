@@ -169,6 +169,42 @@ class GoogleSheetsProvider(WorkbookProvider):
                         f"Accessible spreadsheet_id '{sheet_id}'",
                     )
                 )
+                if self.drive_service is not None:
+                    write_response = self._execute_request(
+                        self.drive_service.files().get(
+                            fileId=self.config.spreadsheet_id,
+                            fields="id,trashed,capabilities(canEdit)",
+                            supportsAllDrives=True,
+                        )
+                    )
+                    capabilities = (
+                        write_response.get("capabilities", {})
+                        if isinstance(write_response, dict)
+                        else {}
+                    )
+                    can_edit = bool(
+                        isinstance(capabilities, dict)
+                        and capabilities.get("canEdit", False)
+                    )
+                    is_trashed = (
+                        bool(write_response.get("trashed"))
+                        if isinstance(write_response, dict)
+                        else False
+                    )
+                    checks.append(
+                        (
+                            "spreadsheet_write_access",
+                            can_edit and not is_trashed,
+                            (
+                                f"Spreadsheet '{self.config.spreadsheet_id}' is writable"
+                                if can_edit and not is_trashed
+                                else (
+                                    f"Spreadsheet '{self.config.spreadsheet_id}' is not writable "
+                                    "(missing canEdit capability or file is trashed)"
+                                )
+                            ),
+                        )
+                    )
             except Exception as error:
                 checks.append(
                     (
@@ -183,7 +219,7 @@ class GoogleSheetsProvider(WorkbookProvider):
                 response = self._execute_request(
                     self.drive_service.files().get(
                         fileId=self.config.drive_folder_id,
-                        fields="id,mimeType,name,trashed",
+                        fields="id,mimeType,name,trashed,capabilities(canAddChildren,canEdit)",
                         supportsAllDrives=True,
                     )
                 )
@@ -207,12 +243,45 @@ class GoogleSheetsProvider(WorkbookProvider):
                         ),
                     )
                 )
+                capabilities = (
+                    response.get("capabilities", {})
+                    if isinstance(response, dict)
+                    else {}
+                )
+                can_write_folder = bool(
+                    isinstance(capabilities, dict)
+                    and (
+                        capabilities.get("canAddChildren", False)
+                        or capabilities.get("canEdit", False)
+                    )
+                )
+                checks.append(
+                    (
+                        "drive_folder_write_access",
+                        is_folder and not is_trashed and can_write_folder,
+                        (
+                            f"Drive folder '{self.config.drive_folder_id}' is writable"
+                            if is_folder and not is_trashed and can_write_folder
+                            else (
+                                f"Drive folder '{self.config.drive_folder_id}' is not writable "
+                                "(missing canAddChildren/canEdit capability, or folder invalid)"
+                            )
+                        ),
+                    )
+                )
             except Exception as error:
                 checks.append(
                     (
                         "drive_folder_access",
                         False,
                         f"Cannot access drive_folder_id '{self.config.drive_folder_id}': {error}",
+                    )
+                )
+                checks.append(
+                    (
+                        "drive_folder_write_access",
+                        False,
+                        f"Cannot verify write access for drive_folder_id '{self.config.drive_folder_id}': {error}",
                     )
                 )
 
@@ -222,19 +291,58 @@ class GoogleSheetsProvider(WorkbookProvider):
         if self.config.spreadsheet_id:
             return self.config.spreadsheet_id
 
-        response = self._execute_request(
-            self.sheets_service.spreadsheets().create(
-                body={"properties": {"title": title}},
-                fields="spreadsheetId",
+        spreadsheet_id = ""
+        created_via_sheets_api = False
+        try:
+            response = self._execute_request(
+                self.sheets_service.spreadsheets().create(
+                    body={"properties": {"title": title}},
+                    fields="spreadsheetId",
+                )
             )
-        )
-        spreadsheet_id = str(response.get("spreadsheetId", "")).strip()
+            spreadsheet_id = str(response.get("spreadsheetId", "")).strip()
+            created_via_sheets_api = True
+        except HttpError as error:
+            # Some org/shared-drive setups can deny spreadsheets.create while
+            # still allowing Drive file creation in the target folder.
+            if self.config.drive_folder_id:
+                logger.warning(
+                    "spreadsheets.create failed (%s). Falling back to Drive file creation in folder '%s'.",
+                    error,
+                    self.config.drive_folder_id,
+                )
+                spreadsheet_id = self._create_sheet_in_folder_via_drive(
+                    title=title,
+                    folder_id=self.config.drive_folder_id,
+                )
+            else:
+                raise RenderingError(f"Failed to create Google Sheet: {error}")
+
         if not spreadsheet_id:
             raise RenderingError("Failed to create Google Sheet: missing spreadsheetId")
 
-        if self.config.drive_folder_id:
+        if created_via_sheets_api and self.config.drive_folder_id:
             self._move_file_to_folder(spreadsheet_id, self.config.drive_folder_id)
 
+        return spreadsheet_id
+
+    def _create_sheet_in_folder_via_drive(self, title: str, folder_id: str) -> str:
+        response = self._execute_request(
+            self.drive_service.files().create(
+                body={
+                    "name": title,
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "parents": [folder_id],
+                },
+                fields="id",
+                supportsAllDrives=True,
+            )
+        )
+        spreadsheet_id = str(response.get("id", "")).strip()
+        if not spreadsheet_id:
+            raise RenderingError(
+                "Failed to create Google Sheet via Drive API: missing file id"
+            )
         return spreadsheet_id
 
     def _move_file_to_folder(self, file_id: str, folder_id: str) -> None:
