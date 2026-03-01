@@ -94,6 +94,20 @@ SlideFlow works in three simple steps:
 pip install slideflow-presentations
 ```
 
+Connector extras (install only what you need):
+
+```bash
+# Databricks SQL sources
+pip install "slideflow-presentations[databricks]"
+
+# dbt sources (includes dbt-core adapter stack + Git clone support)
+pip install "slideflow-presentations[dbt]"
+
+# Optional warehouse extras for dbt warehouse.type variants
+pip install "slideflow-presentations[bigquery]"
+pip install "slideflow-presentations[duckdb]"
+```
+
 ---
 
 ## 🧑‍💻 Getting Started

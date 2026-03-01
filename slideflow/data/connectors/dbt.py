@@ -61,8 +61,6 @@ from pathlib import Path
 from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Type
 
 import pandas as pd
-from dbt.cli.main import dbtRunner
-from git import Repo
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from slideflow.citations import (
@@ -74,12 +72,25 @@ from slideflow.citations import (
 from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.data.connectors.bigquery import BigQuerySQLExecutor
-from slideflow.data.connectors.databricks import DatabricksSQLExecutor
 from slideflow.data.connectors.duckdb import DuckDBSQLExecutor
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
 
 logger = get_logger(__name__)
+
+try:
+    from dbt.cli.main import dbtRunner as _dbt_runner_cls
+except ImportError:  # pragma: no cover - exercised in optional-dependency tests
+    _dbt_runner_cls = None
+
+try:
+    from git import Repo as _git_repo_cls
+except ImportError:  # pragma: no cover - exercised in optional-dependency tests
+    _git_repo_cls = None
+
+# Keep module-level symbols for test monkeypatch compatibility.
+dbtRunner = _dbt_runner_cls
+Repo = _git_repo_cls
 
 # Global cache for compiled DBT projects
 _compiled_projects_cache: dict[tuple, Path] = {}
@@ -132,6 +143,39 @@ class DBTCompiledModelInfo:
 def _manifest_cache_key(clone_dir: Path) -> Path:
     """Normalize clone_dir for manifest index cache lookups."""
     return clone_dir.resolve()
+
+
+def _require_dbt_runner_class() -> Any:
+    """Return dbtRunner class or raise actionable install guidance."""
+    if dbtRunner is None:
+        raise DataSourceError(
+            "dbt-core is required for dbt sources. "
+            "Install with: pip install slideflow-presentations[dbt]"
+        )
+    return dbtRunner
+
+
+def _require_repo_class() -> Any:
+    """Return GitPython Repo class or raise actionable install guidance."""
+    if Repo is None:
+        raise DataSourceError(
+            "gitpython is required for dbt sources that clone repositories. "
+            "Install with: pip install slideflow-presentations[dbt]"
+        )
+    return Repo
+
+
+def _create_databricks_sql_executor() -> SQLExecutor:
+    """Create Databricks SQL executor lazily to keep base installs lightweight."""
+    try:
+        from slideflow.data.connectors.databricks import DatabricksSQLExecutor
+    except ImportError as error:
+        raise DataSourceError(
+            "databricks-sql-connector is required for dbt warehouse.type=databricks "
+            "or databricks_dbt sources. Install with: "
+            "pip install slideflow-presentations[dbt]"
+        ) from error
+    return DatabricksSQLExecutor()
 
 
 def _drop_manifest_index_locked(clone_dir: Path) -> None:
@@ -265,7 +309,8 @@ def _sanitize_git_url(git_url: str) -> str:
 def _resolve_repo_ref(clone_dir: Path, branch: Optional[str]) -> Optional[str]:
     """Return immutable commit SHA when available, otherwise branch/default."""
     try:
-        repo = Repo(clone_dir)
+        repo_cls = _require_repo_class()
+        repo = repo_cls(clone_dir)
         return repo.head.commit.hexsha
     except Exception:
         return branch or "default"
@@ -297,6 +342,7 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         ... )
     """
     start_time = time.time()
+    repo_cls = _require_repo_class()
 
     # Expand environment variable for token
     match = re.search(r"\$([A-Z_]+)", git_url)
@@ -323,9 +369,9 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         shutil.rmtree(clone_dir)
     try:
         if branch:
-            Repo.clone_from(git_url, clone_dir, branch=branch)
+            repo_cls.clone_from(git_url, clone_dir, branch=branch)
         else:
-            Repo.clone_from(git_url, clone_dir)
+            repo_cls.clone_from(git_url, clone_dir)
         duration = time.time() - start_time
         log_data_operation(
             "clone",
@@ -769,7 +815,8 @@ def _get_compiled_project(
                         f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
                     )
 
-            runner = dbtRunner()
+            runner_class = _require_dbt_runner_class()
+            runner = runner_class()
             project_profiles_path = clone_dir / "profiles.yml"
             use_project_profiles_dir = (
                 bool(profiles_dir) or project_profiles_path.exists()
@@ -1106,7 +1153,9 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
     compile: bool = Defaults.DBT_COMPILE
     profiles_dir: Optional[str] = None
     _manifest_connector: Optional[DBTManifestConnector] = None
-    sql_executor_factory: ClassVar[Callable[[], SQLExecutor]] = DatabricksSQLExecutor
+    sql_executor_factory: ClassVar[Callable[[], SQLExecutor]] = (
+        _create_databricks_sql_executor
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

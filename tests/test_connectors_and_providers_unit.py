@@ -270,6 +270,20 @@ def test_databricks_connector_connect_fails_fast_with_missing_env(monkeypatch):
         connector.connect()
 
 
+def test_databricks_connector_requires_optional_dependency(monkeypatch):
+    monkeypatch.setenv("DATABRICKS_HOST", "host")
+    monkeypatch.setenv("DATABRICKS_HTTP_PATH", "http-path")
+    monkeypatch.setenv("DATABRICKS_ACCESS_TOKEN", "token")
+    monkeypatch.setattr(databricks_module, "sql", None)
+
+    connector = databricks_module.DatabricksConnector("SELECT 1")
+    with pytest.raises(
+        DataSourceError,
+        match=r"slideflow-presentations\[databricks\]",
+    ):
+        connector.connect()
+
+
 def test_databricks_connector_applies_explicit_retry_and_timeout_overrides(monkeypatch):
     connect_calls = []
 

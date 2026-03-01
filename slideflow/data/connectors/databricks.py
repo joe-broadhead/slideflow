@@ -44,7 +44,6 @@ import time
 from typing import Annotated, Any, ClassVar, Literal, Optional, Type
 
 import pandas as pd
-from databricks import sql
 from pydantic import ConfigDict, Field
 
 from slideflow.citations import CitationEntry, fingerprint_text
@@ -59,6 +58,14 @@ from slideflow.utilities.logging import (
 )
 
 logger = get_logger(__name__)
+
+try:
+    from databricks import sql as _databricks_sql
+except ImportError:  # pragma: no cover - exercised in optional-dependency tests
+    _databricks_sql = None
+
+# Keep a module-level symbol for test monkeypatching and compatibility.
+sql = _databricks_sql
 
 
 def _resolve_positive_float_from_env(env_var: str, default: float) -> float:
@@ -83,6 +90,17 @@ def _resolve_positive_int_from_env(env_var: str, default: int) -> int:
     except ValueError:
         return default
     return parsed if parsed > 0 else default
+
+
+def _require_databricks_sql_module() -> Any:
+    """Return databricks.sql module or raise actionable install guidance."""
+    if sql is None:
+        raise DatabricksConnectorError(
+            "configuration",
+            "databricks-sql-connector is required for Databricks sources. "
+            "Install with: pip install slideflow-presentations[databricks]",
+        )
+    return sql
 
 
 class DatabricksConnectorError(DataSourceError):
@@ -261,7 +279,8 @@ class DatabricksConnector(DataConnector):
         if self._connection is None:
             host, http_path, access_token = self._get_databricks_credentials()
             try:
-                self._connection = sql.connect(
+                databricks_sql = _require_databricks_sql_module()
+                self._connection = databricks_sql.connect(
                     server_hostname=host,
                     http_path=http_path,
                     access_token=access_token,

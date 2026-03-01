@@ -63,6 +63,7 @@ jobs:
 - `working-directory` (optional): Command working directory. Default `.`.
 - `python-version` (optional): Python version. Default `3.12`.
 - `slideflow-package-spec` (optional): Package to install. Default `slideflow-presentations`.
+- `slideflow-install-extras` (optional): Comma-separated extras to install with `slideflow-package-spec`. Default `dbt,databricks,bigquery,duckdb`.
 - `extra-pip-packages` (optional): Newline-separated additional packages.
 - `run-pip-check` (optional): Run `pip check`. Default `true`.
 - `run-doctor` (optional): Run preflight doctor before validate/build (`slideflow doctor` for `presentation`, `slideflow sheets doctor` for `sheets`). Default `true`.

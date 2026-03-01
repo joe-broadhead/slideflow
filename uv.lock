@@ -2930,15 +2930,12 @@ name = "slideflow-presentations"
 version = "0.0.6"
 source = { editable = "." }
 dependencies = [
-    { name = "databricks-sql-connector" },
-    { name = "dbt-core" },
-    { name = "dbt-databricks" },
-    { name = "gitpython" },
     { name = "google-api-python-client" },
     { name = "google-auth" },
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
     { name = "httplib2" },
+    { name = "jinja2" },
     { name = "kaleido" },
     { name = "numpy" },
     { name = "pandas" },
@@ -2957,6 +2954,14 @@ ai = [
 bigquery = [
     { name = "dbt-bigquery" },
     { name = "google-cloud-bigquery" },
+]
+databricks = [
+    { name = "databricks-sql-connector" },
+]
+dbt = [
+    { name = "dbt-core" },
+    { name = "dbt-databricks" },
+    { name = "gitpython" },
 ]
 dev = [
     { name = "black" },
@@ -2981,13 +2986,13 @@ duckdb = [
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'" },
-    { name = "databricks-sql-connector", specifier = ">=4.0,<5.0" },
+    { name = "databricks-sql-connector", marker = "extra == 'databricks'", specifier = ">=4.0,<5.0" },
     { name = "dbt-bigquery", marker = "extra == 'bigquery'", specifier = ">=1.10,<1.12" },
-    { name = "dbt-core", specifier = ">=1.10,<1.12" },
-    { name = "dbt-databricks", specifier = ">=1.10,<1.12" },
+    { name = "dbt-core", marker = "extra == 'dbt'", specifier = ">=1.10,<1.12" },
+    { name = "dbt-databricks", marker = "extra == 'dbt'", specifier = ">=1.10,<1.12" },
     { name = "dbt-duckdb", marker = "extra == 'duckdb'", specifier = ">=1.9,<1.12" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.0,<2.0" },
-    { name = "gitpython", specifier = ">=3.1.41,<4.0" },
+    { name = "gitpython", marker = "extra == 'dbt'", specifier = ">=3.1.41,<4.0" },
     { name = "google-api-python-client", specifier = ">=2.0,<3.0" },
     { name = "google-auth", specifier = ">=2.0,<3.0" },
     { name = "google-auth-httplib2", specifier = ">=0.2,<1.0" },
@@ -2995,6 +3000,7 @@ requires-dist = [
     { name = "google-cloud-bigquery", marker = "extra == 'bigquery'", specifier = ">=3.0,<4.0" },
     { name = "google-genai", marker = "extra == 'ai'", specifier = ">=1.0,<2.0" },
     { name = "httplib2", specifier = ">=0.22,<1.0" },
+    { name = "jinja2", specifier = ">=3.1,<4.0" },
     { name = "kaleido", specifier = ">=1.0,<2.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
@@ -3016,7 +3022,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.24,<1.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
 ]
-provides-extras = ["ai", "bigquery", "duckdb", "docs", "dev"]
+provides-extras = ["ai", "databricks", "dbt", "bigquery", "duckdb", "docs", "dev"]
 
 [[package]]
 name = "smmap"
