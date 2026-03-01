@@ -78,6 +78,7 @@ from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import ChartGenerationError
 
 logger = logging.getLogger(__name__)
+_LIST_COLUMN_REF_PATTERN = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
 
 _CHART_EXPORT_EXECUTOR: Optional[ProcessPoolExecutor] = None
 _CHART_EXPORT_EXECUTOR_LOCK = Lock()
@@ -678,148 +679,125 @@ class PlotlyGraphObjects(BaseChart):
             self.scale,
         )
 
+    @staticmethod
+    def _series_to_values(series: Any) -> List[Any]:
+        """Normalize pandas-like series data into list values."""
+        if hasattr(series, "tolist"):
+            return series.tolist()
+        return list(series)
+
+    @staticmethod
+    def _parse_direct_reference(raw_reference: str) -> tuple[str, Optional[int]]:
+        """Parse direct `$column` / `$column[index]` trace references."""
+        column_name = raw_reference
+        index_token: Optional[int] = None
+        if raw_reference.endswith("]") and "[" in raw_reference:
+            potential_column, potential_index = raw_reference.rsplit("[", 1)
+            potential_index = potential_index[:-1]
+            if potential_column:
+                try:
+                    parsed_index = int(potential_index)
+                except ValueError:
+                    parsed_index = None
+                if parsed_index is not None:
+                    column_name = potential_column
+                    index_token = parsed_index
+        return column_name, index_token
+
+    def _resolve_direct_trace_value(
+        self, reference: str, df: pd.DataFrame, has_rows: bool
+    ) -> tuple[bool, Any]:
+        """Resolve direct `$column` references used in dict trace values."""
+        column_name, index_token = self._parse_direct_reference(reference)
+
+        if has_rows and column_name in df.columns:
+            values = self._series_to_values(df[column_name])
+            if index_token is None:
+                return True, values
+            try:
+                return True, values[index_token]
+            except IndexError as exc:
+                raise ChartGenerationError(
+                    f"Index {index_token} out of range for column '{column_name}' "
+                    f"with {len(values)} row(s)."
+                ) from exc
+
+        if not has_rows:
+            # For static charts without data, skip direct column references.
+            return False, None
+
+        available_columns = list(df.columns)
+        df_shape = getattr(df, "shape", (len(df), len(df.columns)))
+        raise ChartGenerationError(
+            f"Column '{column_name}' not found in PlotlyGraphObjects trace config. "
+            f"Available columns: {available_columns}. "
+            f"DataFrame shape: {df_shape}"
+        )
+
+    def _resolve_list_trace_item(
+        self, item: Any, df: pd.DataFrame, has_rows: bool
+    ) -> Any:
+        """Resolve list item references used in trace list values."""
+        if not isinstance(item, str):
+            return item
+
+        match = _LIST_COLUMN_REF_PATTERN.match(item)
+        if not match:
+            return item
+
+        column_name = match.group(1)
+        list_index_token = match.group(2)
+
+        if has_rows and column_name in df.columns:
+            values = self._series_to_values(df[column_name])
+            if list_index_token is None:
+                return values
+            index_value = int(list_index_token)
+            try:
+                return values[index_value]
+            except IndexError as exc:
+                raise ChartGenerationError(
+                    f"Index {index_value} out of range for column '{column_name}' "
+                    f"with {len(values)} row(s)."
+                ) from exc
+
+        if not has_rows:
+            # Preserve list structure for Plotly table configs.
+            if list_index_token is None:
+                return []
+            return None
+
+        # Unresolvable list references are preserved literally.
+        return item
+
     def _process_trace_config(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> Dict[str, Any]:
-        """Process trace configuration by replacing column references with data.
-
-        Recursively processes the trace configuration dictionary, replacing any
-        column references (strings starting with '$') with actual data from the
-        DataFrame. Handles nested dictionaries and lists, preserving the structure
-        while substituting data values.
-
-        Special handling for:
-        - Column references: "$column_name" -> df['column_name'].tolist()
-        - Plotly template strings: Preserved as-is (e.g., "$%{y:,.0f}")
-        - Nested structures: Recursively processed
-        - Static data: Passed through unchanged
-
-        Args:
-            config: Trace configuration dictionary that may contain column
-                references in the format '$column_name'.
-            df: DataFrame containing the data columns. May be empty for static
-                charts, in which case direct column references are skipped and
-                list-based references are replaced with empty values.
-
-        Returns:
-            Processed configuration with column references replaced by actual
-            data arrays, ready for use in Plotly trace construction.
-
-        Raises:
-            ChartGenerationError: If a referenced column doesn't exist in the
-                DataFrame (unless DataFrame is empty).
-
-        Example:
-            >>> config = {"x": "$months", "y": "$revenue", "name": "Revenue"}
-            >>> df = pd.DataFrame({"months": ["Jan", "Feb"], "revenue": [100, 150]})
-            >>> processed = chart._process_trace_config(config, df)
-            >>> # processed = {"x": ["Jan", "Feb"], "y": [100, 150], "name": "Revenue"}
-        """
+        """Process trace configuration by replacing column references with data."""
         processed: Dict[str, Any] = {}
-        list_column_ref_pattern = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
         has_rows = len(df) > 0
+
         for key, value in config.items():
             if isinstance(value, str) and value.startswith("$") and "%{" not in value:
-                # Column reference: "$column_name" -> df['column_name']
-                # But not Plotly template strings like "$%{y:,.0f}"
-                raw_reference = value[1:]
-                column_name = raw_reference
-                index_token: Optional[int] = None
-                if raw_reference.endswith("]") and "[" in raw_reference:
-                    potential_column, potential_index = raw_reference.rsplit("[", 1)
-                    potential_index = potential_index[:-1]
-                    if potential_column:
-                        try:
-                            parsed_index = int(potential_index)
-                        except ValueError:
-                            parsed_index = None
-                        if parsed_index is not None:
-                            column_name = potential_column
-                            index_token = parsed_index
+                handled, resolved = self._resolve_direct_trace_value(
+                    value[1:], df, has_rows
+                )
+                if handled:
+                    processed[key] = resolved
+                continue
 
-                if has_rows and column_name in df.columns:
-                    series_values = df[column_name]
-                    values = (
-                        series_values.tolist()
-                        if hasattr(series_values, "tolist")
-                        else list(series_values)
-                    )
-                    if index_token is None:
-                        processed[key] = values
-                    else:
-                        try:
-                            processed[key] = values[index_token]
-                        except IndexError as exc:
-                            raise ChartGenerationError(
-                                f"Index {index_token} out of range for column '{column_name}' "
-                                f"with {len(values)} row(s)."
-                            ) from exc
-                elif not has_rows:
-                    # For static charts without data, skip column references
-                    # They should provide static data directly in the config
-                    continue
-                else:
-                    available_columns = list(df.columns) if has_rows else []
-                    df_shape = getattr(df, "shape", (len(df), len(df.columns)))
-                    raise ChartGenerationError(
-                        f"Column '{column_name}' not found in PlotlyGraphObjects trace config. "
-                        f"Available columns: {available_columns}. "
-                        f"DataFrame shape: {df_shape}"
-                    )
-            elif isinstance(value, dict):
-                # Recursively process nested dictionaries
+            if isinstance(value, dict):
                 processed[key] = self._process_trace_config(value, df)
-            elif isinstance(value, list):
-                # Process lists that might contain column references
-                # Column references are $word (alphanumeric/underscore),
-                # including complex names like $_color_col_0 and optional
-                # scalar index extraction like $metric[-1].
-                processed_list: List[Any] = []
+                continue
 
-                for item in value:
-                    if isinstance(item, str):
-                        match = list_column_ref_pattern.match(item)
-                        if match:
-                            list_column_name = match.group(1)
-                            list_index_token = match.group(2)
+            if isinstance(value, list):
+                processed[key] = [
+                    self._resolve_list_trace_item(item, df, has_rows) for item in value
+                ]
+                continue
 
-                            if has_rows and list_column_name in df.columns:
-                                # Valid column reference
-                                series_values = df[list_column_name]
-                                values = (
-                                    series_values.tolist()
-                                    if hasattr(series_values, "tolist")
-                                    else list(series_values)
-                                )
-                                if list_index_token is None:
-                                    processed_list.append(values)
-                                else:
-                                    index_value = int(list_index_token)
-                                    try:
-                                        processed_list.append(values[index_value])
-                                    except IndexError as exc:
-                                        raise ChartGenerationError(
-                                            f"Index {index_value} out of range for column '{list_column_name}' "
-                                            f"with {len(values)} row(s)."
-                                        ) from exc
-                            elif not has_rows:
-                                # Preserve list structure for Plotly table configs.
-                                if list_index_token is None:
-                                    processed_list.append([])
-                                else:
-                                    processed_list.append(None)
-                            else:
-                                # Not a resolvable column reference for this DataFrame.
-                                processed_list.append(item)
-                        else:
-                            # Not a column reference or column doesn't exist
-                            processed_list.append(item)
-                    else:
-                        processed_list.append(item)
+            processed[key] = value
 
-                processed[key] = processed_list
-            else:
-                processed[key] = value
         return processed
 
 

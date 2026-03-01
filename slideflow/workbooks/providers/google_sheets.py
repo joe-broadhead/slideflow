@@ -105,12 +105,13 @@ class GoogleSheetsProvider(WorkbookProvider):
         """Execute Google API request with shared rate limiting."""
         return execute_rate_limited_request(request, self.rate_limiter, num_retries=3)
 
-    def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
+    def _base_preflight_checks(self) -> List[Tuple[str, bool, str]]:
+        """Return credential/service/rate-limiter baseline preflight checks."""
         has_credentials = bool(self.config.credentials) or bool(
             os.getenv(Environment.GOOGLE_SHEETS_CREDENTIALS)
             or os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
         )
-        checks: List[Tuple[str, bool, str]] = [
+        return [
             (
                 "google_sheets_credentials_present",
                 has_credentials,
@@ -149,152 +150,144 @@ class GoogleSheetsProvider(WorkbookProvider):
             ),
         ]
 
+    def _spreadsheet_access_check(self) -> Tuple[str, bool, str]:
+        """Verify that configured spreadsheet_id is readable."""
+        try:
+            response = self._execute_request(
+                self.sheets_service.spreadsheets().get(
+                    spreadsheetId=self.config.spreadsheet_id,
+                    fields="spreadsheetId,properties/title",
+                )
+            )
+            sheet_id = (
+                response.get("spreadsheetId")
+                if isinstance(response, dict)
+                else self.config.spreadsheet_id
+            )
+            return (
+                "spreadsheet_access",
+                True,
+                f"Accessible spreadsheet_id '{sheet_id}'",
+            )
+        except Exception as error:
+            return (
+                "spreadsheet_access",
+                False,
+                f"Cannot access spreadsheet_id '{self.config.spreadsheet_id}': {error}",
+            )
+
+    def _spreadsheet_write_access_check(self) -> Tuple[str, bool, str]:
+        """Verify that configured spreadsheet_id is writable via Drive."""
+        try:
+            write_response = self._execute_request(
+                self.drive_service.files().get(
+                    fileId=self.config.spreadsheet_id,
+                    fields="id,trashed,capabilities(canEdit)",
+                    supportsAllDrives=True,
+                )
+            )
+            capabilities = (
+                write_response.get("capabilities", {})
+                if isinstance(write_response, dict)
+                else {}
+            )
+            can_edit = bool(
+                isinstance(capabilities, dict) and capabilities.get("canEdit", False)
+            )
+            is_trashed = (
+                bool(write_response.get("trashed"))
+                if isinstance(write_response, dict)
+                else False
+            )
+            return (
+                "spreadsheet_write_access",
+                can_edit and not is_trashed,
+                (
+                    f"Spreadsheet '{self.config.spreadsheet_id}' is writable"
+                    if can_edit and not is_trashed
+                    else (
+                        f"Spreadsheet '{self.config.spreadsheet_id}' is not writable "
+                        "(missing canEdit capability or file is trashed)"
+                    )
+                ),
+            )
+        except Exception as error:
+            return (
+                "spreadsheet_write_access",
+                False,
+                f"Cannot verify write access for spreadsheet_id '{self.config.spreadsheet_id}': {error}",
+            )
+
+    def _drive_folder_access_checks(self) -> List[Tuple[str, bool, str]]:
+        """Verify that configured drive_folder_id exists and is writable."""
+        try:
+            response = self._execute_request(
+                self.drive_service.files().get(
+                    fileId=self.config.drive_folder_id,
+                    fields="id,mimeType,name,trashed,capabilities(canAddChildren,canEdit)",
+                    supportsAllDrives=True,
+                )
+            )
+            mime_type = response.get("mimeType") if isinstance(response, dict) else ""
+            is_folder = mime_type == "application/vnd.google-apps.folder"
+            is_trashed = (
+                bool(response.get("trashed")) if isinstance(response, dict) else False
+            )
+            access_check = (
+                "drive_folder_access",
+                is_folder and not is_trashed,
+                (
+                    f"Accessible Drive folder '{self.config.drive_folder_id}'"
+                    if is_folder and not is_trashed
+                    else f"Configured drive_folder_id '{self.config.drive_folder_id}' is not an active folder"
+                ),
+            )
+
+            capabilities = (
+                response.get("capabilities", {}) if isinstance(response, dict) else {}
+            )
+            can_write_folder = bool(
+                isinstance(capabilities, dict)
+                and (
+                    capabilities.get("canAddChildren", False)
+                    or capabilities.get("canEdit", False)
+                )
+            )
+            write_check = (
+                "drive_folder_write_access",
+                is_folder and not is_trashed and can_write_folder,
+                (
+                    f"Drive folder '{self.config.drive_folder_id}' is writable"
+                    if is_folder and not is_trashed and can_write_folder
+                    else (
+                        f"Drive folder '{self.config.drive_folder_id}' is not writable "
+                        "(missing canAddChildren/canEdit capability, or folder invalid)"
+                    )
+                ),
+            )
+            return [access_check, write_check]
+        except Exception as error:
+            return [
+                (
+                    "drive_folder_access",
+                    False,
+                    f"Cannot access drive_folder_id '{self.config.drive_folder_id}': {error}",
+                ),
+                (
+                    "drive_folder_write_access",
+                    False,
+                    f"Cannot verify write access for drive_folder_id '{self.config.drive_folder_id}': {error}",
+                ),
+            ]
+
+    def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
+        checks = self._base_preflight_checks()
         if self.sheets_service is not None and self.config.spreadsheet_id:
-            try:
-                response = self._execute_request(
-                    self.sheets_service.spreadsheets().get(
-                        spreadsheetId=self.config.spreadsheet_id,
-                        fields="spreadsheetId,properties/title",
-                    )
-                )
-                sheet_id = (
-                    response.get("spreadsheetId")
-                    if isinstance(response, dict)
-                    else self.config.spreadsheet_id
-                )
-                checks.append(
-                    (
-                        "spreadsheet_access",
-                        True,
-                        f"Accessible spreadsheet_id '{sheet_id}'",
-                    )
-                )
-            except Exception as error:
-                checks.append(
-                    (
-                        "spreadsheet_access",
-                        False,
-                        f"Cannot access spreadsheet_id '{self.config.spreadsheet_id}': {error}",
-                    )
-                )
-
+            checks.append(self._spreadsheet_access_check())
         if self.drive_service is not None and self.config.spreadsheet_id:
-            try:
-                write_response = self._execute_request(
-                    self.drive_service.files().get(
-                        fileId=self.config.spreadsheet_id,
-                        fields="id,trashed,capabilities(canEdit)",
-                        supportsAllDrives=True,
-                    )
-                )
-                capabilities = (
-                    write_response.get("capabilities", {})
-                    if isinstance(write_response, dict)
-                    else {}
-                )
-                can_edit = bool(
-                    isinstance(capabilities, dict)
-                    and capabilities.get("canEdit", False)
-                )
-                is_trashed = (
-                    bool(write_response.get("trashed"))
-                    if isinstance(write_response, dict)
-                    else False
-                )
-                checks.append(
-                    (
-                        "spreadsheet_write_access",
-                        can_edit and not is_trashed,
-                        (
-                            f"Spreadsheet '{self.config.spreadsheet_id}' is writable"
-                            if can_edit and not is_trashed
-                            else (
-                                f"Spreadsheet '{self.config.spreadsheet_id}' is not writable "
-                                "(missing canEdit capability or file is trashed)"
-                            )
-                        ),
-                    )
-                )
-            except Exception as error:
-                checks.append(
-                    (
-                        "spreadsheet_write_access",
-                        False,
-                        f"Cannot verify write access for spreadsheet_id '{self.config.spreadsheet_id}': {error}",
-                    )
-                )
-
+            checks.append(self._spreadsheet_write_access_check())
         if self.drive_service is not None and self.config.drive_folder_id:
-            try:
-                response = self._execute_request(
-                    self.drive_service.files().get(
-                        fileId=self.config.drive_folder_id,
-                        fields="id,mimeType,name,trashed,capabilities(canAddChildren,canEdit)",
-                        supportsAllDrives=True,
-                    )
-                )
-                mime_type = (
-                    response.get("mimeType") if isinstance(response, dict) else ""
-                )
-                is_folder = mime_type == "application/vnd.google-apps.folder"
-                is_trashed = (
-                    bool(response.get("trashed"))
-                    if isinstance(response, dict)
-                    else False
-                )
-                checks.append(
-                    (
-                        "drive_folder_access",
-                        is_folder and not is_trashed,
-                        (
-                            f"Accessible Drive folder '{self.config.drive_folder_id}'"
-                            if is_folder and not is_trashed
-                            else f"Configured drive_folder_id '{self.config.drive_folder_id}' is not an active folder"
-                        ),
-                    )
-                )
-                capabilities = (
-                    response.get("capabilities", {})
-                    if isinstance(response, dict)
-                    else {}
-                )
-                can_write_folder = bool(
-                    isinstance(capabilities, dict)
-                    and (
-                        capabilities.get("canAddChildren", False)
-                        or capabilities.get("canEdit", False)
-                    )
-                )
-                checks.append(
-                    (
-                        "drive_folder_write_access",
-                        is_folder and not is_trashed and can_write_folder,
-                        (
-                            f"Drive folder '{self.config.drive_folder_id}' is writable"
-                            if is_folder and not is_trashed and can_write_folder
-                            else (
-                                f"Drive folder '{self.config.drive_folder_id}' is not writable "
-                                "(missing canAddChildren/canEdit capability, or folder invalid)"
-                            )
-                        ),
-                    )
-                )
-            except Exception as error:
-                checks.append(
-                    (
-                        "drive_folder_access",
-                        False,
-                        f"Cannot access drive_folder_id '{self.config.drive_folder_id}': {error}",
-                    )
-                )
-                checks.append(
-                    (
-                        "drive_folder_write_access",
-                        False,
-                        f"Cannot verify write access for drive_folder_id '{self.config.drive_folder_id}': {error}",
-                    )
-                )
-
+            checks.extend(self._drive_folder_access_checks())
         return checks
 
     def create_or_open_workbook(self, title: str) -> str:

@@ -1,5 +1,6 @@
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -757,3 +758,29 @@ def test_workbook_builder_auto_generates_missing_summary_names(tmp_path):
         "kpi_current_summary_1",
         "kpi_current_summary_2",
     ]
+
+
+def test_summary_placement_overlap_helper_reports_anchor_and_clear_range_collisions():
+    summary = SimpleNamespace(
+        name="kpi_summary",
+        source_tab="kpi_current",
+        placement=SimpleNamespace(type="same_sheet", clear_range="A1:B2"),
+    )
+
+    anchor_overlap = WorkbookBuilder._summary_placement_overlap_result(
+        summary=summary,
+        target_tab="kpi_current",
+        target_cell="A1",
+        source_bounds=(1, 1, 4, 10),
+    )
+    assert anchor_overlap is not None
+    assert "anchor cell overlaps" in (anchor_overlap.error or "")
+
+    clear_overlap = WorkbookBuilder._summary_placement_overlap_result(
+        summary=summary,
+        target_tab="kpi_current",
+        target_cell="F1",
+        source_bounds=(1, 1, 4, 10),
+    )
+    assert clear_overlap is not None
+    assert "clear_range overlaps" in (clear_overlap.error or "")
