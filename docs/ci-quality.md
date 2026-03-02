@@ -67,7 +67,7 @@ python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 pytest -q
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-fail-under=80
+pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-fail-under=82
 pytest -q -m integration
 pytest -q -m e2e
 uv run mkdocs build --strict
@@ -81,8 +81,11 @@ bash scripts/ci/run_quickstart_smoke.sh
 
 ## Coverage policy
 
-- CI enforces a minimum coverage floor (`--cov-fail-under=80`)
-- Raise this threshold over time; do not lower it without explicit approval
+- CI enforces branch-aware coverage (`--cov-branch`) with minimum floor `82`
+- Staged threshold plan:
+  - current floor: `82`
+  - next target floor: `85` after planned test-hardening changes
+- Do not lower thresholds without explicit maintainer approval
 
 ## Branching policy
 

@@ -92,3 +92,12 @@ markers = [
     "live_google_docs: live Google Docs API tests that create real documents",
     "live_google_sheets: live Google Sheets API tests that create real workbooks",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["slideflow"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 2

@@ -55,7 +55,7 @@ python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 pytest -q
-pytest -q --cov=slideflow --cov-report=term --cov-report=xml
+pytest -q --cov=slideflow --cov-branch --cov-report=term --cov-report=xml
 ```
 
 Run only integration or e2e groups:
@@ -68,7 +68,7 @@ pytest -q -m e2e
 Mirror CI marker split locally:
 
 ```bash
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-report=term --cov-report=xml --cov-fail-under=80
+pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=82
 pytest -q -m integration
 pytest -q -m e2e
 ```
@@ -139,7 +139,11 @@ pytest -q tests/live_tests -m live_google_sheets
 
 - CI enforces version consistency checks.
 - CI enforces dependency consistency via `uv lock --check` and `uv pip check`.
-- CI enforces coverage floor (`--cov-fail-under=80`) on unit tests (`not integration and not e2e`).
+- CI enforces branch-aware coverage floor (`--cov-branch --cov-fail-under=82`) on unit tests (`not integration and not e2e`).
+- Coverage gate ratchet policy:
+  - current: `82`
+  - next staged target: `85` after planned test-hardening work lands (roadmap items `#196`/`#197`)
+  - thresholds should only increase; decreases require explicit maintainer approval
 - CI runs dedicated integration and e2e marker suites in separate steps.
 - Distribution artifacts are built for every CI run.
 - Live Google Slides tests run in a separate workflow (`Live Google Slides`) so PR CI remains deterministic.
