@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import TimeoutError
 from types import SimpleNamespace
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 
 import pandas as pd
 import pytest
@@ -210,7 +210,7 @@ def test_plotly_to_image_without_scale_omits_scale_option(monkeypatch):
     )
 
 
-def test_base_chart_validation_fetch_transform_and_upload(monkeypatch):
+def test_base_chart_validation_fetch_transform_and_no_source(monkeypatch):
     chart = _MinimalChart(type="minimal", title="My Chart")
 
     with pytest.raises(ChartGenerationError, match="dimensions_format must be"):
@@ -238,80 +238,10 @@ def test_base_chart_validation_fetch_transform_and_upload(monkeypatch):
     )
     transformed = chart.apply_data_transforms(pd.DataFrame({"x": [1]}))
     assert list(transformed["y"]) == [2]
+    assert chart.fetch_data() is not None
 
-    wait_calls: List[int] = []
-
-    class _Limiter:
-        def wait(self) -> None:
-            wait_calls.append(1)
-
-    monkeypatch.setattr(charts_module, "_get_rate_limiter", lambda _rps: _Limiter())
-    monkeypatch.setattr(charts_module.uuid, "uuid4", lambda: type("U", (), {"hex": "abc12345dead"})())  # type: ignore[misc]
-
-    class _Request:
-        def __init__(self, response: Dict[str, Any]) -> None:
-            self.response = response
-            self.retries: List[Optional[int]] = []
-
-        def execute(self, num_retries: Optional[int] = None):
-            self.retries.append(num_retries)
-            return self.response
-
-    file_create_request = _Request({"id": "file-1"})
-    permission_request = _Request({})
-
-    class _Files:
-        def __init__(self) -> None:
-            self.create_calls: List[Dict[str, Any]] = []
-
-        def create(self, **kwargs):
-            self.create_calls.append(kwargs)
-            return file_create_request
-
-    class _Permissions:
-        def __init__(self) -> None:
-            self.create_calls: List[Dict[str, Any]] = []
-
-        def create(self, **kwargs):
-            self.create_calls.append(kwargs)
-            return permission_request
-
-    files_api = _Files()
-    permissions_api = _Permissions()
-    drive_service = type(
-        "DriveService",
-        (),
-        {
-            "files": lambda self: files_api,
-            "permissions": lambda self: permissions_api,
-        },
-    )()
-
-    public_url, file_id = chart._upload_to_drive(b"bytes", drive_service)
-
-    assert public_url == "https://drive.google.com/uc?id=file-1"
-    assert file_id == "file-1"
-    assert file_create_request.retries == [3]
-    assert permission_request.retries == [3]
-    assert len(wait_calls) == 2
-
-
-def test_generate_public_url_uses_empty_dataframe_when_no_source(monkeypatch):
-    class _ObservedChart(_MinimalChart):
-        seen_df: Optional[pd.DataFrame] = None
-
-        def generate_chart_image(self, df: pd.DataFrame) -> bytes:
-            self.seen_df = df
-            return b"img"
-
-    chart = _ObservedChart(type="minimal", title="Observed")
-    monkeypatch.setattr(chart, "_upload_to_drive", lambda image, _svc: ("url", "fid"))
-
-    url, file_id = chart.generate_public_url(drive_service=object())
-
-    assert (url, file_id) == ("url", "fid")
-    assert isinstance(chart.seen_df, pd.DataFrame)
-    assert len(chart.seen_df) == 0
+    no_source_chart = _MinimalChart(type="minimal", title="No Source")
+    assert no_source_chart.fetch_data() is None
 
 
 def test_plotly_generate_chart_image_evaluates_expressions_and_scale(monkeypatch):

@@ -11,12 +11,12 @@ The chart system includes:
     - Custom chart support for user-defined visualization functions
     - Template-based charts for reusable chart configurations
     - Integration with data sources and transformations
-    - Automatic image generation and upload to presentation platforms
+    - Automatic image generation for provider-managed upload/insertion
 
 Architecture:
     All charts inherit from BaseChart and implement the generate_chart_image method.
     Charts can fetch data from configured data sources, apply transformations, and
-    generate images that are automatically uploaded to the presentation platform.
+    generate images that are uploaded by the active presentation provider.
 
 Key Features:
     - Flexible positioning with expression support
@@ -47,33 +47,28 @@ Example:
     ...     x=100, y=150, width=500, height=400
     ... )
     >>>
-    >>> # Generate and upload chart
-    >>> url, file_id = chart.generate_public_url(drive_service)
+    >>> # Generate chart image bytes; provider handles upload/insertion
+    >>> image_bytes = chart.generate_chart_image(chart.fetch_data())
 """
 
 import atexit
-import io
 import logging
 import re
 import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
 from threading import Lock
-from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Union
 
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
-from googleapiclient.http import MediaIoBaseUpload
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from slideflow.builtins.template_engine import get_template_engine
-from slideflow.constants import FileExtensions, GoogleSlides, Timing
+from slideflow.constants import GoogleSlides, Timing
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 from slideflow.presentations.positioning import safe_eval_expression
-from slideflow.presentations.rate_limiter import (
-    get_google_api_rate_limiter as _get_rate_limiter,
-)
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import ChartGenerationError
 
@@ -217,7 +212,7 @@ class BaseChart(BaseModel, ABC):
     - Data sources for fetching chart data
     - Data transformation pipeline for preprocessing
     - Positioning system with expression support
-    - Google Drive for image upload and sharing
+    - Presentation providers for upload/insertion
 
     Attributes:
         type: Chart type identifier used for discriminated unions.
@@ -435,103 +430,6 @@ class BaseChart(BaseModel, ABC):
             ...     return fig.to_png(width=self.width, height=self.height)
         """
         ...
-
-    def generate_public_url(self, drive_service) -> Tuple[str, str]:
-        """Execute the complete chart generation and upload pipeline.
-
-        This method orchestrates the entire process of creating a chart and
-        making it available for insertion into a presentation:
-
-        1. Fetch data from the configured source (with caching)
-        2. Generate the chart image using the concrete implementation
-        3. Upload the image to Google Drive
-        4. Make the image publicly accessible
-        5. Return the public URL and file ID
-
-        The method handles both dynamic charts (with data sources) and static
-        charts (with data defined in configuration).
-
-        Args:
-            drive_service: Authenticated Google Drive service instance for
-                uploading the generated chart image.
-
-        Returns:
-            Tuple containing:
-            - public_url: Publicly accessible URL for the chart image
-            - file_id: Google Drive file ID for later cleanup operations
-
-        Raises:
-            ChartGenerationError: If chart generation fails.
-            UploadError: If uploading to Google Drive fails.
-
-        Example:
-            >>> chart = PlotlyGraphObjects(type="plotly_go", traces=[...])
-            >>> url, file_id = chart.generate_public_url(drive_service)
-            >>> print(f"Chart available at: {url}")
-        """
-        df = self.fetch_data()
-        if df is None:
-            # For charts without data sources, create empty DataFrame
-            # Chart implementation should handle static data in traces
-            df = pd.DataFrame()
-
-        image_bytes = self.generate_chart_image(df)
-
-        return self._upload_to_drive(image_bytes, drive_service)
-
-    def _upload_to_drive(self, image_bytes: bytes, drive_service) -> Tuple[str, str]:
-        """Upload chart image to Google Drive and make it publicly accessible.
-
-        Handles the upload process including file naming, permission setting,
-        and public URL generation. The uploaded file is made publicly readable
-        so it can be embedded in presentations.
-
-        Args:
-            image_bytes: PNG image data generated by the chart.
-            drive_service: Authenticated Google Drive API service instance.
-
-        Returns:
-            Tuple containing:
-            - public_url: Direct link URL for embedding the image
-            - file_id: Google Drive file identifier for management
-
-        Raises:
-            HttpError: If the Drive API requests fail.
-
-        Example:
-            >>> image_data = chart.generate_chart_image(df)
-            >>> url, file_id = chart._upload_to_drive(image_data, drive_service)
-            >>> # Image is now accessible at url and can be deleted using file_id
-        """
-
-        file_metadata = {
-            "name": f'{self.title or "chart"}_{uuid.uuid4().hex[:8]}{FileExtensions.PNG}'
-        }
-
-        media = MediaIoBaseUpload(
-            io.BytesIO(image_bytes), mimetype="image/png", resumable=True
-        )
-
-        # Use shared rate limiter
-        limiter = _get_rate_limiter(1.0)
-        limiter.wait()
-
-        uploaded_file = (
-            drive_service.files()
-            .create(body=file_metadata, media_body=media)
-            .execute(num_retries=3)
-        )
-
-        file_id = uploaded_file["id"]
-
-        # Make publicly viewable
-        limiter.wait()
-        drive_service.permissions().create(
-            fileId=file_id, body={"role": "reader", "type": "anyone"}
-        ).execute(num_retries=3)
-
-        public_url = f"https://drive.google.com/uc?id={file_id}"
-        return public_url, file_id
 
 
 class PlotlyGraphObjects(BaseChart):
