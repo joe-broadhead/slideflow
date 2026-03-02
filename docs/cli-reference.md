@@ -179,14 +179,25 @@ Options:
 | Option | Description |
 | --- | --- |
 | `-r`, `--registry` | One or more Python registry files |
+| `-t`, `--threads` | Workbook worker count (Sheets currently applies `1`) |
+| `--rps`, `--requests-per-second` | Override provider `requests_per_second` for this run |
 | `--output-json` | Write machine-readable build summary JSON |
 
 Examples:
 
 ```bash
 slideflow sheets build workbook.yml
+slideflow sheets build workbook.yml --rps 1.5
+slideflow sheets build workbook.yml --threads 4 --output-json sheets-build.json
 slideflow sheets build workbook.yml --registry registry.py --output-json sheets-build.json
 ```
+
+Notes:
+
+- Sheets builds currently execute sequentially; `--threads` is accepted for
+  workflow parity and normalized to `1`.
+- Build JSON includes a `runtime` block with requested/applied `threads` and
+  `requests_per_second`.
 
 Workbook schema details (tabs, append idempotency, and tab-local AI summaries):
 

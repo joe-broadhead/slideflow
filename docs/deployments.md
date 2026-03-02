@@ -71,6 +71,13 @@ jobs:
       requests-per-second: "1.0"
 ```
 
+Runtime control note:
+
+- The reusable workflow forwards `threads` and `requests-per-second` to both
+  `slideflow build` and `slideflow sheets build`.
+- Sheets currently runs sequentially; `threads` is normalized to `1` and
+  reported as requested/applied values in build JSON.
+
 Security notes:
 
 - Prefer pinning reusable workflow refs to a commit SHA.
@@ -224,6 +231,7 @@ Operational notes:
   - `google_slides`: slide-id + placeholder checks
   - `google_docs`: section-marker + placeholder checks
 - Secrets managed by platform secret manager (not committed)
-- API quotas/rate limits measured and tuned (`--rps`, `--threads`)
+- API quotas/rate limits measured and tuned (`--rps`, `--threads`; Sheets
+  currently applies `threads=1`)
 - Failure notifications wired to orchestration platform
 - Build logs and JSON summaries retained for debugging/notifications
