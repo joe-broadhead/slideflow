@@ -76,7 +76,8 @@ Runtime control note:
 - The reusable workflow forwards `threads` and `requests-per-second` to both
   `slideflow build` and `slideflow sheets build`.
 - Sheets runs tab writes with bounded parallelism based on `--threads` and tab
-  count; requested/applied values are reported in build JSON.
+  count; requested/applied/supported/effective/workload values are reported in
+  build JSON.
 
 Security notes:
 

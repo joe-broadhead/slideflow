@@ -195,9 +195,15 @@ slideflow sheets build workbook.yml --registry registry.py --output-json sheets-
 Notes:
 
 - Sheets builds execute tabs with a bounded worker pool (`--threads`).
-- Build JSON includes a `runtime` block with requested/applied/effective
-  `threads` and
-  `requests_per_second`.
+- Build JSON includes a `runtime` block with:
+  - `threads.requested`
+  - `threads.applied`
+  - `threads.supported_values`
+  - `threads.effective_workers`
+  - `threads.workload_size`
+  - `requests_per_second.requested`
+  - `requests_per_second.applied`
+  - `requests_per_second.source`
 
 Workbook schema details (tabs, append idempotency, and tab-local AI summaries):
 
