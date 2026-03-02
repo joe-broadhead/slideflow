@@ -9,3 +9,13 @@ site/
 build/*
 dist/*
 sa.json
+# Local credential/key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*credentials*.json
+*credential*.json
