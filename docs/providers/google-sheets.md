@@ -175,6 +175,15 @@ slideflow sheets build workbook.yml --threads 3 --output-json sheets-build.json
 
 Build JSON includes:
 
+- runtime controls:
+  - `runtime.threads.requested`
+  - `runtime.threads.applied`
+  - `runtime.threads.supported_values`
+  - `runtime.threads.effective_workers`
+  - `runtime.threads.workload_size`
+  - `runtime.requests_per_second.requested`
+  - `runtime.requests_per_second.applied`
+  - `runtime.requests_per_second.source`
 - workbook-level counters: tabs/summaries succeeded/failed
 - per-tab results (`rows_written`, `rows_skipped`, `run_key`, error)
 - per-summary results (`placement_type`, `target_cell`, `chars_written`, error)

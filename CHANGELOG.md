@@ -38,6 +38,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - Build JSON output includes citation summary fields and per-result citation payloads.
+- `slideflow sheets build` now executes workbook tabs with bounded parallel workers
+  (`--threads`), capped by tab count.
+- Sheets build runtime JSON now includes richer thread controls metadata:
+  - `runtime.threads.supported_values`
+  - `runtime.threads.effective_workers`
+  - `runtime.threads.workload_size`
 - Build JSON output includes ownership transfer status fields:
   - `ownership_transfer_attempted`
   - `ownership_transfer_succeeded`
