@@ -84,6 +84,7 @@ def _runtime_controls_payload(
     provider_config = workbook_config.provider.config
 
     tabs_total = len(workbook_config.workbook.tabs)
+    supported_thread_values = list(range(1, max(1, tabs_total) + 1))
     requested_threads = threads
     configured_threads = requested_threads if requested_threads is not None else 1
     applied_threads = max(1, min(configured_threads, tabs_total))
@@ -105,6 +106,7 @@ def _runtime_controls_payload(
         "threads": {
             "requested": requested_threads,
             "applied": applied_threads,
+            "supported_values": supported_thread_values,
             "effective_workers": applied_threads,
             "workload_size": tabs_total,
         },

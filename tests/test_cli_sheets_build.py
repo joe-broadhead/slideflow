@@ -110,6 +110,7 @@ def test_sheets_build_writes_success_json(tmp_path, monkeypatch):
     assert payload["status"] == "success"
     assert payload["runtime"]["threads"]["requested"] is None
     assert payload["runtime"]["threads"]["applied"] == 1
+    assert payload["runtime"]["threads"]["supported_values"] == [1]
     assert payload["runtime"]["threads"]["effective_workers"] == 1
     assert payload["runtime"]["threads"]["workload_size"] == 1
     assert payload["runtime"]["requests_per_second"]["requested"] is None
@@ -294,6 +295,7 @@ def test_sheets_build_runtime_overrides_are_reflected_in_json(tmp_path, monkeypa
     assert payload["runtime"]["threads"] == {
         "requested": 1,
         "applied": 1,
+        "supported_values": [1],
         "effective_workers": 1,
         "workload_size": 1,
     }
@@ -353,6 +355,7 @@ def test_sheets_build_applies_thread_cap_from_workload_and_emits_warning(
     assert payload["runtime"]["threads"] == {
         "requested": 4,
         "applied": 2,
+        "supported_values": [1, 2],
         "effective_workers": 2,
         "workload_size": 2,
     }

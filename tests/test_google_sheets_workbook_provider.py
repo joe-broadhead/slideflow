@@ -366,6 +366,57 @@ def test_write_append_rows_is_thread_safe_for_duplicate_run_keys():
     assert recorded == [("kpi_current", "wk_concurrent")]
 
 
+def test_provider_uses_thread_local_google_clients(monkeypatch):
+    provider = _provider_without_init()
+    provider._credentials = object()
+    provider._thread_local_services = threading.local()
+
+    created: List[Tuple[str, int]] = []
+    sequence = {"value": 0}
+
+    def _fake_build(api_name: str, _version: str, credentials: Any):
+        del credentials
+        sequence["value"] += 1
+        marker = sequence["value"]
+        created.append((api_name, marker))
+        return {"api": api_name, "marker": marker}
+
+    monkeypatch.setattr(sheets_provider_module, "build", _fake_build)
+
+    main_sheets_first = provider._sheets_api()
+    main_sheets_second = provider._sheets_api()
+    main_drive_first = provider._drive_api()
+    main_drive_second = provider._drive_api()
+
+    thread_results: Dict[str, Any] = {}
+
+    def _worker() -> None:
+        worker_sheets_first = provider._sheets_api()
+        worker_sheets_second = provider._sheets_api()
+        worker_drive_first = provider._drive_api()
+        worker_drive_second = provider._drive_api()
+        thread_results["sheets_first"] = worker_sheets_first
+        thread_results["sheets_second"] = worker_sheets_second
+        thread_results["drive_first"] = worker_drive_first
+        thread_results["drive_second"] = worker_drive_second
+
+    worker = threading.Thread(target=_worker)
+    worker.start()
+    worker.join()
+
+    assert main_sheets_first is main_sheets_second
+    assert main_drive_first is main_drive_second
+    assert thread_results["sheets_first"] is thread_results["sheets_second"]
+    assert thread_results["drive_first"] is thread_results["drive_second"]
+    assert main_sheets_first is not thread_results["sheets_first"]
+    assert main_drive_first is not thread_results["drive_first"]
+
+    assert created.count(("sheets", main_sheets_first["marker"])) == 1
+    assert created.count(("drive", main_drive_first["marker"])) == 1
+    assert created.count(("sheets", thread_results["sheets_first"]["marker"])) == 1
+    assert created.count(("drive", thread_results["drive_first"]["marker"])) == 1
+
+
 def test_run_preflight_checks_with_spreadsheet_and_folder_access():
     provider = _provider_without_init()
     provider.config = SimpleNamespace(
