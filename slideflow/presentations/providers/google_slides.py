@@ -641,9 +641,13 @@ class GoogleSlidesProvider(PresentationProvider):
                             supportsAllDrives=True,
                         )
                     )
-                    logger.info(f"Shared presentation with {email} as {role}")
+                    logger.info("Shared presentation with %s as %s", email, role)
             except HttpError as error:
-                logger.error(f"Error sharing presentation: {error}")
+                logger.error(
+                    "Error sharing presentation with requested recipients: %s",
+                    error,
+                    exc_info=True,
+                )
                 raise
 
     def _is_shared_drive_file(self, file_id: str) -> bool:
@@ -886,10 +890,10 @@ class GoogleSlidesProvider(PresentationProvider):
                 )
             )
             presentation_id = copied.get("id")
-            logger.info(f"Copied template to '{title}' with ID: {presentation_id}")
+            logger.info("Copied template to '%s' with ID: %s", title, presentation_id)
             return presentation_id
         except HttpError as error:
-            logger.error(f"Error copying template: {error}")
+            logger.error("Error copying template: %s", error, exc_info=True)
             raise
 
     def _upload_image_to_drive(
@@ -1002,7 +1006,7 @@ class GoogleSlidesProvider(PresentationProvider):
                     fileId=file_id, body=body, supportsAllDrives=True
                 )
             )
-            logger.info(f"Trashed chart image with file_id: {file_id}")
+            logger.info("Trashed chart image with file_id: %s", file_id)
         except HttpError as error:
             if error.resp.status == 403:
                 logger.warning(
@@ -1011,5 +1015,7 @@ class GoogleSlidesProvider(PresentationProvider):
                     "File remains in Drive."
                 )
             else:
-                logger.error(f"Error trashing file {file_id}: {error}")
+                logger.error(
+                    "Error trashing file %s: %s", file_id, error, exc_info=True
+                )
             # Do not re-raise, we want to continue cleanup

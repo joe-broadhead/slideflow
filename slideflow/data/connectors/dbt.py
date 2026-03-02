@@ -809,10 +809,13 @@ def _get_compiled_project(
                         )
                         shutil.copy2(src, dest)
                     else:
-                        logger.warning(f"profiles_dir path not found: {profiles_dir}")
-                except Exception as e:
+                        logger.warning("profiles_dir path not found: %s", profiles_dir)
+                except Exception as error:
                     logger.warning(
-                        f"Failed to prepare dbt profiles from {profiles_dir}: {e}"
+                        "Failed to prepare dbt profiles from %s: %s",
+                        profiles_dir,
+                        error,
+                        exc_info=True,
                     )
 
             runner_class = _require_dbt_runner_class()

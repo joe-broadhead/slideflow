@@ -52,7 +52,6 @@ Example:
 """
 
 import atexit
-import logging
 import re
 import uuid
 from abc import ABC, abstractmethod
@@ -71,8 +70,9 @@ from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 from slideflow.presentations.positioning import safe_eval_expression
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import ChartGenerationError
+from slideflow.utilities.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 _LIST_COLUMN_REF_PATTERN = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
 
 _CHART_EXPORT_EXECUTOR: Optional[ProcessPoolExecutor] = None
@@ -149,7 +149,8 @@ def _plotly_to_image(
         return kaleido.calc_fig_sync(fig.to_plotly_json(), opts=opts)
     except Exception:
         logger.debug(
-            "Direct Kaleido export failed; falling back to plotly.io.to_image."
+            "Direct Kaleido export failed; falling back to plotly.io.to_image.",
+            exc_info=True,
         )
         return pio.to_image(
             fig,
@@ -174,12 +175,19 @@ def _execute_with_retry(func, *args, **kwargs):
         executor = _get_chart_export_executor()
         try:
             logger.info(
-                f"[{execution_id}] Attempting execution of {func.__name__} (Attempt {i + 1}/{len(timeouts)}, timeout={timeout}s)"
+                "[%s] Attempting execution of %s (Attempt %s/%s, timeout=%ss)",
+                execution_id,
+                func.__name__,
+                i + 1,
+                len(timeouts),
+                timeout,
             )
             future = executor.submit(func, *args, **kwargs)
             result = future.result(timeout=timeout)
             logger.info(
-                f"[{execution_id}] Execution of {func.__name__} completed successfully"
+                "[%s] Execution of %s completed successfully",
+                execution_id,
+                func.__name__,
             )
             return result
         except TimeoutError:
@@ -187,8 +195,12 @@ def _execute_with_retry(func, *args, **kwargs):
             _reset_chart_export_executor()
 
             logger.warning(
-                f"[{execution_id}] Function {func.__name__} timed out after {timeout} seconds. Retrying... "
-                f"Attempt {i + 1} of {len(timeouts)}"
+                "[%s] Function %s timed out after %s seconds. Retrying... Attempt %s of %s",
+                execution_id,
+                func.__name__,
+                timeout,
+                i + 1,
+                len(timeouts),
             )
             continue
         except Exception:

@@ -1115,7 +1115,7 @@ class Presentation(BaseModel):
 
         results: List[Tuple[Any, Any]] = []
 
-        logger.info(f"Executing {len(items)} {task_name} tasks concurrently")
+        logger.info("Executing %s %s tasks concurrently", len(items), task_name)
 
         with ThreadPoolExecutor(max_workers=min(len(items), max_workers)) as executor:
             # Submit all tasks
@@ -1131,9 +1131,14 @@ class Presentation(BaseModel):
                     result = future.result()
                     if collect_results:
                         results.append((identifier, result))
-                    logger.debug(f"Successfully completed {task_name}: {identifier}")
-                except Exception as e:
-                    logger.error(f"Failed to execute {task_name} '{identifier}': {e}")
+                    logger.debug("Successfully completed %s: %s", task_name, identifier)
+                except Exception:
+                    logger.error(
+                        "Failed to execute %s '%s'",
+                        task_name,
+                        identifier,
+                        exc_info=True,
+                    )
                     raise
 
         return results if collect_results else []
