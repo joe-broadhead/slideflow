@@ -26,7 +26,9 @@ _PREFIX_STRATEGY = st.text(
 def test_dataframe_to_replacement_object_rectangular_matrix(data, prefix: str) -> None:
     rows = data.draw(st.integers(min_value=1, max_value=5))
     cols = data.draw(st.integers(min_value=1, max_value=5))
-    values = data.draw(st.lists(_VALUE_STRATEGY, min_size=rows * cols, max_size=rows * cols))
+    values = data.draw(
+        st.lists(_VALUE_STRATEGY, min_size=rows * cols, max_size=rows * cols)
+    )
 
     matrix = [values[row * cols : (row + 1) * cols] for row in range(rows)]
     df = pd.DataFrame(matrix)
@@ -42,7 +44,11 @@ def test_dataframe_to_replacement_object_rectangular_matrix(data, prefix: str) -
 
 
 @settings(max_examples=100, deadline=None)
-@given(values=st.lists(st.integers(min_value=-10_000, max_value=10_000), min_size=1, max_size=50))
+@given(
+    values=st.lists(
+        st.integers(min_value=-10_000, max_value=10_000), min_size=1, max_size=50
+    )
+)
 def test_apply_data_transforms_identity_preserves_values(values: list[int]) -> None:
     class _Frame:
         def __init__(self, data: list[int]):
@@ -79,6 +85,10 @@ def test_apply_data_transforms_identity_preserves_values(values: list[int]) -> N
     ),
     ndigits=st.integers(min_value=0, max_value=4),
 )
-def test_formatters_remain_stable_for_numeric_inputs(value: float, ndigits: int) -> None:
+def test_formatters_remain_stable_for_numeric_inputs(
+    value: float, ndigits: int
+) -> None:
     assert round_value(value, ndigits=ndigits) == round(value, ndigits)
-    assert percentage(value, ndigits=ndigits, from_ratio=False) == f"{value:.{ndigits}f}%"
+    assert (
+        percentage(value, ndigits=ndigits, from_ratio=False) == f"{value:.{ndigits}f}%"
+    )

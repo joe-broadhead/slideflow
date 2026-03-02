@@ -7,7 +7,9 @@ import slideflow.cli.commands.validate as validate_command_module
 
 def stub_build_validate_cli_output(monkeypatch) -> None:
     """Disable build/validate CLI rich output in tests."""
-    monkeypatch.setattr(build_command_module, "print_build_header", lambda *a, **k: None)
+    monkeypatch.setattr(
+        build_command_module, "print_build_header", lambda *a, **k: None
+    )
     monkeypatch.setattr(
         build_command_module, "print_build_progress", lambda *a, **k: None
     )
