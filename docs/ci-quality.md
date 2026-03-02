@@ -60,6 +60,14 @@
     - GitHub Actions versions (`github-actions`)
   - groups patch/minor updates to reduce PR noise
   - leaves major updates ungrouped for explicit review
+- `CodeQL` (`.github/workflows/codeql.yml`)
+  - runs static security analysis for Python on:
+    - pull requests to `master`/`main`
+    - pushes to `master`/`main`
+    - weekly scheduled scan
+    - manual dispatch
+  - uploads SARIF findings to GitHub code scanning
+  - uses least-privilege workflow permissions (`security-events: write`, `contents: read`, `actions: read`)
 
 ## Required local checks before PR
 
