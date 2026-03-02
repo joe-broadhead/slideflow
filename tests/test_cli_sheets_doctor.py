@@ -3,14 +3,7 @@ import json
 import pytest
 
 import slideflow.cli.commands.sheets as sheets_command_module
-
-
-def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(
-        sheets_command_module, "print_validation_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(sheets_command_module, "print_error", lambda *a, **k: None)
-    monkeypatch.setattr(sheets_command_module.typer, "echo", lambda *a, **k: None)
+from tests.cli_test_helpers import stub_sheets_cli_output
 
 
 def _write_minimal_workbook_config(config_file):
@@ -32,7 +25,7 @@ def _write_minimal_workbook_config(config_file):
 
 
 def test_sheets_doctor_writes_success_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     class _Provider:
         @staticmethod
@@ -66,7 +59,7 @@ def test_sheets_doctor_writes_success_json(tmp_path, monkeypatch):
 
 
 def test_sheets_doctor_strict_exits_on_error_check(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     class _Provider:
         @staticmethod
@@ -98,7 +91,7 @@ def test_sheets_doctor_strict_exits_on_error_check(tmp_path, monkeypatch):
 
 
 def test_sheets_doctor_writes_error_json_on_provider_exception(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
     monkeypatch.setattr(
         sheets_command_module.WorkbookProviderFactory,
         "create_provider",

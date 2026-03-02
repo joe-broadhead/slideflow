@@ -4,15 +4,7 @@ from pathlib import Path
 import pytest
 
 import slideflow.cli.commands.sheets as sheets_command_module
-
-
-def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(
-        sheets_command_module, "print_validation_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(sheets_command_module, "print_success", lambda *a, **k: None)
-    monkeypatch.setattr(sheets_command_module, "print_error", lambda *a, **k: None)
-    monkeypatch.setattr(sheets_command_module.typer, "echo", lambda *a, **k: None)
+from tests.cli_test_helpers import stub_sheets_cli_output
 
 
 def _write_minimal_workbook_config(
@@ -41,7 +33,7 @@ def _write_minimal_workbook_config(
 
 
 def test_sheets_validate_writes_success_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     config_file = tmp_path / "workbook.yaml"
     output_file = tmp_path / "sheets-validate.json"
@@ -61,7 +53,7 @@ def test_sheets_validate_writes_success_json(tmp_path, monkeypatch):
 
 
 def test_sheets_validate_counts_tab_local_ai_summaries(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     config_file = tmp_path / "workbook-with-summaries.yaml"
     output_file = tmp_path / "sheets-validate-with-summaries.json"
@@ -104,7 +96,7 @@ def test_sheets_validate_counts_tab_local_ai_summaries(tmp_path, monkeypatch):
 
 
 def test_sheets_validate_uses_registry_from_config(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     registry_file = tmp_path / "custom_registry.py"
     registry_file.write_text("function_registry = {}\n", encoding="utf-8")
@@ -124,7 +116,7 @@ def test_sheets_validate_uses_registry_from_config(tmp_path, monkeypatch):
 
 
 def test_sheets_validate_writes_error_json_on_invalid_config(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     config_file = tmp_path / "workbook-invalid.yaml"
     output_file = tmp_path / "sheets-validate-error.json"
@@ -160,7 +152,7 @@ def test_sheets_validate_writes_error_json_on_invalid_config(tmp_path, monkeypat
 def test_sheets_validate_writes_error_json_on_removed_workbook_summaries(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     config_file = tmp_path / "workbook-legacy.yaml"
     output_file = tmp_path / "sheets-validate-legacy-error.json"
@@ -196,7 +188,7 @@ def test_sheets_validate_writes_error_json_on_removed_workbook_summaries(
 
 
 def test_sheets_validate_rejects_summary_tab_without_target_tab(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     config_file = tmp_path / "workbook-missing-summary-target.yaml"
     output_file = tmp_path / "sheets-validate-missing-summary-target.json"
@@ -246,7 +238,7 @@ def test_sheets_validate_rejects_summary_tab_without_target_tab(tmp_path, monkey
 def test_sheets_validate_rejects_summary_tab_target_matching_source(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     config_file = tmp_path / "workbook-summary-tab-same-target.yaml"
     output_file = tmp_path / "sheets-validate-summary-tab-same-target.json"

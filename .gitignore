@@ -5,6 +5,7 @@
 .env*
 .venv
 .coverage
+.hypothesis/
 site/
 build/*
 dist/*

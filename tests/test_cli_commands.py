@@ -7,6 +7,7 @@ import pytest
 import slideflow.cli.commands.build as build_command_module
 import slideflow.cli.commands.validate as validate_command_module
 import slideflow.presentations.providers.factory as provider_factory_module
+from tests.cli_test_helpers import stub_build_validate_cli_output
 
 
 def _minimal_loader_config():
@@ -14,29 +15,6 @@ def _minimal_loader_config():
         "provider": {"type": "google_slides", "config": {}},
         "presentation": {"name": "Demo", "slides": []},
     }
-
-
-def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(
-        build_command_module, "print_build_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(
-        build_command_module, "print_build_progress", lambda *a, **k: None
-    )
-    monkeypatch.setattr(
-        build_command_module, "print_build_success", lambda *a, **k: None
-    )
-    monkeypatch.setattr(build_command_module, "print_build_error", lambda *a, **k: None)
-    monkeypatch.setattr(build_command_module.time, "sleep", lambda *_: None)
-
-    monkeypatch.setattr(
-        validate_command_module, "print_validation_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(validate_command_module, "print_success", lambda *a, **k: None)
-    monkeypatch.setattr(
-        validate_command_module, "print_config_summary", lambda *a, **k: None
-    )
-    monkeypatch.setattr(validate_command_module, "print_error", lambda *a, **k: None)
 
 
 def _stub_presentation_validation(monkeypatch):
@@ -209,7 +187,7 @@ def test_create_google_contract_check_client_falls_back_to_provider(monkeypatch)
 def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
 
     monkeypatch.chdir(tmp_path)
@@ -257,7 +235,7 @@ def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
 
 
 def test_build_fails_when_params_csv_has_no_rows(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
@@ -283,7 +261,7 @@ def test_build_fails_when_params_csv_has_no_rows(tmp_path, monkeypatch):
 
 
 def test_build_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
 
     monkeypatch.chdir(tmp_path)
@@ -321,7 +299,7 @@ def test_build_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
 def test_validate_uses_empty_registry_default_when_registry_file_is_missing(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
 
     monkeypatch.chdir(tmp_path)
@@ -353,7 +331,7 @@ def test_validate_uses_empty_registry_default_when_registry_file_is_missing(
 
 
 def test_validate_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
 
     monkeypatch.chdir(tmp_path)
@@ -386,7 +364,7 @@ def test_validate_uses_registry_from_yaml_when_provided(tmp_path, monkeypatch):
 
 
 def test_validate_calls_deep_slide_validation(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = object()
     monkeypatch.setattr(
@@ -428,7 +406,7 @@ def test_validate_calls_deep_slide_validation(tmp_path, monkeypatch):
 
 
 def test_validate_fails_when_deep_slide_validation_fails(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     monkeypatch.setattr(
         validate_command_module,
@@ -473,7 +451,7 @@ def test_validate_fails_when_deep_slide_validation_fails(tmp_path, monkeypatch):
 
 
 def test_build_dry_run_fails_when_deep_slide_validation_fails(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     monkeypatch.setattr(
         build_command_module,
@@ -521,7 +499,7 @@ def test_build_dry_run_fails_when_deep_slide_validation_fails(tmp_path, monkeypa
 
 
 def test_validate_writes_output_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
@@ -553,7 +531,7 @@ def test_validate_writes_output_json(tmp_path, monkeypatch):
 
 
 def test_build_dry_run_writes_output_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     _stub_presentation_validation(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
@@ -589,7 +567,7 @@ def test_build_dry_run_writes_output_json(tmp_path, monkeypatch):
 
 
 def test_build_error_writes_output_json_with_error_code(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     config_file = tmp_path / "config.yaml"
     params_path = tmp_path / "params.csv"
@@ -620,7 +598,7 @@ def test_build_error_writes_output_json_with_error_code(tmp_path, monkeypatch):
 
 
 def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
     config_file = tmp_path / "config.yaml"
@@ -695,7 +673,7 @@ def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
 
 
 def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="slide-contract",
@@ -820,7 +798,7 @@ def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypa
 
 
 def test_validate_provider_contract_check_writes_failure_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="slide-contract",
@@ -921,7 +899,7 @@ def test_validate_provider_contract_check_writes_failure_json(tmp_path, monkeypa
 def test_validate_provider_contract_check_requires_google_provider(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     monkeypatch.setattr(
         validate_command_module,
@@ -984,7 +962,7 @@ def test_validate_provider_contract_check_requires_google_provider(
 def test_validate_provider_contract_check_merges_duplicate_slide_ids(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     first_slide_spec = types.SimpleNamespace(
         id="slide-contract",
@@ -1103,7 +1081,7 @@ def test_validate_provider_contract_check_merges_duplicate_slide_ids(
 
 
 def test_validate_provider_contract_check_google_docs_success(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1220,7 +1198,7 @@ def test_validate_provider_contract_check_google_docs_success(tmp_path, monkeypa
 def test_validate_provider_contract_check_google_docs_ignores_toc_markers(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1344,7 +1322,7 @@ def test_validate_provider_contract_check_google_docs_ignores_toc_markers(
 def test_validate_provider_contract_check_google_docs_does_not_stitch_split_markers(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1452,7 +1430,7 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_mark
 def test_validate_provider_contract_check_google_docs_does_not_stitch_split_placeholders(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1560,7 +1538,7 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_plac
 def test_validate_provider_contract_check_google_docs_missing_section_marker(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1670,7 +1648,7 @@ def test_validate_provider_contract_check_google_docs_missing_section_marker(
 def test_validate_provider_contract_check_google_docs_duplicate_marker(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1782,7 +1760,7 @@ def test_validate_provider_contract_check_google_docs_duplicate_marker(
 def test_validate_provider_contract_check_google_docs_missing_placeholder(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",

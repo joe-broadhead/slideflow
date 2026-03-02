@@ -12,6 +12,7 @@
    - CLI command behavior
    - config/registry utilities
    - chart/template/replacement behavior
+   - property-based invariants for data transforms/formatting edge cases
 2. Integration tests (`@pytest.mark.integration`)
    - cross-module workflows with controlled fixtures/mocks
 3. End-to-end tests (`@pytest.mark.e2e`)
