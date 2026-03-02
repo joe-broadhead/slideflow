@@ -3,6 +3,7 @@ import pytest
 
 import slideflow.replacements.ai_text as ai_text_module
 from slideflow.replacements.ai_text import AITextReplacement
+from slideflow.replacements.base import BaseReplacement
 from slideflow.replacements.table import (
     TableColumnFormatter,
     TableFormattingOptions,
@@ -261,3 +262,20 @@ def test_ai_text_replacement_data_context_and_transform_failure_fallback(monkeyp
         == 'Summary unable to be generated as data source "sales" was not available'
     )
     assert warning_calls
+
+
+def test_base_replacement_compatibility_fallbacks():
+    class LegacyReplacement(BaseReplacement):
+        type: str = "legacy"
+        placeholder: str = "{{LEGACY}}"
+        prefix: str = "LEGACY_"
+        data_source: object = object()
+
+        @staticmethod
+        def get_replacement():
+            return "value"
+
+    replacement = LegacyReplacement()
+    assert replacement.get_referenced_data_sources() == [replacement.data_source]
+    assert replacement.replacement_delay_seconds() >= 0
+    assert replacement.to_placeholder_values("ok") == [("{{LEGACY}}", "ok")]

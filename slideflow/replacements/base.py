@@ -134,7 +134,12 @@ class BaseReplacement(BaseModel, ABC):
         use one or more data sources should override this to expose them for
         prefetch/citation orchestration without structural attribute checks.
         """
-        return []
+        source = getattr(self, "data_source", None)
+        if source is None:
+            return []
+        if isinstance(source, list):
+            return list(source)
+        return [source]
 
     def replacement_delay_seconds(self) -> float:
         """Return optional delay before each placeholder write.
@@ -142,6 +147,11 @@ class BaseReplacement(BaseModel, ABC):
         Most replacement types do not require throttling and return 0.0.
         Table replacements can override this to preserve conservative API pacing.
         """
+        if hasattr(self, "prefix"):
+            # Compatibility fallback for custom table-like replacements.
+            from slideflow.constants import Timing
+
+            return float(Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S)
         return 0.0
 
     def apply_data_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
