@@ -872,7 +872,7 @@ class GoogleDocsProvider(PresentationProvider):
                     fileId=file_id, body={"trashed": True}, supportsAllDrives=True
                 )
             )
-            logger.info(f"Trashed chart image with file_id: {file_id}")
+            logger.info("Trashed chart image with file_id: %s", file_id)
         except HttpError as error:
             status = getattr(getattr(error, "resp", None), "status", None)
             if status == 403:
