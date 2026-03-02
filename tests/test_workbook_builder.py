@@ -1,3 +1,5 @@
+import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -242,6 +244,105 @@ def test_workbook_builder_collects_tab_errors_without_aborting(tmp_path, monkeyp
         "failing_tab",
     ]
     assert result.tab_results[1].error == "tab write failed"
+
+
+def test_workbook_builder_uses_multiple_workers_for_tabs(tmp_path, monkeypatch):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["tabs"].append(
+        {
+            "name": "kpi_secondary",
+            "mode": "replace",
+            "start_cell": "A1",
+            "include_header": True,
+            "data_source": {
+                "type": "csv",
+                "name": "kpi_source_2",
+                "file_path": str(csv_path),
+            },
+        }
+    )
+    config = WorkbookConfig.model_validate(payload)
+
+    class _ConcurrentProvider(_FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self._active = 0
+            self.max_active = 0
+            self._active_lock = threading.Lock()
+            self._barrier = threading.Barrier(2, timeout=2)
+
+        def write_replace_rows(self, workbook_id, tab_name, start_cell, rows):
+            with self._active_lock:
+                self._active += 1
+                self.max_active = max(self.max_active, self._active)
+            try:
+                self._barrier.wait()
+                return super().write_replace_rows(
+                    workbook_id, tab_name, start_cell, rows
+                )
+            finally:
+                with self._active_lock:
+                    self._active -= 1
+
+    concurrent_provider = _ConcurrentProvider()
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: concurrent_provider),
+    )
+
+    result = WorkbookBuilder.from_config(config).build(threads=2)
+
+    assert result.status == "success"
+    assert result.tabs_succeeded == 2
+    assert concurrent_provider.max_active >= 2
+
+
+def test_workbook_builder_parallel_execution_preserves_tab_result_order(
+    tmp_path, monkeypatch
+):
+    csv_path = tmp_path / "kpi.csv"
+    csv_path.write_text("month,value\nJan,10\n", encoding="utf-8")
+    payload = _workbook_payload(csv_path)
+    payload["workbook"]["tabs"].append(
+        {
+            "name": "kpi_secondary",
+            "mode": "replace",
+            "start_cell": "A1",
+            "include_header": True,
+            "data_source": {
+                "type": "csv",
+                "name": "kpi_source_2",
+                "file_path": str(csv_path),
+            },
+        }
+    )
+    config = WorkbookConfig.model_validate(payload)
+
+    class _OrderedProvider(_FakeProvider):
+        def write_replace_rows(self, workbook_id, tab_name, start_cell, rows):
+            if tab_name == "kpi_current":
+                time.sleep(0.05)
+            else:
+                time.sleep(0.01)
+            return super().write_replace_rows(workbook_id, tab_name, start_cell, rows)
+
+    ordered_provider = _OrderedProvider()
+    monkeypatch.setattr(
+        workbook_builder_module.WorkbookProviderFactory,
+        "create_provider",
+        staticmethod(lambda _config: ordered_provider),
+    )
+
+    result = WorkbookBuilder.from_config(config).build(threads=2)
+
+    assert result.status == "success"
+    assert [tab.tab_name for tab in result.tab_results] == [
+        "kpi_current",
+        "kpi_secondary",
+    ]
 
 
 def test_workbook_builder_append_mode_tracks_idempotent_skips(tmp_path, monkeypatch):

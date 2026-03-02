@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -224,9 +225,7 @@ class WorkbookBuilder:
         self,
         workbook_id: str,
         tab: Any,
-        tab_dataframes: Dict[str, Any],
-        tab_write_bounds: Dict[str, tuple[int, int, int, int]],
-    ) -> WorkbookTabResult:
+    ) -> tuple[WorkbookTabResult, Any, tuple[int, int, int, int] | None]:
         """Build a single workbook tab and return its result payload."""
         df = tab.data_source.fetch_data()
         df = apply_data_transforms(tab.data_transforms, df)
@@ -259,17 +258,21 @@ class WorkbookBuilder:
             )
 
         bounds = _rows_to_bounds(tab.start_cell, rows)
-        tab_dataframes[tab.name] = df
+        replace_bounds: tuple[int, int, int, int] | None = None
         if tab.mode == "replace" and bounds is not None:
-            tab_write_bounds[tab.name] = bounds
+            replace_bounds = bounds
 
-        return WorkbookTabResult(
-            tab_name=tab.name,
-            mode=tab.mode,
-            status="success",
-            rows_written=data_rows_written,
-            rows_skipped=rows_skipped_payload,
-            run_key=run_key,
+        return (
+            WorkbookTabResult(
+                tab_name=tab.name,
+                mode=tab.mode,
+                status="success",
+                rows_written=data_rows_written,
+                rows_skipped=rows_skipped_payload,
+                run_key=run_key,
+            ),
+            df,
+            replace_bounds,
         )
 
     @staticmethod
@@ -424,23 +427,30 @@ class WorkbookBuilder:
         )
         return "error" if has_errors else "success"
 
-    def build(self) -> WorkbookBuildResult:
+    def build(self, threads: int = 1) -> WorkbookBuildResult:
         workbook_id = self.provider.create_or_open_workbook(self.config.workbook.title)
         tab_results: List[WorkbookTabResult] = []
         summary_results: List[WorkbookSummaryResult] = []
         tab_dataframes: Dict[str, Any] = {}
         tab_write_bounds: Dict[str, tuple[int, int, int, int]] = {}
+        tab_specs = self.config.workbook.tabs
+        requested_workers = max(1, int(threads))
+        max_workers = min(requested_workers, len(tab_specs))
 
-        for tab in self.config.workbook.tabs:
+        indexed_tab_results: Dict[int, WorkbookTabResult] = {}
+        indexed_tab_dataframes: Dict[int, Any] = {}
+        indexed_tab_bounds: Dict[int, tuple[int, int, int, int]] = {}
+
+        def _run_single_tab(index: int, tab: Any) -> None:
             try:
-                tab_results.append(
-                    self._build_tab_result(
-                        workbook_id=workbook_id,
-                        tab=tab,
-                        tab_dataframes=tab_dataframes,
-                        tab_write_bounds=tab_write_bounds,
-                    )
+                result, df, bounds = self._build_tab_result(
+                    workbook_id=workbook_id,
+                    tab=tab,
                 )
+                indexed_tab_results[index] = result
+                indexed_tab_dataframes[index] = df
+                if bounds is not None:
+                    indexed_tab_bounds[index] = bounds
             except Exception as error:
                 error_message = safe_error_line(error)
                 logger.error(
@@ -448,14 +458,34 @@ class WorkbookBuilder:
                     tab.name,
                     error_message,
                 )
-                tab_results.append(
-                    WorkbookTabResult(
-                        tab_name=tab.name,
-                        mode=tab.mode,
-                        status="error",
-                        error=error_message,
-                    )
+                indexed_tab_results[index] = WorkbookTabResult(
+                    tab_name=tab.name,
+                    mode=tab.mode,
+                    status="error",
+                    error=error_message,
                 )
+
+        if max_workers == 1:
+            for index, tab in enumerate(tab_specs):
+                _run_single_tab(index, tab)
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(_run_single_tab, index, tab)
+                    for index, tab in enumerate(tab_specs)
+                ]
+                for future in as_completed(futures):
+                    future.result()
+
+        for index, tab in enumerate(tab_specs):
+            result = indexed_tab_results[index]
+            tab_results.append(result)
+            if result.status != "success":
+                continue
+            tab_dataframes[tab.name] = indexed_tab_dataframes[index]
+            bounds = indexed_tab_bounds.get(index)
+            if bounds is not None:
+                tab_write_bounds[tab.name] = bounds
 
         summary_specs = self.config.workbook.iter_summary_specs()
         for summary in summary_specs:

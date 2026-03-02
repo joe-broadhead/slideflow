@@ -93,6 +93,13 @@ workbook:
   - requires `include_header: false`
   - dedupe is tracked in reserved tab `_slideflow_meta`
 
+Concurrency notes:
+
+- `slideflow sheets build --threads <n>` parallelizes tab operations with a
+  bounded worker pool.
+- Append-mode dedupe reservation (`_slideflow_meta`) is synchronized per
+  workbook to prevent duplicate run-key writes under concurrency.
+
 ## Summary Semantics
 
 - Summaries are authored per-tab under `tabs[].ai.summaries[]`.
@@ -165,9 +172,6 @@ slideflow sheets doctor workbook.yml --strict --output-json sheets-doctor.json
 slideflow sheets build workbook.yml --rps 1.2 --output-json sheets-build.json
 slideflow sheets build workbook.yml --threads 3 --output-json sheets-build.json
 ```
-
-`--threads` is accepted for reusable-workflow parity and currently normalizes to
-`1` (sequential workbook execution).
 
 Build JSON includes:
 

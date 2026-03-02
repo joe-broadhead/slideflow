@@ -83,12 +83,15 @@ def _runtime_controls_payload(
     warnings: List[str] = []
     provider_config = workbook_config.provider.config
 
+    tabs_total = len(workbook_config.workbook.tabs)
+    supported_thread_values = list(range(1, max(1, tabs_total) + 1))
     requested_threads = threads
-    applied_threads = 1
-    if requested_threads is not None and requested_threads != 1:
+    configured_threads = requested_threads if requested_threads is not None else 1
+    applied_threads = max(1, min(configured_threads, tabs_total))
+    if requested_threads is not None and requested_threads > tabs_total:
         warnings.append(
-            "Sheets builds currently run sequentially; --threads was normalized "
-            "to 1."
+            f"Requested --threads={requested_threads} exceeds workbook tab count "
+            f"({tabs_total}); applying {applied_threads} worker(s)."
         )
 
     requested_rps = requests_per_second
@@ -103,7 +106,9 @@ def _runtime_controls_payload(
         "threads": {
             "requested": requested_threads,
             "applied": applied_threads,
-            "supported_values": [1],
+            "supported_values": supported_thread_values,
+            "effective_workers": applied_threads,
+            "workload_size": tabs_total,
         },
         "requests_per_second": {
             "requested": requested_rps,
@@ -199,7 +204,7 @@ def sheets_build_command(
             "--threads",
             "-t",
             min=1,
-            help="Workbook worker count (Sheets currently supports only 1).",
+            help="Workbook tab worker count (parallel tab execution).",
         ),
     ] = None,
     requests_per_second: Annotated[
@@ -240,7 +245,7 @@ def sheets_build_command(
         builder = WorkbookBuilder.from_config(
             config=workbook_config,
         )
-        result = builder.build()
+        result = builder.build(threads=int(runtime_controls["threads"]["applied"]))
         summary = {
             "workbook_id": result.workbook_id,
             "workbook_url": result.workbook_url,
@@ -488,7 +493,7 @@ def sheets_build(
             "--threads",
             "-t",
             min=1,
-            help="Workbook worker count (Sheets currently supports only 1).",
+            help="Workbook tab worker count (parallel tab execution).",
         ),
     ] = None,
     requests_per_second: Annotated[

@@ -96,17 +96,73 @@ class GoogleSheetsProvider(WorkbookProvider):
             loaded_credentials, self.SCOPES, credentials_cls=Credentials
         )
 
+        self._credentials = credentials
+        self._thread_local_services = threading.local()
+
+        # Preserve existing attributes for compatibility and preflight checks.
         self.sheets_service = build("sheets", "v4", credentials=credentials)
         self.drive_service = build("drive", "v3", credentials=credentials)
+        self._thread_local_services.sheets_service = self.sheets_service
+        self._thread_local_services.drive_service = self.drive_service
         self.rate_limiter = _get_rate_limiter(self.config.requests_per_second)
         self._run_key_cache: Dict[str, Set[Tuple[str, str]]] = {}
+        self._workbook_locks: Dict[str, threading.RLock] = {}
+        self._workbook_locks_guard = threading.Lock()
 
     def _execute_request(self, request):
         """Execute Google API request with shared rate limiting."""
         return execute_rate_limited_request(request, self.rate_limiter, num_retries=3)
 
+    def _workbook_lock(self, workbook_id: str) -> threading.RLock:
+        """Return a per-workbook lock for append/idempotency critical sections."""
+        # Keep compatibility with tests that bypass __init__ via object.__new__.
+        if not hasattr(self, "_workbook_locks"):
+            self._workbook_locks = {}
+        if not hasattr(self, "_workbook_locks_guard"):
+            self._workbook_locks_guard = threading.Lock()
+
+        with self._workbook_locks_guard:
+            if workbook_id not in self._workbook_locks:
+                self._workbook_locks[workbook_id] = threading.RLock()
+            return self._workbook_locks[workbook_id]
+
+    def _sheets_api(self):
+        """Return a thread-local Sheets client, falling back to legacy attributes."""
+        if not hasattr(self, "_thread_local_services") or not hasattr(
+            self, "_credentials"
+        ):
+            sheets_service = getattr(self, "sheets_service", None)
+            if sheets_service is None:
+                raise RenderingError("Google Sheets API client is not initialized")
+            return sheets_service
+
+        sheets_service = getattr(self._thread_local_services, "sheets_service", None)
+        if sheets_service is None:
+            sheets_service = build("sheets", "v4", credentials=self._credentials)
+            self._thread_local_services.sheets_service = sheets_service
+        return sheets_service
+
+    def _drive_api(self):
+        """Return a thread-local Drive client, falling back to legacy attributes."""
+        if not hasattr(self, "_thread_local_services") or not hasattr(
+            self, "_credentials"
+        ):
+            drive_service = getattr(self, "drive_service", None)
+            if drive_service is None:
+                raise RenderingError("Google Drive API client is not initialized")
+            return drive_service
+
+        drive_service = getattr(self._thread_local_services, "drive_service", None)
+        if drive_service is None:
+            drive_service = build("drive", "v3", credentials=self._credentials)
+            self._thread_local_services.drive_service = drive_service
+        return drive_service
+
     def _base_preflight_checks(self) -> List[Tuple[str, bool, str]]:
         """Return credential/service/rate-limiter baseline preflight checks."""
+        sheets_service = getattr(self, "sheets_service", None)
+        drive_service = getattr(self, "drive_service", None)
+        rate_limiter = getattr(self, "rate_limiter", None)
         has_credentials = bool(self.config.credentials) or bool(
             os.getenv(Environment.GOOGLE_SHEETS_CREDENTIALS)
             or os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
@@ -123,28 +179,28 @@ class GoogleSheetsProvider(WorkbookProvider):
             ),
             (
                 "sheets_service_initialized",
-                self.sheets_service is not None,
+                sheets_service is not None,
                 (
                     "Google Sheets API client initialized"
-                    if self.sheets_service is not None
+                    if sheets_service is not None
                     else "Google Sheets API client is not initialized"
                 ),
             ),
             (
                 "drive_service_initialized",
-                self.drive_service is not None,
+                drive_service is not None,
                 (
                     "Google Drive API client initialized"
-                    if self.drive_service is not None
+                    if drive_service is not None
                     else "Google Drive API client is not initialized"
                 ),
             ),
             (
                 "rate_limiter_initialized",
-                self.rate_limiter is not None,
+                rate_limiter is not None,
                 (
                     f"Rate limiter configured at {self.config.requests_per_second} rps"
-                    if self.rate_limiter is not None
+                    if rate_limiter is not None
                     else "Rate limiter is not initialized"
                 ),
             ),
@@ -153,8 +209,9 @@ class GoogleSheetsProvider(WorkbookProvider):
     def _spreadsheet_access_check(self) -> Tuple[str, bool, str]:
         """Verify that configured spreadsheet_id is readable."""
         try:
+            sheets_api = self._sheets_api()
             response = self._execute_request(
-                self.sheets_service.spreadsheets().get(
+                sheets_api.spreadsheets().get(
                     spreadsheetId=self.config.spreadsheet_id,
                     fields="spreadsheetId,properties/title",
                 )
@@ -179,8 +236,9 @@ class GoogleSheetsProvider(WorkbookProvider):
     def _spreadsheet_write_access_check(self) -> Tuple[str, bool, str]:
         """Verify that configured spreadsheet_id is writable via Drive."""
         try:
+            drive_api = self._drive_api()
             write_response = self._execute_request(
-                self.drive_service.files().get(
+                drive_api.files().get(
                     fileId=self.config.spreadsheet_id,
                     fields="id,trashed,capabilities(canEdit)",
                     supportsAllDrives=True,
@@ -221,8 +279,9 @@ class GoogleSheetsProvider(WorkbookProvider):
     def _drive_folder_access_checks(self) -> List[Tuple[str, bool, str]]:
         """Verify that configured drive_folder_id exists and is writable."""
         try:
+            drive_api = self._drive_api()
             response = self._execute_request(
-                self.drive_service.files().get(
+                drive_api.files().get(
                     fileId=self.config.drive_folder_id,
                     fields="id,mimeType,name,trashed,capabilities(canAddChildren,canEdit)",
                     supportsAllDrives=True,
@@ -282,11 +341,20 @@ class GoogleSheetsProvider(WorkbookProvider):
 
     def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
         checks = self._base_preflight_checks()
-        if self.sheets_service is not None and self.config.spreadsheet_id:
+        if (
+            getattr(self, "sheets_service", None) is not None
+            and self.config.spreadsheet_id
+        ):
             checks.append(self._spreadsheet_access_check())
-        if self.drive_service is not None and self.config.spreadsheet_id:
+        if (
+            getattr(self, "drive_service", None) is not None
+            and self.config.spreadsheet_id
+        ):
             checks.append(self._spreadsheet_write_access_check())
-        if self.drive_service is not None and self.config.drive_folder_id:
+        if (
+            getattr(self, "drive_service", None) is not None
+            and self.config.drive_folder_id
+        ):
             checks.extend(self._drive_folder_access_checks())
         return checks
 
@@ -296,9 +364,10 @@ class GoogleSheetsProvider(WorkbookProvider):
 
         spreadsheet_id = ""
         created_via_sheets_api = False
+        sheets_api = self._sheets_api()
         try:
             response = self._execute_request(
-                self.sheets_service.spreadsheets().create(
+                sheets_api.spreadsheets().create(
                     body={"properties": {"title": title}},
                     fields="spreadsheetId",
                 )
@@ -330,8 +399,9 @@ class GoogleSheetsProvider(WorkbookProvider):
         return spreadsheet_id
 
     def _create_sheet_in_folder_via_drive(self, title: str, folder_id: str) -> str:
+        drive_api = self._drive_api()
         response = self._execute_request(
-            self.drive_service.files().create(
+            drive_api.files().create(
                 body={
                     "name": title,
                     "mimeType": "application/vnd.google-apps.spreadsheet",
@@ -349,8 +419,9 @@ class GoogleSheetsProvider(WorkbookProvider):
         return spreadsheet_id
 
     def _move_file_to_folder(self, file_id: str, folder_id: str) -> None:
+        drive_api = self._drive_api()
         metadata = self._execute_request(
-            self.drive_service.files().get(
+            drive_api.files().get(
                 fileId=file_id,
                 fields="parents",
                 supportsAllDrives=True,
@@ -365,15 +436,16 @@ class GoogleSheetsProvider(WorkbookProvider):
         }
         if parents:
             request_kwargs["removeParents"] = ",".join(parents)
-        self._execute_request(self.drive_service.files().update(**request_kwargs))
+        self._execute_request(drive_api.files().update(**request_kwargs))
 
     def _sheet_range(self, tab_name: str, range_part: str) -> str:
         escaped_tab_name = tab_name.replace("'", "''")
         return f"'{escaped_tab_name}'!{range_part}"
 
     def _fetch_sheet_titles(self, workbook_id: str) -> Dict[str, int]:
+        sheets_api = self._sheets_api()
         response = self._execute_request(
-            self.sheets_service.spreadsheets().get(
+            sheets_api.spreadsheets().get(
                 spreadsheetId=workbook_id,
                 fields="sheets(properties(sheetId,title))",
             )
@@ -395,8 +467,9 @@ class GoogleSheetsProvider(WorkbookProvider):
         titles = self._fetch_sheet_titles(workbook_id)
         if tab_name in titles:
             return
+        sheets_api = self._sheets_api()
         self._execute_request(
-            self.sheets_service.spreadsheets().batchUpdate(
+            sheets_api.spreadsheets().batchUpdate(
                 spreadsheetId=workbook_id,
                 body={"requests": [{"addSheet": {"properties": {"title": tab_name}}}]},
             )
@@ -404,9 +477,10 @@ class GoogleSheetsProvider(WorkbookProvider):
 
     def _ensure_metadata_tab(self, workbook_id: str) -> None:
         titles = self._fetch_sheet_titles(workbook_id)
+        sheets_api = self._sheets_api()
         if RESERVED_METADATA_TAB not in titles:
             self._execute_request(
-                self.sheets_service.spreadsheets().batchUpdate(
+                sheets_api.spreadsheets().batchUpdate(
                     spreadsheetId=workbook_id,
                     body={
                         "requests": [
@@ -422,7 +496,7 @@ class GoogleSheetsProvider(WorkbookProvider):
 
         header_range = self._sheet_range(RESERVED_METADATA_TAB, "A1:D1")
         self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .update(
                 spreadsheetId=workbook_id,
@@ -437,9 +511,10 @@ class GoogleSheetsProvider(WorkbookProvider):
             return self._run_key_cache[workbook_id]
 
         self._ensure_metadata_tab(workbook_id)
+        sheets_api = self._sheets_api()
         metadata_range = self._sheet_range(RESERVED_METADATA_TAB, "A2:B")
         response = self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .get(
                 spreadsheetId=workbook_id,
@@ -466,8 +541,9 @@ class GoogleSheetsProvider(WorkbookProvider):
     ) -> None:
         metadata_range = self._sheet_range(RESERVED_METADATA_TAB, "A1")
         recorded_at = datetime.now(timezone.utc).isoformat()
+        sheets_api = self._sheets_api()
         self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .append(
                 spreadsheetId=workbook_id,
@@ -485,8 +561,9 @@ class GoogleSheetsProvider(WorkbookProvider):
         self, workbook_id: str, tab_name: str, run_key: str
     ) -> None:
         metadata_range = self._sheet_range(RESERVED_METADATA_TAB, "A2:B")
+        sheets_api = self._sheets_api()
         response = self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .get(
                 spreadsheetId=workbook_id,
@@ -506,7 +583,7 @@ class GoogleSheetsProvider(WorkbookProvider):
                 RESERVED_METADATA_TAB, f"A{row_number}:D{row_number}"
             )
             self._execute_request(
-                self.sheets_service.spreadsheets()
+                sheets_api.spreadsheets()
                 .values()
                 .clear(
                     spreadsheetId=workbook_id,
@@ -524,9 +601,10 @@ class GoogleSheetsProvider(WorkbookProvider):
     ) -> int:
         self._ensure_sheet_exists(workbook_id, tab_name)
 
+        sheets_api = self._sheets_api()
         clear_range = self._sheet_range(tab_name, "A:ZZZ")
         self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .clear(
                 spreadsheetId=workbook_id,
@@ -540,7 +618,7 @@ class GoogleSheetsProvider(WorkbookProvider):
 
         target_range = self._sheet_range(tab_name, start_cell)
         self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .update(
                 spreadsheetId=workbook_id,
@@ -559,49 +637,54 @@ class GoogleSheetsProvider(WorkbookProvider):
         rows: List[List[Any]],
         run_key: str,
     ) -> Tuple[int, int]:
-        self._ensure_sheet_exists(workbook_id, tab_name)
-        run_keys = self._load_run_key_cache(workbook_id)
-        dedupe_key = (tab_name, run_key)
-        if dedupe_key in run_keys:
-            return 0, len(rows)
+        workbook_lock = self._workbook_lock(workbook_id)
+        with workbook_lock:
+            self._ensure_sheet_exists(workbook_id, tab_name)
+            run_keys = self._load_run_key_cache(workbook_id)
+            dedupe_key = (tab_name, run_key)
+            if dedupe_key in run_keys:
+                return 0, len(rows)
 
-        # Reserve the run key first so retries won't duplicate append writes.
-        self._record_run_key(
-            workbook_id=workbook_id,
-            tab_name=tab_name,
-            run_key=run_key,
-            rows_written=len(rows),
-        )
+            # Reserve the run key first so retries won't duplicate append writes.
+            self._record_run_key(
+                workbook_id=workbook_id,
+                tab_name=tab_name,
+                run_key=run_key,
+                rows_written=len(rows),
+            )
 
-        try:
-            if rows:
-                target_range = self._sheet_range(tab_name, start_cell)
-                self._execute_request(
-                    self.sheets_service.spreadsheets()
-                    .values()
-                    .append(
-                        spreadsheetId=workbook_id,
-                        range=target_range,
-                        valueInputOption="RAW",
-                        insertDataOption="INSERT_ROWS",
-                        body={"values": rows},
-                    )
-                )
-        except Exception:
             try:
-                self._remove_run_key_record(workbook_id, tab_name, run_key)
-                self._run_key_cache.setdefault(workbook_id, set()).discard(dedupe_key)
-            except Exception as cleanup_error:
-                logger.error(
-                    "Failed to clean up reserved run key after append failure "
-                    "(workbook_id=%s, tab=%s, run_key=%s): %s",
-                    workbook_id,
-                    tab_name,
-                    run_key,
-                    cleanup_error,
-                )
-            raise
-        return len(rows), 0
+                if rows:
+                    sheets_api = self._sheets_api()
+                    target_range = self._sheet_range(tab_name, start_cell)
+                    self._execute_request(
+                        sheets_api.spreadsheets()
+                        .values()
+                        .append(
+                            spreadsheetId=workbook_id,
+                            range=target_range,
+                            valueInputOption="RAW",
+                            insertDataOption="INSERT_ROWS",
+                            body={"values": rows},
+                        )
+                    )
+            except Exception:
+                try:
+                    self._remove_run_key_record(workbook_id, tab_name, run_key)
+                    self._run_key_cache.setdefault(workbook_id, set()).discard(
+                        dedupe_key
+                    )
+                except Exception as cleanup_error:
+                    logger.error(
+                        "Failed to clean up reserved run key after append failure "
+                        "(workbook_id=%s, tab=%s, run_key=%s): %s",
+                        workbook_id,
+                        tab_name,
+                        run_key,
+                        cleanup_error,
+                    )
+                raise
+            return len(rows), 0
 
     def write_summary_text(
         self,
@@ -612,10 +695,11 @@ class GoogleSheetsProvider(WorkbookProvider):
         clear_range: str | None = None,
     ) -> None:
         self._ensure_sheet_exists(workbook_id, tab_name)
+        sheets_api = self._sheets_api()
 
         if clear_range:
             self._execute_request(
-                self.sheets_service.spreadsheets()
+                sheets_api.spreadsheets()
                 .values()
                 .clear(
                     spreadsheetId=workbook_id,
@@ -625,7 +709,7 @@ class GoogleSheetsProvider(WorkbookProvider):
             )
 
         self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .update(
                 spreadsheetId=workbook_id,
@@ -642,8 +726,9 @@ class GoogleSheetsProvider(WorkbookProvider):
         anchor_cell: str,
     ) -> str | None:
         self._ensure_sheet_exists(workbook_id, tab_name)
+        sheets_api = self._sheets_api()
         response = self._execute_request(
-            self.sheets_service.spreadsheets()
+            sheets_api.spreadsheets()
             .values()
             .get(
                 spreadsheetId=workbook_id,
@@ -660,6 +745,7 @@ class GoogleSheetsProvider(WorkbookProvider):
         if not self.config.share_with:
             return
 
+        drive_api = self._drive_api()
         for email in self.config.share_with:
             permission = {
                 "type": "user",
@@ -668,7 +754,7 @@ class GoogleSheetsProvider(WorkbookProvider):
             }
             try:
                 self._execute_request(
-                    self.drive_service.permissions().create(
+                    drive_api.permissions().create(
                         fileId=workbook_id,
                         body=permission,
                         sendNotificationEmail=True,
