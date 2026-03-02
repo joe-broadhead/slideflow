@@ -4,29 +4,7 @@ import pytest
 
 import slideflow.cli.commands.build as build_command_module
 import slideflow.cli.commands.validate as validate_command_module
-
-
-def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(
-        build_command_module, "print_build_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(
-        build_command_module, "print_build_progress", lambda *a, **k: None
-    )
-    monkeypatch.setattr(
-        build_command_module, "print_build_success", lambda *a, **k: None
-    )
-    monkeypatch.setattr(build_command_module, "print_build_error", lambda *a, **k: None)
-    monkeypatch.setattr(build_command_module.time, "sleep", lambda *_: None)
-
-    monkeypatch.setattr(
-        validate_command_module, "print_validation_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(validate_command_module, "print_success", lambda *a, **k: None)
-    monkeypatch.setattr(
-        validate_command_module, "print_config_summary", lambda *a, **k: None
-    )
-    monkeypatch.setattr(validate_command_module, "print_error", lambda *a, **k: None)
+from tests.cli_test_helpers import stub_build_validate_cli_output
 
 
 def _write_registry(registry_path: Path) -> None:
@@ -66,7 +44,7 @@ def _write_config(config_path: Path) -> None:
 
 @pytest.mark.integration
 def test_validate_command_with_real_loader_and_registry(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
     registry_path = tmp_path / "registry.py"
@@ -81,7 +59,7 @@ def test_validate_command_with_real_loader_and_registry(tmp_path, monkeypatch):
 
 @pytest.mark.integration
 def test_validate_fails_when_registry_function_is_missing(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
     config_path = tmp_path / "broken.yml"
@@ -112,7 +90,7 @@ def test_validate_fails_when_registry_function_is_missing(tmp_path, monkeypatch)
 
 @pytest.mark.e2e
 def test_e2e_validate_then_build_dry_run_with_param_csv(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_build_validate_cli_output(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
     registry_path = tmp_path / "registry.py"

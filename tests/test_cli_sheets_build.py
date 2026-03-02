@@ -8,15 +8,7 @@ from slideflow.workbooks.base import (
     WorkbookSummaryResult,
     WorkbookTabResult,
 )
-
-
-def _stub_cli_output(monkeypatch):
-    monkeypatch.setattr(
-        sheets_command_module, "print_validation_header", lambda *a, **k: None
-    )
-    monkeypatch.setattr(sheets_command_module, "print_success", lambda *a, **k: None)
-    monkeypatch.setattr(sheets_command_module, "print_error", lambda *a, **k: None)
-    monkeypatch.setattr(sheets_command_module.typer, "echo", lambda *a, **k: None)
+from tests.cli_test_helpers import stub_sheets_cli_output
 
 
 def _write_minimal_workbook_config(config_file):
@@ -62,7 +54,7 @@ def _write_two_tab_workbook_config(config_file):
 
 
 def test_sheets_build_writes_success_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     class _Builder:
         def build(self, **_kwargs):
@@ -127,7 +119,7 @@ def test_sheets_build_writes_success_json(tmp_path, monkeypatch):
 def test_sheets_build_writes_error_json_and_exits_on_tab_failures(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     class _Builder:
         def build(self, **_kwargs):
@@ -172,7 +164,7 @@ def test_sheets_build_writes_error_json_and_exits_on_tab_failures(
 def test_sheets_build_writes_error_json_and_exits_on_summary_failures(
     tmp_path, monkeypatch
 ):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
 
     class _Builder:
         def build(self, **_kwargs):
@@ -226,7 +218,7 @@ def test_sheets_build_writes_error_json_and_exits_on_summary_failures(
 
 
 def test_sheets_build_writes_error_json_on_unexpected_failure(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
     monkeypatch.setattr(
         sheets_command_module.WorkbookBuilder,
         "from_config",
@@ -252,7 +244,7 @@ def test_sheets_build_writes_error_json_on_unexpected_failure(tmp_path, monkeypa
 
 
 def test_sheets_build_runtime_overrides_are_reflected_in_json(tmp_path, monkeypatch):
-    _stub_cli_output(monkeypatch)
+    stub_sheets_cli_output(monkeypatch)
     captured = {}
 
     class _Builder:
