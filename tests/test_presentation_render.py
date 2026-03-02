@@ -460,12 +460,19 @@ def test_process_slide_content_updates_chart_and_replacement_counts():
             return 2
 
     class TextReplacement:
-        placeholder = "{{TITLE}}"
         type = "text"
 
         @staticmethod
         def get_replacement():
             return "Demo"
+
+        @staticmethod
+        def to_placeholder_values(replacement_result):
+            return [("{{TITLE}}", str(replacement_result))]
+
+        @staticmethod
+        def replacement_delay_seconds():
+            return 0.0
 
     provider = CountingProvider(strict_cleanup=False, fail_cleanup=False)
     chart = FakeChart()

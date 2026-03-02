@@ -303,6 +303,10 @@ class AITextReplacement(BaseReplacement):
 
         return [(ds.name, ds.fetch_data()) for ds in self.data_source]
 
+    def get_referenced_data_sources(self) -> list[DataSourceConfig]:
+        """Expose configured data sources for orchestration prefetch."""
+        return list(self.data_source or [])
+
     def get_replacement(self) -> str:
         """Generate AI-powered text content for the replacement.
 
@@ -376,3 +380,7 @@ class AITextReplacement(BaseReplacement):
 
         fn, call_args = self._prepare_provider()
         return fn(prompt, **call_args)
+
+    def to_placeholder_values(self, replacement_result: Any) -> list[tuple[str, str]]:
+        """Return the single placeholder/value pair for AI text replacements."""
+        return [(self.placeholder, str(replacement_result))]

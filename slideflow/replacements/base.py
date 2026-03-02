@@ -127,6 +127,33 @@ class BaseReplacement(BaseModel, ABC):
         """
         return None
 
+    def get_referenced_data_sources(self) -> List[Any]:
+        """Return data source objects referenced by this replacement.
+
+        The default implementation returns no sources. Replacement types that
+        use one or more data sources should override this to expose them for
+        prefetch/citation orchestration without structural attribute checks.
+        """
+        source = getattr(self, "data_source", None)
+        if source is None:
+            return []
+        if isinstance(source, list):
+            return list(source)
+        return [source]
+
+    def replacement_delay_seconds(self) -> float:
+        """Return optional delay before each placeholder write.
+
+        Most replacement types do not require throttling and return 0.0.
+        Table replacements can override this to preserve conservative API pacing.
+        """
+        if hasattr(self, "prefix"):
+            # Compatibility fallback for custom table-like replacements.
+            from slideflow.constants import Timing
+
+            return float(Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S)
+        return 0.0
+
     def apply_data_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
         """Apply configured data transformations to a DataFrame.
 
@@ -164,3 +191,20 @@ class BaseReplacement(BaseModel, ABC):
     def get_replacement(self) -> Any:
         """Return replacement payload for this replacement implementation."""
         raise NotImplementedError
+
+    def to_placeholder_values(self, replacement_result: Any) -> List[Tuple[str, str]]:
+        """Convert replacement payload into placeholder/value pairs.
+
+        Built-in replacements override this explicitly. The default fallback keeps
+        backward compatibility for custom replacements that expose legacy
+        ``placeholder`` or dictionary-style payload contracts.
+        """
+        placeholder = getattr(self, "placeholder", None)
+        if isinstance(placeholder, str):
+            return [(placeholder, str(replacement_result))]
+        if isinstance(replacement_result, dict):
+            return [
+                (str(placeholder_key), str(value))
+                for placeholder_key, value in replacement_result.items()
+            ]
+        return []

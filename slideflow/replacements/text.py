@@ -205,6 +205,10 @@ class TextReplacement(BaseReplacement):
             return self.data_source.fetch_data()
         return None
 
+    def get_referenced_data_sources(self) -> list[DataSourceConfig]:
+        """Expose configured data source for orchestration prefetch."""
+        return [self.data_source] if self.data_source is not None else []
+
     def get_replacement(self) -> str:
         """Generate the final replacement text content.
 
@@ -279,3 +283,7 @@ class TextReplacement(BaseReplacement):
                 )
             return str(self.value_fn(**(self.value_fn_args or {})))
         return self.replacement or ""
+
+    def to_placeholder_values(self, replacement_result: Any) -> list[tuple[str, str]]:
+        """Return the single placeholder/value pair for text replacements."""
+        return [(self.placeholder, str(replacement_result))]
