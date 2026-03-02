@@ -54,6 +54,12 @@
   - requires secrets: `GOOGLE_SHEETS_CREDENTIALS` (or `GOOGLE_SLIDEFLOW_CREDENTIALS` fallback), `SLIDEFLOW_LIVE_SHEETS_FOLDER_ID` (or presentation/document folder fallback)
   - optional secret: `SLIDEFLOW_LIVE_SHARE_EMAIL` (share rendered workbook for manual verification)
   - workflow pins `SLIDEFLOW_LIVE_KEEP_ARTIFACTS=0` to avoid leaving artifacts in CI runs
+- `Dependabot` (`.github/dependabot.yml`)
+  - opens weekly dependency update PRs for:
+    - Python dependencies (`pip`)
+    - GitHub Actions versions (`github-actions`)
+  - groups patch/minor updates to reduce PR noise
+  - leaves major updates ungrouped for explicit review
 
 ## Required local checks before PR
 
@@ -86,6 +92,13 @@ bash scripts/ci/run_quickstart_smoke.sh
   - current floor: `82`
   - next target floor: `85` after planned test-hardening changes
 - Do not lower thresholds without explicit maintainer approval
+
+## Dependency update policy
+
+- Automated dependency PRs are generated weekly via Dependabot.
+- Patch/minor updates are grouped to reduce review load.
+- Major updates are reviewed separately and merged deliberately.
+- Auto-merge is disabled by default; every dependency PR must pass full CI and maintainer review.
 
 ## Branching policy
 
