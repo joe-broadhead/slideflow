@@ -48,6 +48,7 @@ dev = [
     "black",
     "ruff",
     "mypy",
+    "pre-commit",
     "pandas-stubs",
     "types-PyYAML",
 ]

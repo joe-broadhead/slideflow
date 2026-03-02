@@ -61,6 +61,16 @@ Set `DBT_GIT_TOKEN` in environment, not in YAML.
 - Keep logs at `INFO` or lower in production.
 - Use `--debug` only for short-lived troubleshooting sessions.
 
+## Registry execution risk
+
+Registry files are executable Python modules. SlideFlow loads them dynamically
+when `--registry` or `registry:` config paths are provided.
+
+- Only load registry files from trusted repositories and trusted contributors.
+- Treat registry review as code review (not data review).
+- Do not run untrusted registry files in shared CI runners with broad secrets.
+- Prefer least-privilege CI secrets for runs that execute registry code.
+
 ## CI security posture
 
 The repository includes a dedicated `Audit` workflow that runs:
@@ -101,6 +111,7 @@ Use OIDC trusted publishing instead of API tokens.
 
 - [ ] Secrets only via environment or secret manager
 - [ ] No credentials committed to Git
+- [ ] Pre-commit hooks installed and passing (`uv run pre-commit run --all-files`)
 - [ ] `slideflow validate` enforced in CI before build/release
 - [ ] Audit workflow reviewed weekly
 - [ ] Release branch protections enabled

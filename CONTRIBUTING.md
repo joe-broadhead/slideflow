@@ -11,12 +11,21 @@ Thanks for contributing to SlideFlow.
 ```bash
 uv sync --extra dev --extra ai --locked
 source .venv/bin/activate
+uv run pre-commit install
+```
+
+Run pre-commit locally before pushing. This includes secret scanning and blocks
+obvious credential leaks in staged changes.
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 ## Local quality gates (run before opening a PR)
 
 ```bash
 uv pip check
+uv run pre-commit run --all-files
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow

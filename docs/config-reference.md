@@ -476,5 +476,6 @@ For full connector behavior and runtime requirements, see [Data Connectors](data
 - `template_paths`: additional chart-template search paths (highest precedence)
   - default fallbacks still apply: `./templates`, `~/.slideflow/templates`, packaged built-ins
 - `registry`: one or many Python files exposing `function_registry`
+  - registry files are executable Python; only load trusted paths/repositories
 
 For transform function contracts and examples, see [Data Transforms](data-transforms.md).
