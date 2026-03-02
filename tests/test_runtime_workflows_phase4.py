@@ -448,7 +448,7 @@ def test_prefetch_data_sources_deduplicates_sources(monkeypatch):
     shared = FakeSource("csv", "shared")
     unique = FakeSource("csv", "unique")
 
-    replacement = SimpleNamespace(data_source=[shared, unique])
+    replacement = SimpleNamespace(get_referenced_data_sources=lambda: [shared, unique])
     chart = SimpleNamespace(data_source=shared)
     slide = Slide.model_construct(
         id="slide_1", title="S1", replacements=[replacement], charts=[chart]
@@ -549,20 +549,45 @@ def test_render_shares_presentation_and_processes_table_replacements(monkeypatch
             return None
 
     class TextReplacement:
-        placeholder = "{{TITLE}}"
         type = "text"
 
         @staticmethod
         def get_replacement():
             return "Demo Title"
 
+        @staticmethod
+        def get_referenced_data_sources():
+            return []
+
+        @staticmethod
+        def to_placeholder_values(replacement_result):
+            return [("{{TITLE}}", str(replacement_result))]
+
+        @staticmethod
+        def replacement_delay_seconds():
+            return 0.0
+
     class TableReplacement:
-        prefix = "T_"
         type = "table"
 
         @staticmethod
         def get_replacement():
             return {"{{T_1}}": "A", "{{T_2}}": "B"}
+
+        @staticmethod
+        def get_referenced_data_sources():
+            return []
+
+        @staticmethod
+        def to_placeholder_values(replacement_result):
+            return [
+                (str(placeholder), str(value))
+                for placeholder, value in replacement_result.items()
+            ]
+
+        @staticmethod
+        def replacement_delay_seconds():
+            return 0.0
 
     provider = FakeProvider()
     slide = Slide.model_construct(

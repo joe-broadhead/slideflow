@@ -75,6 +75,7 @@ from typing import Annotated, Any, Callable, Dict, Literal, Optional
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from slideflow.constants import Timing
 from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.replacements.base import BaseReplacement
 from slideflow.replacements.utils import dataframe_to_replacement_object
@@ -345,6 +346,14 @@ class TableReplacement(BaseReplacement):
             return self.data_source.fetch_data()
         return None
 
+    def get_referenced_data_sources(self) -> list[DataSourceConfig]:
+        """Expose configured data source for orchestration prefetch."""
+        return [self.data_source] if self.data_source is not None else []
+
+    def replacement_delay_seconds(self) -> float:
+        """Throttle table placeholder writes to reduce provider pressure."""
+        return float(Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S)
+
     def get_replacement(self) -> Dict[str, Any]:
         """Generate the complete set of placeholder-value mappings.
 
@@ -445,3 +454,12 @@ class TableReplacement(BaseReplacement):
                 )
 
         return dataframe_to_replacement_object(df, self.prefix)
+
+    def to_placeholder_values(self, replacement_result: Any) -> list[tuple[str, str]]:
+        """Convert table replacement payload into ordered placeholder/value pairs."""
+        if isinstance(replacement_result, dict):
+            return [
+                (str(placeholder), str(value))
+                for placeholder, value in replacement_result.items()
+            ]
+        return []

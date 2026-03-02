@@ -105,6 +105,10 @@ def test_text_replacement_static_and_value_function_modes(monkeypatch):
         data_transforms=[{"transform_fn": add_column}],
     )
     assert from_data.get_replacement() == "2c"
+    assert from_data.get_referenced_data_sources() == [from_data.data_source]
+    assert static.to_placeholder_values(static.get_replacement()) == [
+        ("{{STATIC}}", "123")
+    ]
 
 
 def test_table_replacement_dynamic_mode_applies_transforms_and_formatters(monkeypatch):
@@ -141,6 +145,12 @@ def test_table_replacement_dynamic_mode_applies_transforms_and_formatters(monkey
         "{{T_1,1}}": "Widget",
         "{{T_1,2}}": "EUR 2000",
     }
+    assert replacement.get_referenced_data_sources() == [replacement.data_source]
+    assert replacement.replacement_delay_seconds() >= 0
+    assert replacement.to_placeholder_values(output) == [
+        ("{{T_1,1}}", "Widget"),
+        ("{{T_1,2}}", "EUR 2000"),
+    ]
 
 
 def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch):
@@ -187,6 +197,8 @@ def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch)
     )
     fn3, call_args3 = callable_provider._prepare_provider()
     assert fn3("hello", **call_args3) == "hello!"
+    assert callable_provider.to_placeholder_values("output") == [("{{AI3}}", "output")]
+    assert callable_provider.get_referenced_data_sources() == []
 
     invalid_provider = AITextReplacement.model_construct(
         type="ai_text",

@@ -354,37 +354,18 @@ class Slide(BaseModel):
 
         for replacement in self.replacements:
             replacement_result = replacement.get_replacement()
-
-            if hasattr(replacement, "placeholder"):
-                # Text and AI text replacements
+            for placeholder, value in replacement.to_placeholder_values(
+                replacement_result
+            ):
                 requests.append(
                     {
                         "replaceAllText": {
-                            "containsText": {
-                                "text": replacement.placeholder,
-                                "matchCase": True,
-                            },
-                            "replaceText": str(replacement_result),
+                            "containsText": {"text": placeholder, "matchCase": True},
+                            "replaceText": str(value),
                             "pageObjectIds": [self.id],
                         }
                     }
                 )
-            elif hasattr(replacement, "prefix"):
-                # Table replacements return a dictionary of placeholder->value
-                if isinstance(replacement_result, dict):
-                    for placeholder, value in replacement_result.items():
-                        requests.append(
-                            {
-                                "replaceAllText": {
-                                    "containsText": {
-                                        "text": placeholder,
-                                        "matchCase": True,
-                                    },
-                                    "replaceText": str(value),
-                                    "pageObjectIds": [self.id],
-                                }
-                            }
-                        )
 
         slides_app = {
             "pageSize": {
@@ -589,13 +570,7 @@ class Presentation(BaseModel):
                 collected.append(source)
 
         for replacement in slide.replacements:
-            source = getattr(replacement, "data_source", None)
-            if source is None:
-                continue
-            if isinstance(source, list):
-                collected.extend(source)
-            else:
-                collected.append(source)
+            collected.extend(replacement.get_referenced_data_sources())
 
         return collected
 
@@ -805,37 +780,24 @@ class Presentation(BaseModel):
         for replacement in slide.replacements:
             try:
                 replacement_result = replacement.get_replacement()
-                if hasattr(replacement, "placeholder"):
+                delay_seconds = replacement.replacement_delay_seconds()
+                for placeholder, value in replacement.to_placeholder_values(
+                    replacement_result
+                ):
+                    if delay_seconds > 0:
+                        time.sleep(delay_seconds)
                     replacements_made = self.provider.replace_text_in_slide(
                         context.presentation_id,
                         slide.id,
-                        replacement.placeholder,
-                        str(replacement_result),
+                        placeholder,
+                        str(value),
                     )
                     context.total_replacements += replacements_made
                     logger.debug(
                         "Processed replacement for %s: %d occurrences",
-                        replacement.placeholder,
+                        placeholder,
                         replacements_made,
                     )
-                elif hasattr(replacement, "prefix") and isinstance(
-                    replacement_result, dict
-                ):
-                    for placeholder, value in replacement_result.items():
-                        if Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S > 0:
-                            time.sleep(Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S)
-                        replacements_made = self.provider.replace_text_in_slide(
-                            context.presentation_id,
-                            slide.id,
-                            placeholder,
-                            str(value),
-                        )
-                        context.total_replacements += replacements_made
-                        logger.debug(
-                            "Processed table replacement for %s: %d occurrences",
-                            placeholder,
-                            replacements_made,
-                        )
             except Exception as error:
                 replacement_type = getattr(
                     replacement, "type", type(replacement).__name__
@@ -1207,15 +1169,11 @@ class Presentation(BaseModel):
         for slide in self.slides:
             # Collect from replacements
             for replacement in slide.replacements:
-                if hasattr(replacement, "data_source") and replacement.data_source:
-                    sources = replacement.data_source
-                    if not isinstance(sources, list):
-                        sources = [sources]
-                    for source in sources:
-                        source_key = (source.type, source.name)
-                        if source_key not in seen_sources:
-                            seen_sources.add(source_key)
-                            unique_sources.append((source.name, source))
+                for source in replacement.get_referenced_data_sources():
+                    source_key = (source.type, source.name)
+                    if source_key not in seen_sources:
+                        seen_sources.add(source_key)
+                        unique_sources.append((source.name, source))
 
             for chart in slide.charts:
                 if hasattr(chart, "data_source") and chart.data_source:
