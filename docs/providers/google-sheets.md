@@ -39,6 +39,7 @@ Field behavior:
 - `drive_folder_id`: destination folder for newly created spreadsheets.
 - `share_with` / `share_role`: optional post-build sharing.
 - `requests_per_second`: Google API pacing for this build.
+  - Can be overridden at runtime via `slideflow sheets build --rps ...`.
 
 ## Workbook Schema
 
@@ -161,8 +162,12 @@ workbook:
 ```bash
 slideflow sheets validate workbook.yml --output-json sheets-validate.json
 slideflow sheets doctor workbook.yml --strict --output-json sheets-doctor.json
-slideflow sheets build workbook.yml --output-json sheets-build.json
+slideflow sheets build workbook.yml --rps 1.2 --output-json sheets-build.json
+slideflow sheets build workbook.yml --threads 3 --output-json sheets-build.json
 ```
+
+`--threads` is accepted for reusable-workflow parity and currently normalizes to
+`1` (sequential workbook execution).
 
 Build JSON includes:
 

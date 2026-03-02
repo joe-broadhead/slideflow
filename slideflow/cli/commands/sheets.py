@@ -74,6 +74,46 @@ def _workbook_summary_payload(workbook_config: WorkbookConfig) -> Dict[str, Any]
     }
 
 
+def _runtime_controls_payload(
+    workbook_config: WorkbookConfig,
+    threads: Optional[int],
+    requests_per_second: Optional[float],
+) -> tuple[Dict[str, Any], List[str]]:
+    """Apply CLI runtime overrides and return machine-readable runtime metadata."""
+    warnings: List[str] = []
+    provider_config = workbook_config.provider.config
+
+    requested_threads = threads
+    applied_threads = 1
+    if requested_threads is not None and requested_threads != 1:
+        warnings.append(
+            "Sheets builds currently run sequentially; --threads was normalized "
+            "to 1."
+        )
+
+    requested_rps = requests_per_second
+    if requested_rps is not None:
+        provider_config["requests_per_second"] = requested_rps
+        rps_source = "cli_override"
+    else:
+        rps_source = "provider_config"
+
+    applied_rps = provider_config.get("requests_per_second", 1.0)
+    runtime_payload = {
+        "threads": {
+            "requested": requested_threads,
+            "applied": applied_threads,
+            "supported_values": [1],
+        },
+        "requests_per_second": {
+            "requested": requested_rps,
+            "applied": applied_rps,
+            "source": rps_source,
+        },
+    }
+    return runtime_payload, warnings
+
+
 def sheets_validate_command(
     config_file: Annotated[
         Path, typer.Argument(help="Path to workbook YAML configuration file")
@@ -153,6 +193,24 @@ def sheets_build_command(
             help="Path to Python registry files (can be used multiple times)",
         ),
     ] = None,
+    threads: Annotated[
+        Optional[int],
+        typer.Option(
+            "--threads",
+            "-t",
+            min=1,
+            help="Workbook worker count (Sheets currently supports only 1).",
+        ),
+    ] = None,
+    requests_per_second: Annotated[
+        Optional[float],
+        typer.Option(
+            "--rps",
+            "--requests-per-second",
+            min=0.000001,
+            help="Override provider.config.requests_per_second for this run.",
+        ),
+    ] = None,
     output_json: Annotated[
         Optional[Path],
         typer.Option(
@@ -164,16 +222,23 @@ def sheets_build_command(
     """Build workbook outputs from a workbook configuration."""
     print_validation_header(str(config_file))
     run_started_at = now_iso8601_utc()
+    runtime_controls: Dict[str, Any] = {}
 
     try:
-        _, resolved_registry_paths = _load_workbook_config(
+        workbook_config, resolved_registry_paths = _load_workbook_config(
             config_file=config_file,
             registry_paths=registry_paths,
         )
+        runtime_controls, runtime_warnings = _runtime_controls_payload(
+            workbook_config=workbook_config,
+            threads=threads,
+            requests_per_second=requests_per_second,
+        )
+        for warning in runtime_warnings:
+            typer.echo(f"⚠ {warning}")
 
-        builder = WorkbookBuilder.from_yaml(
-            yaml_path=config_file,
-            registry_paths=resolved_registry_paths,
+        builder = WorkbookBuilder.from_config(
+            config=workbook_config,
         )
         result = builder.build()
         summary = {
@@ -195,6 +260,7 @@ def sheets_build_command(
             "config_file": str(config_file),
             "registry_files": [str(path) for path in resolved_registry_paths],
             "summary": summary,
+            "runtime": runtime_controls,
             "tabs": [tab.model_dump() for tab in result.tab_results],
             "summaries": [
                 summary_result.model_dump() for summary_result in result.summary_results
@@ -242,6 +308,7 @@ def sheets_build_command(
             "started_at": run_started_at,
             "completed_at": now_iso8601_utc(),
             "config_file": str(config_file),
+            "runtime": runtime_controls,
             "error": {"code": error_code, "message": _first_error_line(error)},
         }
         write_output_json(output_json, payload)
@@ -415,6 +482,24 @@ def sheets_build(
             help="Path to Python registry files (can be used multiple times)",
         ),
     ] = None,
+    threads: Annotated[
+        Optional[int],
+        typer.Option(
+            "--threads",
+            "-t",
+            min=1,
+            help="Workbook worker count (Sheets currently supports only 1).",
+        ),
+    ] = None,
+    requests_per_second: Annotated[
+        Optional[float],
+        typer.Option(
+            "--rps",
+            "--requests-per-second",
+            min=0.000001,
+            help="Override provider.config.requests_per_second for this run.",
+        ),
+    ] = None,
     output_json: Annotated[
         Optional[Path],
         typer.Option(
@@ -427,6 +512,8 @@ def sheets_build(
     sheets_build_command(
         config_file=config_file,
         registry_paths=registry_paths,
+        threads=threads,
+        requests_per_second=requests_per_second,
         output_json=output_json,
     )
 

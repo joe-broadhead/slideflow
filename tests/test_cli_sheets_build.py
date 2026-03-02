@@ -69,7 +69,7 @@ def test_sheets_build_writes_success_json(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         sheets_command_module.WorkbookBuilder,
-        "from_yaml",
+        "from_config",
         staticmethod(lambda *args, **kwargs: _Builder()),
     )
 
@@ -84,6 +84,11 @@ def test_sheets_build_writes_success_json(tmp_path, monkeypatch):
     )
 
     assert payload["status"] == "success"
+    assert payload["runtime"]["threads"]["requested"] is None
+    assert payload["runtime"]["threads"]["applied"] == 1
+    assert payload["runtime"]["requests_per_second"]["requested"] is None
+    assert payload["runtime"]["requests_per_second"]["applied"] == 1.0
+    assert payload["runtime"]["requests_per_second"]["source"] == "provider_config"
     json_payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert json_payload["command"] == "sheets build"
     assert json_payload["summary"]["workbook_id"] == "sheet_123"
@@ -115,7 +120,7 @@ def test_sheets_build_writes_error_json_and_exits_on_tab_failures(
 
     monkeypatch.setattr(
         sheets_command_module.WorkbookBuilder,
-        "from_yaml",
+        "from_config",
         staticmethod(lambda *args, **kwargs: _Builder()),
     )
 
@@ -171,7 +176,7 @@ def test_sheets_build_writes_error_json_and_exits_on_summary_failures(
 
     monkeypatch.setattr(
         sheets_command_module.WorkbookBuilder,
-        "from_yaml",
+        "from_config",
         staticmethod(lambda *args, **kwargs: _Builder()),
     )
 
@@ -197,7 +202,7 @@ def test_sheets_build_writes_error_json_on_unexpected_failure(tmp_path, monkeypa
     _stub_cli_output(monkeypatch)
     monkeypatch.setattr(
         sheets_command_module.WorkbookBuilder,
-        "from_yaml",
+        "from_config",
         staticmethod(
             lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
         ),
@@ -217,3 +222,105 @@ def test_sheets_build_writes_error_json_on_unexpected_failure(tmp_path, monkeypa
     payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert payload["status"] == "error"
     assert payload["error"]["code"] == "SLIDEFLOW_SHEETS_BUILD_FAILED"
+
+
+def test_sheets_build_runtime_overrides_are_reflected_in_json(tmp_path, monkeypatch):
+    _stub_cli_output(monkeypatch)
+    captured = {}
+
+    class _Builder:
+        def build(self):
+            return WorkbookBuildResult(
+                workbook_id="sheet_123",
+                workbook_url="https://docs.google.com/spreadsheets/d/sheet_123",
+                status="success",
+                tab_results=[],
+                summary_results=[],
+            )
+
+    def _from_config(config):
+        captured["requests_per_second"] = config.provider.config.get(
+            "requests_per_second"
+        )
+        return _Builder()
+
+    monkeypatch.setattr(
+        sheets_command_module.WorkbookBuilder,
+        "from_config",
+        staticmethod(_from_config),
+    )
+
+    config_file = tmp_path / "workbook.yaml"
+    output_file = tmp_path / "sheets-build-runtime.json"
+    _write_minimal_workbook_config(config_file)
+
+    payload = sheets_command_module.sheets_build_command(
+        config_file=config_file,
+        registry_paths=None,
+        threads=1,
+        requests_per_second=2.5,
+        output_json=output_file,
+    )
+
+    assert captured["requests_per_second"] == 2.5
+    assert payload["runtime"]["threads"] == {
+        "requested": 1,
+        "applied": 1,
+        "supported_values": [1],
+    }
+    assert payload["runtime"]["requests_per_second"] == {
+        "requested": 2.5,
+        "applied": 2.5,
+        "source": "cli_override",
+    }
+
+    json_payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert json_payload["runtime"] == payload["runtime"]
+
+
+def test_sheets_build_normalizes_threads_and_emits_warning(tmp_path, monkeypatch):
+    warning_messages = []
+    monkeypatch.setattr(
+        sheets_command_module, "print_validation_header", lambda *a, **k: None
+    )
+    monkeypatch.setattr(sheets_command_module, "print_success", lambda *a, **k: None)
+    monkeypatch.setattr(sheets_command_module, "print_error", lambda *a, **k: None)
+    monkeypatch.setattr(
+        sheets_command_module.typer,
+        "echo",
+        lambda message, *a, **k: warning_messages.append(str(message)),
+    )
+
+    class _Builder:
+        def build(self):
+            return WorkbookBuildResult(
+                workbook_id="sheet_123",
+                workbook_url="https://docs.google.com/spreadsheets/d/sheet_123",
+                status="success",
+                tab_results=[],
+                summary_results=[],
+            )
+
+    monkeypatch.setattr(
+        sheets_command_module.WorkbookBuilder,
+        "from_config",
+        staticmethod(lambda *args, **kwargs: _Builder()),
+    )
+
+    config_file = tmp_path / "workbook.yaml"
+    output_file = tmp_path / "sheets-build-threads.json"
+    _write_minimal_workbook_config(config_file)
+
+    payload = sheets_command_module.sheets_build_command(
+        config_file=config_file,
+        registry_paths=None,
+        threads=4,
+        output_json=output_file,
+    )
+
+    assert payload["runtime"]["threads"] == {
+        "requested": 4,
+        "applied": 1,
+        "supported_values": [1],
+    }
+    assert any("normalized to 1" in msg for msg in warning_messages)

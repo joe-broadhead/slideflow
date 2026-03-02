@@ -83,12 +83,12 @@ on:
         default: false
         type: boolean
       threads:
-        description: "Optional --threads value"
+        description: "Optional --threads value (presentations + sheets; sheets currently applies 1)"
         required: false
         default: ""
         type: string
       requests-per-second:
-        description: "Optional --rps value"
+        description: "Optional --rps value (presentations + sheets)"
         required: false
         default: ""
         type: string
@@ -328,10 +328,10 @@ jobs:
           if [[ "$artifact_kind" == "presentation" && "${{ inputs.dry-run }}" == "true" ]]; then
             build_cmd+=("--dry-run")
           fi
-          if [[ "$artifact_kind" == "presentation" && -n "${{ inputs.threads }}" ]]; then
+          if [[ -n "${{ inputs.threads }}" ]]; then
             build_cmd+=("--threads" "${{ inputs.threads }}")
           fi
-          if [[ "$artifact_kind" == "presentation" && -n "${{ inputs.requests-per-second }}" ]]; then
+          if [[ -n "${{ inputs.requests-per-second }}" ]]; then
             build_cmd+=("--rps" "${{ inputs.requests-per-second }}")
           fi
 
