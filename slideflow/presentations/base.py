@@ -56,13 +56,14 @@ Example:
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from slideflow.citations import CitationEntry, CitationRegistry
+from slideflow.citations import CitationEntry, CitationRegistry, CitationSummary
 from slideflow.constants import GoogleSlides, Timing
 from slideflow.presentations.config import CitationConfig
 from slideflow.presentations.positioning import compute_chart_dimensions
@@ -76,6 +77,30 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from slideflow.presentations.charts import BaseChart
+
+
+@dataclass
+class _RenderContext:
+    """Mutable context shared across render orchestration phases."""
+
+    presentation_id: str
+    slides_app: Dict[str, Any]
+    page_width_pt: int
+    page_height_pt: int
+    start_time: float
+    strict_cleanup: bool
+    citations_enabled: bool
+    citation_registry: CitationRegistry
+    total_charts: int = 0
+    total_replacements: int = 0
+    uploaded_file_ids: List[str] = field(default_factory=list)
+    failed_cleanup_ids: List[str] = field(default_factory=list)
+    original_error: Optional[Exception] = None
+    ownership_transfer_attempted: bool = False
+    ownership_transfer_succeeded: Optional[bool] = None
+    ownership_transfer_target: Optional[str] = None
+    ownership_transfer_error: Optional[str] = None
+    citations_total_sources: int = 0
 
 
 class PresentationResult(BaseModel):
@@ -574,475 +599,471 @@ class Presentation(BaseModel):
 
         return collected
 
-    def render(self) -> PresentationResult:
-        """Render the complete presentation with all content and styling.
-
-        Executes the full presentation rendering pipeline including presentation
-        creation, data prefetching, chart generation, text replacements, and
-        optional sharing. The process is optimized for performance using concurrent
-        operations where possible.
-
-        The rendering process follows these steps:
-        1. Create a new presentation using the configured provider
-        2. Prefetch all data sources concurrently to populate caches
-        3. Process each slide sequentially to maintain order
-        4. Generate and upload charts with positioning calculations
-        5. Execute text replacements with comprehensive error handling
-        6. Share the presentation if configured
-
-        Returns:
-            PresentationResult containing the presentation URL, operation counts,
-            performance metrics, and timestamp information for monitoring and
-            user feedback purposes.
-
-        Raises:
-            RenderingError: If presentation creation fails or critical operations fail.
-            AuthenticationError: If provider authentication fails.
-            DataError: If required data sources are unavailable or invalid.
-
-        Example:
-            >>> presentation = Presentation(
-            ...     name="Monthly Report",
-            ...     slides=slides,
-            ...     provider=provider
-            ... )
-            >>>
-            >>> try:
-            ...     result = presentation.render()
-            ...     print(f"✓ Presentation created: {result.presentation_url}")
-            ...     print(f"✓ Generated {result.charts_generated} charts")
-            ...     print(f"✓ Made {result.replacements_made} text replacements")
-            ...     print(f"✓ Completed in {result.render_time:.1f} seconds")
-            ... except RenderingError as e:
-            ...     print(f"✗ Rendering failed: {e}")
-        """
-        start_time = time.time()
-
+    def _create_render_context(self, start_time: float) -> _RenderContext:
+        """Create render context after provider preflight and presentation creation."""
         self._run_provider_preflight()
         presentation_id = self.provider.create_presentation(self.name)
         page_width_pt, page_height_pt = self._resolve_page_dimensions(presentation_id)
-        slides_app = self._to_slides_app_dimensions(page_width_pt, page_height_pt)
-        total_charts = 0
-        total_replacements = 0
-        uploaded_file_ids = []
-        original_error: Optional[Exception] = None
-        strict_cleanup = bool(
-            getattr(getattr(self.provider, "config", None), "strict_cleanup", False)
+
+        return _RenderContext(
+            presentation_id=presentation_id,
+            slides_app=self._to_slides_app_dimensions(page_width_pt, page_height_pt),
+            page_width_pt=page_width_pt,
+            page_height_pt=page_height_pt,
+            start_time=start_time,
+            strict_cleanup=bool(
+                getattr(getattr(self.provider, "config", None), "strict_cleanup", False)
+            ),
+            citations_enabled=bool(self.citations.enabled),
+            citation_registry=CitationRegistry(
+                max_items=self.citations.max_items,
+                dedupe=self.citations.dedupe,
+            ),
         )
-        failed_cleanup_ids: List[str] = []
-        ownership_transfer_attempted = False
-        ownership_transfer_succeeded: Optional[bool] = None
-        ownership_transfer_target: Optional[str] = None
-        ownership_transfer_error: Optional[str] = None
-        citations_enabled = bool(self.citations.enabled)
-        citation_registry = CitationRegistry(
-            max_items=self.citations.max_items,
-            dedupe=self.citations.dedupe,
+
+    def _collect_citations_for_slides(self, context: _RenderContext) -> None:
+        """Collect citation entries from slide data sources into the render registry."""
+        if not context.citations_enabled:
+            return
+
+        for slide in self.slides:
+            slide_sources = self._collect_slide_sources(slide)
+            scope_id = (
+                "__document__"
+                if self.citations.location == "document_end"
+                else slide.id
+            )
+            for source in slide_sources:
+                get_citations = getattr(source, "get_citation_entries", None)
+                if not callable(get_citations):
+                    continue
+                try:
+                    try:
+                        entries = get_citations(
+                            mode=self.citations.mode,
+                            include_query_text=self.citations.include_query_text,
+                        )
+                    except TypeError:
+                        # Backward compatibility for custom connectors that only accept ``mode``.
+                        entries = get_citations(mode=self.citations.mode)
+                except Exception as citation_error:
+                    logger.warning(
+                        "Citation generation failed for source '%s': %s",
+                        getattr(source, "name", type(source).__name__),
+                        citation_error,
+                    )
+                    continue
+
+                for entry in entries:
+                    try:
+                        citation_entry = (
+                            entry
+                            if isinstance(entry, CitationEntry)
+                            else CitationEntry.model_validate(entry)
+                        )
+                    except Exception as citation_entry_error:
+                        logger.warning(
+                            "Skipping invalid citation entry for source '%s': %s",
+                            getattr(source, "name", type(source).__name__),
+                            citation_entry_error,
+                        )
+                        continue
+                    template = self.citations.repo_url_template
+                    if template:
+                        try:
+                            citation_entry = citation_entry.model_copy(
+                                update={
+                                    "file_url": template.format(
+                                        repo_url=citation_entry.repo_url or "",
+                                        model_path=citation_entry.model_path or "",
+                                        model_unique_id=citation_entry.model_unique_id
+                                        or "",
+                                        ref=str(citation_entry.metadata.get("ref", "")),
+                                    )
+                                }
+                            )
+                        except Exception as template_error:
+                            logger.warning(
+                                "Citation repo_url_template formatting failed for source '%s': %s",
+                                getattr(source, "name", type(source).__name__),
+                                template_error,
+                            )
+                    context.citations_total_sources += 1
+                    context.citation_registry.add(citation_entry, scope_id=scope_id)
+
+    def _process_single_chart(
+        self, context: _RenderContext, slide: Slide, chart: "BaseChart"
+    ) -> None:
+        """Generate, upload, and insert a single chart with retry behavior."""
+        max_retries = Timing.PRESENTATION_CHART_MAX_RETRIES
+        base_retry_delay_s = Timing.PRESENTATION_CHART_RETRY_DELAY_S
+        backoff_multiplier = Timing.PRESENTATION_CHART_RETRY_BACKOFF_MULTIPLIER
+
+        for attempt in range(max_retries):
+            try:
+                df = (
+                    chart.data_source.fetch_data()
+                    if chart.data_source
+                    else pd.DataFrame()
+                )
+                image_data = chart.generate_chart_image(df)
+                image_url, file_id = self.provider.upload_chart_image(
+                    context.presentation_id,
+                    image_data,
+                    f"chart_{chart.title or 'untitled'}.png",
+                )
+                if file_id:
+                    context.uploaded_file_ids.append(file_id)
+
+                x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
+                    x=chart.x,
+                    y=chart.y,
+                    width=chart.width,
+                    height=chart.height,
+                    dimensions_format=chart.dimensions_format,
+                    alignment_format=chart.alignment_format,
+                    slides_app=context.slides_app,
+                    page_width_pt=context.page_width_pt,
+                    page_height_pt=context.page_height_pt,
+                )
+
+                self.provider.insert_chart_to_slide(
+                    context.presentation_id,
+                    slide.id,
+                    image_url,
+                    x_pt,
+                    y_pt,
+                    width_pt,
+                    height_pt,
+                )
+                context.total_charts += 1
+                return
+            except Exception as error:
+                if attempt < max_retries - 1:
+                    delay_seconds = base_retry_delay_s * (backoff_multiplier**attempt)
+                    logger.warning(
+                        "Chart processing failed for '%s' on slide '%s' (attempt %d/%d). Retrying in %s seconds. Error: %s",
+                        chart.title or chart.type,
+                        slide.id,
+                        attempt + 1,
+                        max_retries,
+                        delay_seconds,
+                        error,
+                    )
+                    if delay_seconds > 0:
+                        time.sleep(delay_seconds)
+                    continue
+
+                logger.error(
+                    "Chart processing failed for '%s' on slide '%s' after %d attempts. Inserting error placeholder. Error: %s",
+                    chart.title or chart.type,
+                    slide.id,
+                    max_retries,
+                    error,
+                )
+                try:
+                    x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
+                        x=chart.x,
+                        y=chart.y,
+                        width=chart.width,
+                        height=chart.height,
+                        dimensions_format=chart.dimensions_format,
+                        alignment_format=chart.alignment_format,
+                        slides_app=context.slides_app,
+                        page_width_pt=context.page_width_pt,
+                        page_height_pt=context.page_height_pt,
+                    )
+                    error_image_url = "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
+                    self.provider.insert_chart_to_slide(
+                        context.presentation_id,
+                        slide.id,
+                        error_image_url,
+                        x=x_pt,
+                        y=y_pt,
+                        width=width_pt,
+                        height=height_pt,
+                    )
+                    logger.info(
+                        "Inserted error placeholder for chart on slide '%s'", slide.id
+                    )
+                except Exception as image_error:
+                    logger.error(
+                        "Failed to insert error placeholder for chart on slide '%s': %s",
+                        slide.id,
+                        image_error,
+                    )
+                return
+
+    def _process_slide_charts(self, context: _RenderContext, slide: Slide) -> None:
+        for chart in slide.charts:
+            self._process_single_chart(context, slide, chart)
+
+    def _process_slide_replacements(
+        self, context: _RenderContext, slide: Slide
+    ) -> None:
+        """Process text/table replacements for a single slide."""
+        for replacement in slide.replacements:
+            try:
+                replacement_result = replacement.get_replacement()
+                if hasattr(replacement, "placeholder"):
+                    replacements_made = self.provider.replace_text_in_slide(
+                        context.presentation_id,
+                        slide.id,
+                        replacement.placeholder,
+                        str(replacement_result),
+                    )
+                    context.total_replacements += replacements_made
+                    logger.debug(
+                        "Processed replacement for %s: %d occurrences",
+                        replacement.placeholder,
+                        replacements_made,
+                    )
+                elif hasattr(replacement, "prefix") and isinstance(
+                    replacement_result, dict
+                ):
+                    for placeholder, value in replacement_result.items():
+                        if Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S > 0:
+                            time.sleep(Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S)
+                        replacements_made = self.provider.replace_text_in_slide(
+                            context.presentation_id,
+                            slide.id,
+                            placeholder,
+                            str(value),
+                        )
+                        context.total_replacements += replacements_made
+                        logger.debug(
+                            "Processed table replacement for %s: %d occurrences",
+                            placeholder,
+                            replacements_made,
+                        )
+            except Exception as error:
+                replacement_type = getattr(
+                    replacement, "type", type(replacement).__name__
+                )
+                placeholder = getattr(replacement, "placeholder", "unknown")
+                logger.error(
+                    "Failed to process %s replacement '%s': %s",
+                    replacement_type,
+                    placeholder,
+                    error,
+                )
+                continue
+
+    def _process_slide_content(self, context: _RenderContext) -> None:
+        """Render charts and replacements across all slides in declaration order."""
+        for slide in self.slides:
+            self._process_slide_charts(context, slide)
+            self._process_slide_replacements(context, slide)
+
+    def _summarize_and_render_citations(
+        self, context: _RenderContext
+    ) -> CitationSummary:
+        """Summarize citation registry and invoke provider rendering hook when enabled."""
+        citation_summary = context.citation_registry.summary(
+            enabled=context.citations_enabled,
+            total_sources=context.citations_total_sources,
         )
-        citations_total_sources = 0
+        if not (context.citations_enabled and citation_summary.citations):
+            return citation_summary
+
+        entry_by_source_id = {
+            entry.source_id: entry for entry in citation_summary.citations
+        }
+        provider_citations_by_scope: Dict[str, List[Dict[str, Any]]] = {}
+        for scope_id, source_ids in citation_summary.citations_by_scope.items():
+            provider_citations_by_scope[scope_id] = [
+                entry_by_source_id[source_id].model_dump(mode="json")
+                for source_id in source_ids
+                if source_id in entry_by_source_id
+            ]
+        if (
+            self.citations.location == "document_end"
+            and "__document__" not in provider_citations_by_scope
+        ):
+            provider_citations_by_scope["__document__"] = [
+                entry.model_dump(mode="json") for entry in citation_summary.citations
+            ]
+
+        render_citations = getattr(self.provider, "render_citations", None)
+        if callable(render_citations):
+            try:
+                render_citations(
+                    context.presentation_id,
+                    provider_citations_by_scope,
+                    self.citations.location,
+                )
+            except Exception as citation_render_error:
+                logger.warning(
+                    "Provider citation rendering failed: %s", citation_render_error
+                )
+        else:
+            logger.debug(
+                "Provider '%s' does not implement citation rendering",
+                type(self.provider).__name__,
+            )
+
+        return citation_summary
+
+    def _finalize_and_share_presentation(self, context: _RenderContext) -> None:
+        """Run provider finalization and optional share calls."""
+        finalize_presentation = getattr(self.provider, "finalize_presentation", None)
+        if callable(finalize_presentation):
+            finalize_presentation(context.presentation_id)
+
+        if (
+            hasattr(self.provider, "config")
+            and hasattr(self.provider.config, "share_with")
+            and self.provider.config.share_with
+        ):
+            self.provider.share_presentation(
+                context.presentation_id,
+                self.provider.config.share_with,
+                getattr(self.provider.config, "share_role", "writer"),
+            )
+
+    def _apply_ownership_transfer(self, context: _RenderContext) -> None:
+        """Transfer ownership when configured, preserving strict/non-strict behavior."""
+        transfer_owner = getattr(
+            getattr(self.provider, "config", None), "transfer_ownership_to", None
+        )
+        if not transfer_owner:
+            return
+
+        context.ownership_transfer_attempted = True
+        context.ownership_transfer_target = transfer_owner
+        transfer_strict = bool(
+            getattr(
+                getattr(self.provider, "config", None),
+                "transfer_ownership_strict",
+                False,
+            )
+        )
+        transfer_method = getattr(
+            self.provider, "transfer_presentation_ownership", None
+        )
+
+        if not callable(transfer_method):
+            context.ownership_transfer_succeeded = False
+            context.ownership_transfer_error = (
+                "Ownership transfer is not supported by provider "
+                f"'{type(self.provider).__name__}'"
+            )
+            logger.warning(context.ownership_transfer_error)
+            if transfer_strict:
+                raise RenderingError(context.ownership_transfer_error)
+            return
 
         try:
-            # Pre-fetch all data sources (uses caching)
-            self._prefetch_data_sources()
-
-            if citations_enabled:
-                for slide in self.slides:
-                    slide_sources = self._collect_slide_sources(slide)
-                    scope_id = (
-                        "__document__"
-                        if self.citations.location == "document_end"
-                        else slide.id
-                    )
-                    for source in slide_sources:
-                        get_citations = getattr(source, "get_citation_entries", None)
-                        if not callable(get_citations):
-                            continue
-                        try:
-                            try:
-                                entries = get_citations(
-                                    mode=self.citations.mode,
-                                    include_query_text=self.citations.include_query_text,
-                                )
-                            except TypeError:
-                                # Backward compatibility for custom connectors that
-                                # only accept ``mode``.
-                                entries = get_citations(mode=self.citations.mode)
-                        except Exception as citation_error:
-                            logger.warning(
-                                "Citation generation failed for source '%s': %s",
-                                getattr(source, "name", type(source).__name__),
-                                citation_error,
-                            )
-                            continue
-
-                        for entry in entries:
-                            try:
-                                citation_entry = (
-                                    entry
-                                    if isinstance(entry, CitationEntry)
-                                    else CitationEntry.model_validate(entry)
-                                )
-                            except Exception as citation_entry_error:
-                                logger.warning(
-                                    "Skipping invalid citation entry for source '%s': %s",
-                                    getattr(source, "name", type(source).__name__),
-                                    citation_entry_error,
-                                )
-                                continue
-                            template = self.citations.repo_url_template
-                            if template:
-                                try:
-                                    citation_entry = citation_entry.model_copy(
-                                        update={
-                                            "file_url": template.format(
-                                                repo_url=citation_entry.repo_url or "",
-                                                model_path=citation_entry.model_path
-                                                or "",
-                                                model_unique_id=citation_entry.model_unique_id
-                                                or "",
-                                                ref=str(
-                                                    citation_entry.metadata.get(
-                                                        "ref", ""
-                                                    )
-                                                ),
-                                            )
-                                        }
-                                    )
-                                except Exception as template_error:
-                                    logger.warning(
-                                        "Citation repo_url_template formatting failed for source '%s': %s",
-                                        getattr(source, "name", type(source).__name__),
-                                        template_error,
-                                    )
-                            citations_total_sources += 1
-                            citation_registry.add(citation_entry, scope_id=scope_id)
-
-            for slide in self.slides:
-                # Generate charts for this slide
-                for chart in slide.charts:
-                    max_retries = Timing.PRESENTATION_CHART_MAX_RETRIES
-                    base_retry_delay_s = Timing.PRESENTATION_CHART_RETRY_DELAY_S
-                    backoff_multiplier = (
-                        Timing.PRESENTATION_CHART_RETRY_BACKOFF_MULTIPLIER
-                    )
-                    for attempt in range(max_retries):
-                        try:
-                            df = (
-                                chart.data_source.fetch_data()
-                                if chart.data_source
-                                else pd.DataFrame()
-                            )
-
-                            image_data = chart.generate_chart_image(df)
-
-                            image_url, file_id = self.provider.upload_chart_image(
-                                presentation_id,
-                                image_data,
-                                f"chart_{chart.title or 'untitled'}.png",
-                            )
-                            if file_id:
-                                uploaded_file_ids.append(file_id)
-
-                            x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
-                                x=chart.x,
-                                y=chart.y,
-                                width=chart.width,
-                                height=chart.height,
-                                dimensions_format=chart.dimensions_format,
-                                alignment_format=chart.alignment_format,
-                                slides_app=slides_app,
-                                page_width_pt=page_width_pt,
-                                page_height_pt=page_height_pt,
-                            )
-
-                            self.provider.insert_chart_to_slide(
-                                presentation_id,
-                                slide.id,
-                                image_url,
-                                x_pt,
-                                y_pt,
-                                width_pt,
-                                height_pt,
-                            )
-                            total_charts += 1
-                            break  # Break out of retry loop on success
-                        except Exception as e:
-                            if attempt < max_retries - 1:
-                                delay_seconds = base_retry_delay_s * (
-                                    backoff_multiplier**attempt
-                                )
-                                logger.warning(
-                                    f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' (attempt {attempt + 1}/{max_retries}). Retrying in {delay_seconds} seconds. Error: {e}"
-                                )
-                                if delay_seconds > 0:
-                                    time.sleep(delay_seconds)
-                            else:
-                                logger.error(
-                                    f"Chart processing failed for '{chart.title or chart.type}' on slide '{slide.id}' after {max_retries} attempts. Inserting error placeholder. Error: {e}"
-                                )
-                                # Insert error placeholder on final failure
-                                try:
-                                    x_pt, y_pt, width_pt, height_pt = (
-                                        compute_chart_dimensions(
-                                            x=chart.x,
-                                            y=chart.y,
-                                            width=chart.width,
-                                            height=chart.height,
-                                            dimensions_format=chart.dimensions_format,
-                                            alignment_format=chart.alignment_format,
-                                            slides_app=slides_app,
-                                            page_width_pt=page_width_pt,
-                                            page_height_pt=page_height_pt,
-                                        )
-                                    )
-
-                                    error_image_url = "https://drive.google.com/uc?id=10geCrUpKZmQBesbhjtepZ9NexE-HRkn4"
-                                    self.provider.insert_chart_to_slide(
-                                        presentation_id,
-                                        slide.id,
-                                        error_image_url,
-                                        x=x_pt,
-                                        y=y_pt,
-                                        width=width_pt,
-                                        height=height_pt,
-                                    )
-                                    logger.info(
-                                        f"Inserted error placeholder for chart on slide '{slide.id}'"
-                                    )
-                                except Exception as img_e:
-                                    logger.error(
-                                        f"Failed to insert error placeholder for chart on slide '{slide.id}': {img_e}"
-                                    )
-                                continue  # Continue to next chart/replacement
-
-                # Process replacements for this slide
-                for replacement in slide.replacements:
-                    try:
-                        replacement_result = replacement.get_replacement()
-
-                        # Handle different replacement types
-                        if hasattr(replacement, "placeholder"):
-                            # Text and AI text replacements
-                            replacements_made = self.provider.replace_text_in_slide(
-                                presentation_id,
-                                slide.id,
-                                replacement.placeholder,
-                                str(replacement_result),
-                            )
-                            total_replacements += replacements_made
-                            logger.debug(
-                                f"Processed replacement for {replacement.placeholder}: {replacements_made} occurrences"
-                            )
-                        elif hasattr(replacement, "prefix"):
-                            # Table replacements return a dictionary of placeholder->value
-                            if isinstance(replacement_result, dict):
-                                for placeholder, value in replacement_result.items():
-                                    if (
-                                        Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S
-                                        > 0
-                                    ):
-                                        time.sleep(
-                                            Timing.PRESENTATION_TABLE_REPLACEMENT_DELAY_S
-                                        )
-                                    replacements_made = (
-                                        self.provider.replace_text_in_slide(
-                                            presentation_id,
-                                            slide.id,
-                                            placeholder,
-                                            str(value),
-                                        )
-                                    )
-                                    total_replacements += replacements_made
-                                    logger.debug(
-                                        f"Processed table replacement for {placeholder}: {replacements_made} occurrences"
-                                    )
-                    except Exception as e:
-                        replacement_type = getattr(
-                            replacement, "type", type(replacement).__name__
-                        )
-                        placeholder = getattr(replacement, "placeholder", "unknown")
-                        logger.error(
-                            f"Failed to process {replacement_type} replacement '{placeholder}': {e}"
-                        )
-                        # Continue with other replacements rather than failing entirely
-                        continue
-
-            citation_summary = citation_registry.summary(
-                enabled=citations_enabled,
-                total_sources=citations_total_sources,
+            transfer_method(context.presentation_id, transfer_owner)
+            context.ownership_transfer_succeeded = True
+        except Exception as transfer_error:  # pragma: no cover - guarded via tests
+            context.ownership_transfer_succeeded = False
+            context.ownership_transfer_error = safe_error_line(transfer_error)
+            logger.error(
+                "Ownership transfer failed for '%s' -> '%s': %s",
+                context.presentation_id,
+                transfer_owner,
+                context.ownership_transfer_error,
             )
-            if citations_enabled and citation_summary.citations:
-                entry_by_source_id = {
-                    entry.source_id: entry for entry in citation_summary.citations
-                }
-                provider_citations_by_scope: Dict[str, List[Dict[str, Any]]] = {}
-                for scope_id, source_ids in citation_summary.citations_by_scope.items():
-                    provider_citations_by_scope[scope_id] = [
-                        entry_by_source_id[source_id].model_dump(mode="json")
-                        for source_id in source_ids
-                        if source_id in entry_by_source_id
-                    ]
-                if (
-                    self.citations.location == "document_end"
-                    and "__document__" not in provider_citations_by_scope
-                ):
-                    provider_citations_by_scope["__document__"] = [
-                        entry.model_dump(mode="json")
-                        for entry in citation_summary.citations
-                    ]
+            if transfer_strict:
+                raise RenderingError(
+                    "Ownership transfer failed: " f"{context.ownership_transfer_error}"
+                ) from transfer_error
 
-                render_citations = getattr(self.provider, "render_citations", None)
-                if callable(render_citations):
-                    try:
-                        render_citations(
-                            presentation_id,
-                            provider_citations_by_scope,
-                            self.citations.location,
-                        )
-                    except Exception as citation_render_error:
-                        logger.warning(
-                            "Provider citation rendering failed: %s",
-                            citation_render_error,
-                        )
-                else:
-                    logger.debug(
-                        "Provider '%s' does not implement citation rendering",
-                        type(self.provider).__name__,
+    def _build_presentation_result(
+        self, context: _RenderContext, citation_summary: CitationSummary
+    ) -> PresentationResult:
+        """Build final presentation result payload from render context."""
+        render_time = time.time() - context.start_time
+        return PresentationResult(
+            presentation_id=context.presentation_id,
+            presentation_url=self.provider.get_presentation_url(
+                context.presentation_id
+            ),
+            charts_generated=context.total_charts,
+            replacements_made=context.total_replacements,
+            render_time=render_time,
+            created_at=datetime.now(),
+            ownership_transfer_attempted=context.ownership_transfer_attempted,
+            ownership_transfer_succeeded=context.ownership_transfer_succeeded,
+            ownership_transfer_target=context.ownership_transfer_target,
+            ownership_transfer_error=context.ownership_transfer_error,
+            citations_enabled=citation_summary.enabled,
+            citations_total_sources=citation_summary.total_sources,
+            citations_emitted_sources=citation_summary.emitted_sources,
+            citations_truncated=citation_summary.truncated,
+            citations=[
+                citation.model_dump(mode="json")
+                for citation in citation_summary.citations
+            ],
+            citations_by_scope=citation_summary.citations_by_scope,
+        )
+
+    def _cleanup_uploaded_chart_images(self, context: _RenderContext) -> None:
+        """Delete uploaded chart images and enforce strict cleanup when configured."""
+        if context.uploaded_file_ids:
+            logger.info(
+                "Cleaning up %d uploaded chart images.", len(context.uploaded_file_ids)
+            )
+            for file_id in context.uploaded_file_ids:
+                try:
+                    self.provider.delete_chart_image(file_id)
+                except Exception as cleanup_error:
+                    context.failed_cleanup_ids.append(file_id)
+                    logger.warning(
+                        "Failed to delete chart image %s: %s",
+                        file_id,
+                        cleanup_error,
                     )
+
+            deleted_cleanup_count = len(context.uploaded_file_ids) - len(
+                context.failed_cleanup_ids
+            )
+            if context.failed_cleanup_ids:
+                logger.warning(
+                    "Chart image cleanup completed with %d failure(s): deleted %d/%d. "
+                    "Failed IDs: %s",
+                    len(context.failed_cleanup_ids),
+                    deleted_cleanup_count,
+                    len(context.uploaded_file_ids),
+                    context.failed_cleanup_ids,
+                )
             else:
-                citation_summary = citation_registry.summary(
-                    enabled=citations_enabled,
-                    total_sources=citations_total_sources,
+                logger.info(
+                    "Chart image cleanup completed: deleted %d/%d chart image(s).",
+                    deleted_cleanup_count,
+                    len(context.uploaded_file_ids),
                 )
 
-            finalize_presentation = getattr(
-                self.provider, "finalize_presentation", None
+        if (
+            context.strict_cleanup
+            and context.failed_cleanup_ids
+            and context.original_error is None
+        ):
+            raise RenderingError(
+                f"Strict cleanup enabled and {len(context.failed_cleanup_ids)} chart image(s) "
+                f"could not be deleted: {context.failed_cleanup_ids}"
             )
-            if callable(finalize_presentation):
-                finalize_presentation(presentation_id)
 
-            # Share presentation if configured
-            if hasattr(self.provider, "config") and hasattr(
-                self.provider.config, "share_with"
-            ):
-                if self.provider.config.share_with:
-                    self.provider.share_presentation(
-                        presentation_id,
-                        self.provider.config.share_with,
-                        getattr(self.provider.config, "share_role", "writer"),
-                    )
-
-            transfer_owner = getattr(
-                getattr(self.provider, "config", None),
-                "transfer_ownership_to",
-                None,
-            )
-            if transfer_owner:
-                ownership_transfer_attempted = True
-                ownership_transfer_target = transfer_owner
-                transfer_strict = bool(
-                    getattr(
-                        getattr(self.provider, "config", None),
-                        "transfer_ownership_strict",
-                        False,
-                    )
-                )
-                transfer_method = getattr(
-                    self.provider, "transfer_presentation_ownership", None
-                )
-
-                if not callable(transfer_method):
-                    ownership_transfer_succeeded = False
-                    ownership_transfer_error = (
-                        "Ownership transfer is not supported by provider "
-                        f"'{type(self.provider).__name__}'"
-                    )
-                    logger.warning(ownership_transfer_error)
-                    if transfer_strict:
-                        raise RenderingError(ownership_transfer_error)
-                else:
-                    try:
-                        transfer_method(presentation_id, transfer_owner)
-                        ownership_transfer_succeeded = True
-                    except (
-                        Exception
-                    ) as transfer_error:  # pragma: no cover - guarded via tests
-                        ownership_transfer_succeeded = False
-                        ownership_transfer_error = safe_error_line(transfer_error)
-                        logger.error(
-                            "Ownership transfer failed for '%s' -> '%s': %s",
-                            presentation_id,
-                            transfer_owner,
-                            ownership_transfer_error,
-                        )
-                        if transfer_strict:
-                            raise RenderingError(
-                                "Ownership transfer failed: "
-                                f"{ownership_transfer_error}"
-                            ) from transfer_error
-
-            render_time = time.time() - start_time
-
-            return PresentationResult(
-                presentation_id=presentation_id,
-                presentation_url=self.provider.get_presentation_url(presentation_id),
-                charts_generated=total_charts,
-                replacements_made=total_replacements,
-                render_time=render_time,
-                created_at=datetime.now(),
-                ownership_transfer_attempted=ownership_transfer_attempted,
-                ownership_transfer_succeeded=ownership_transfer_succeeded,
-                ownership_transfer_target=ownership_transfer_target,
-                ownership_transfer_error=ownership_transfer_error,
-                citations_enabled=citation_summary.enabled,
-                citations_total_sources=citation_summary.total_sources,
-                citations_emitted_sources=citation_summary.emitted_sources,
-                citations_truncated=citation_summary.truncated,
-                citations=[
-                    citation.model_dump(mode="json")
-                    for citation in citation_summary.citations
-                ],
-                citations_by_scope=citation_summary.citations_by_scope,
-            )
-        except Exception as e:
-            original_error = e
+    def render(self) -> PresentationResult:
+        """Render the complete presentation with all content and styling."""
+        context: Optional[_RenderContext] = None
+        try:
+            context = self._create_render_context(start_time=time.time())
+            self._prefetch_data_sources()
+            self._collect_citations_for_slides(context)
+            self._process_slide_content(context)
+            citation_summary = self._summarize_and_render_citations(context)
+            self._finalize_and_share_presentation(context)
+            self._apply_ownership_transfer(context)
+            return self._build_presentation_result(context, citation_summary)
+        except Exception as error:
+            if context is not None:
+                context.original_error = error
             raise
         finally:
-            if uploaded_file_ids:
-                logger.info(
-                    f"Cleaning up {len(uploaded_file_ids)} uploaded chart images."
-                )
-                for file_id in uploaded_file_ids:
-                    try:
-                        self.provider.delete_chart_image(file_id)
-                    except Exception as cleanup_error:
-                        failed_cleanup_ids.append(file_id)
-                        logger.warning(
-                            f"Failed to delete chart image {file_id}: {cleanup_error}"
-                        )
-
-                deleted_cleanup_count = len(uploaded_file_ids) - len(failed_cleanup_ids)
-                if failed_cleanup_ids:
-                    logger.warning(
-                        "Chart image cleanup completed with %d failure(s): deleted %d/%d. "
-                        "Failed IDs: %s",
-                        len(failed_cleanup_ids),
-                        deleted_cleanup_count,
-                        len(uploaded_file_ids),
-                        failed_cleanup_ids,
-                    )
-                else:
-                    logger.info(
-                        "Chart image cleanup completed: deleted %d/%d chart image(s).",
-                        deleted_cleanup_count,
-                        len(uploaded_file_ids),
-                    )
-
-            if strict_cleanup and failed_cleanup_ids and original_error is None:
-                raise RenderingError(
-                    f"Strict cleanup enabled and {len(failed_cleanup_ids)} chart image(s) "
-                    f"could not be deleted: {failed_cleanup_ids}"
-                )
+            if context is not None:
+                self._cleanup_uploaded_chart_images(context)
 
     def get_slide(self, slide_id: str) -> Optional[Slide]:
         """Retrieve a slide by its unique identifier.

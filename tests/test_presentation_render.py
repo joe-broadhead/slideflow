@@ -1,4 +1,5 @@
 import logging
+import time
 
 import pandas as pd
 import pytest
@@ -388,3 +389,131 @@ def test_render_aggregates_document_end_citations_to_document_scope():
     _, payload, location = provider.citation_calls[0]
     assert location == "document_end"
     assert "__document__" in payload
+
+
+def test_create_render_context_initializes_phase_state():
+    provider = FakeProvider(strict_cleanup=True, fail_cleanup=False)
+    presentation, _chart = _build_presentation(provider)
+
+    context = presentation._create_render_context(start_time=123.0)
+
+    assert context.presentation_id == "presentation-1"
+    assert context.start_time == 123.0
+    assert context.strict_cleanup is True
+    assert context.citations_enabled is False
+    assert context.page_width_pt == 720
+    assert context.page_height_pt == 540
+    assert context.slides_app["pageSize"]["width"]["magnitude"] == 720
+    assert context.slides_app["pageSize"]["height"]["magnitude"] == 540
+
+
+def test_collect_citations_for_slides_populates_registry():
+    class CitationSource:
+        type = "stub"
+        name = "sales_model"
+
+        @staticmethod
+        def get_citation_entries(mode: str = "model", include_query_text: bool = False):
+            del mode, include_query_text
+            return [
+                CitationEntry(
+                    source_id="stub:sales",
+                    provider="databricks_dbt",
+                    display_name="sales_model (dbt model)",
+                )
+            ]
+
+        @staticmethod
+        def fetch_data():
+            return pd.DataFrame()
+
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=False)
+    chart = FakeChart()
+    chart.data_source = CitationSource()
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[chart]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo",
+        name_fn=None,
+        slides=[slide],
+        provider=provider,
+        citations=CitationConfig(enabled=True, location="per_slide"),
+    )
+
+    context = presentation._create_render_context(start_time=time.time())
+    presentation._collect_citations_for_slides(context)
+    summary = context.citation_registry.summary(
+        enabled=context.citations_enabled,
+        total_sources=context.citations_total_sources,
+    )
+
+    assert context.citations_total_sources == 1
+    assert summary.emitted_sources == 1
+    assert summary.citations_by_scope == {"slide-1": ["stub:sales"]}
+
+
+def test_process_slide_content_updates_chart_and_replacement_counts():
+    class CountingProvider(FakeProvider):
+        def replace_text_in_slide(self, *args, **kwargs):
+            del args, kwargs
+            return 2
+
+    class TextReplacement:
+        placeholder = "{{TITLE}}"
+        type = "text"
+
+        @staticmethod
+        def get_replacement():
+            return "Demo"
+
+    provider = CountingProvider(strict_cleanup=False, fail_cleanup=False)
+    chart = FakeChart()
+    slide = Slide.model_construct(
+        id="slide-1",
+        title="S1",
+        replacements=[TextReplacement()],
+        charts=[chart],
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    context = presentation._create_render_context(start_time=time.time())
+    presentation._process_slide_content(context)
+
+    assert context.total_charts == 1
+    assert context.total_replacements == 2
+    assert context.uploaded_file_ids == ["file-1"]
+    assert len(provider.insert_calls) == 1
+
+
+def test_finalize_and_share_presentation_runs_provider_hooks():
+    class SharingProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=False, fail_cleanup=False)
+            self.config.share_with = ["team@example.com"]
+            self.config.share_role = "reader"
+            self.share_calls = []
+
+        def share_presentation(self, presentation_id, emails, role="writer"):
+            self.share_calls.append((presentation_id, tuple(emails), role))
+
+    provider = SharingProvider()
+    presentation, _chart = _build_presentation(provider)
+    context = presentation._create_render_context(start_time=time.time())
+
+    presentation._finalize_and_share_presentation(context)
+
+    assert provider.finalize_calls == ["presentation-1"]
+    assert provider.share_calls == [("presentation-1", ("team@example.com",), "reader")]
+
+
+def test_cleanup_uploaded_chart_images_strict_mode_raises_when_cleanup_fails():
+    provider = FakeProvider(strict_cleanup=True, fail_cleanup=True)
+    presentation, _chart = _build_presentation(provider)
+    context = presentation._create_render_context(start_time=time.time())
+    context.uploaded_file_ids = ["file-1"]
+
+    with pytest.raises(RenderingError, match="Strict cleanup enabled"):
+        presentation._cleanup_uploaded_chart_images(context)
