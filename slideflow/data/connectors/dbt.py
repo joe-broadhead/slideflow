@@ -1106,7 +1106,65 @@ class DBTManifestConnector(BaseModel, DataConnector):
         )
 
 
-class DBTDatabricksConnector(BaseModel, DataConnector):
+class _DBTWarehouseConnectorBase(BaseModel, DataConnector):
+    """Shared DBT manifest compilation + warehouse execution flow."""
+
+    model_alias: str
+    model_unique_id: Optional[str] = None
+    model_package_name: Optional[str] = None
+    model_selector_name: Optional[str] = None
+    package_url: str
+    project_dir: str
+    profile_name: Optional[str] = None
+    branch: Optional[str] = None
+    target: str = Defaults.DBT_TARGET
+    vars: Optional[dict[str, Any]] = None
+    compile: bool = Defaults.DBT_COMPILE
+    profiles_dir: Optional[str] = None
+    _manifest_connector: Optional[DBTManifestConnector] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def model_post_init(self, __context: Any) -> None:
+        if self._manifest_connector is None:
+            self._manifest_connector = self._create_manifest_connector()
+
+    def _create_manifest_connector(self) -> DBTManifestConnector:
+        return DBTManifestConnector(
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            compile=self.compile,
+            profile_name=self.profile_name,
+        )
+
+    def _resolve_compiled_sql(self) -> str:
+        if self._manifest_connector is None:
+            self._manifest_connector = self._create_manifest_connector()
+
+        sql_text = self._manifest_connector.get_compiled_query(
+            self.model_alias,
+            model_unique_id=self.model_unique_id,
+            model_package_name=self.model_package_name,
+            model_selector_name=self.model_selector_name,
+        )
+        if not sql_text:
+            raise DataSourceError(f"No compiled model '{self.model_alias}'")
+        return sql_text
+
+    def _create_sql_executor(self) -> SQLExecutor:
+        raise NotImplementedError
+
+    def fetch_data(self) -> pd.DataFrame:
+        """Compile DBT model and execute it on the configured warehouse."""
+        sql_text = self._resolve_compiled_sql()
+        return self._create_sql_executor().execute(sql_text)
+
+
+class DBTDatabricksConnector(_DBTWarehouseConnectorBase):
     """Connector that combines DBT model compilation with Databricks execution.
 
     This connector bridges DBT transformations with Databricks SQL execution.
@@ -1140,187 +1198,44 @@ class DBTDatabricksConnector(BaseModel, DataConnector):
         >>> print(f"Retrieved {len(data)} rows from DBT model")
     """
 
-    model_alias: str
-    model_unique_id: Optional[str] = None
-    model_package_name: Optional[str] = None
-    model_selector_name: Optional[str] = None
-    package_url: str
-    project_dir: str
-    profile_name: Optional[str] = None
-    branch: Optional[str] = None
-    target: str = Defaults.DBT_TARGET
-    vars: Optional[dict[str, Any]] = None
-    compile: bool = Defaults.DBT_COMPILE
-    profiles_dir: Optional[str] = None
-    _manifest_connector: Optional[DBTManifestConnector] = None
     sql_executor_factory: ClassVar[Callable[[], SQLExecutor]] = (
         _create_databricks_sql_executor
     )
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-        self._manifest_connector = DBTManifestConnector(
-            package_url=self.package_url,
-            project_dir=self.project_dir,
-            branch=self.branch,
-            target=self.target,
-            vars=self.vars,
-            profiles_dir=self.profiles_dir,
-            compile=self.compile,
-            profile_name=self.profile_name,
-        )
-
-    def fetch_data(self) -> pd.DataFrame:
-        """Compile DBT model and execute against Databricks.
-
-        Extracts the compiled SQL from the DBT model and executes it
-        against the configured Databricks SQL warehouse. Returns the
-        query results as a pandas DataFrame.
-
-        Returns:
-            DataFrame containing the results of the compiled DBT model query.
-
-        Raises:
-            DataSourceError: If the specified model is not found or compilation fails.
-            ConnectionError: If unable to connect to Databricks.
-            sql.Error: If the compiled SQL query execution fails.
-
-        Example:
-            >>> connector = DBTDatabricksConnector(
-            ...     model_alias="revenue_summary",
-            ...     package_url="https://github.com/company/dbt-project.git",
-            ...     project_dir="/tmp/dbt_project"
-            ... )
-            >>> df = connector.fetch_data()
-            >>> print(f"Model returned {len(df)} rows, {len(df.columns)} columns")
-        """
-        if self._manifest_connector is None:
-            raise DataSourceError("DBT manifest connector is not initialized.")
-        sql_text = self._manifest_connector.get_compiled_query(
-            self.model_alias,
-            model_unique_id=self.model_unique_id,
-            model_package_name=self.model_package_name,
-            model_selector_name=self.model_selector_name,
-        )
-        if not sql_text:
-            raise DataSourceError(f"No compiled model '{self.model_alias}'")
-        return type(self).sql_executor_factory().execute(sql_text)
+    def _create_sql_executor(self) -> SQLExecutor:
+        return type(self).sql_executor_factory()
 
 
-class DBTBigQueryConnector(BaseModel, DataConnector):
+class DBTBigQueryConnector(_DBTWarehouseConnectorBase):
     """Connector that combines DBT model compilation with BigQuery execution."""
 
-    model_alias: str
-    model_unique_id: Optional[str] = None
-    model_package_name: Optional[str] = None
-    model_selector_name: Optional[str] = None
-    package_url: str
-    project_dir: str
-    profile_name: Optional[str] = None
-    branch: Optional[str] = None
-    target: str = Defaults.DBT_TARGET
-    vars: Optional[dict[str, Any]] = None
-    compile: bool = Defaults.DBT_COMPILE
-    profiles_dir: Optional[str] = None
     project_id: Optional[str] = None
     location: Optional[str] = None
     credentials_json: Optional[str] = None
     credentials_path: Optional[str] = None
-    _manifest_connector: Optional[DBTManifestConnector] = None
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-        self._manifest_connector = DBTManifestConnector(
-            package_url=self.package_url,
-            project_dir=self.project_dir,
-            branch=self.branch,
-            target=self.target,
-            vars=self.vars,
-            profiles_dir=self.profiles_dir,
-            compile=self.compile,
-            profile_name=self.profile_name,
-        )
-
-    def fetch_data(self) -> pd.DataFrame:
-        """Compile DBT model and execute the resulting SQL on BigQuery."""
-        if self._manifest_connector is None:
-            raise DataSourceError("DBT manifest connector is not initialized.")
-        sql_text = self._manifest_connector.get_compiled_query(
-            self.model_alias,
-            model_unique_id=self.model_unique_id,
-            model_package_name=self.model_package_name,
-            model_selector_name=self.model_selector_name,
-        )
-        if not sql_text:
-            raise DataSourceError(f"No compiled model '{self.model_alias}'")
-
-        executor = BigQuerySQLExecutor(
+    def _create_sql_executor(self) -> SQLExecutor:
+        return BigQuerySQLExecutor(
             project_id=self.project_id,
             location=self.location,
             credentials_json=self.credentials_json,
             credentials_path=self.credentials_path,
         )
-        return executor.execute(sql_text)
 
 
-class DBTDuckDBConnector(BaseModel, DataConnector):
+class DBTDuckDBConnector(_DBTWarehouseConnectorBase):
     """Connector that combines DBT model compilation with DuckDB execution."""
 
-    model_alias: str
-    model_unique_id: Optional[str] = None
-    model_package_name: Optional[str] = None
-    model_selector_name: Optional[str] = None
-    package_url: str
-    project_dir: str
-    profile_name: Optional[str] = None
-    branch: Optional[str] = None
-    target: str = Defaults.DBT_TARGET
-    vars: Optional[dict[str, Any]] = None
-    compile: bool = Defaults.DBT_COMPILE
-    profiles_dir: Optional[str] = None
     database: str
     read_only: bool = True
     file_search_path: Optional[str | list[str]] = None
-    _manifest_connector: Optional[DBTManifestConnector] = None
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-        self._manifest_connector = DBTManifestConnector(
-            package_url=self.package_url,
-            project_dir=self.project_dir,
-            branch=self.branch,
-            target=self.target,
-            vars=self.vars,
-            profiles_dir=self.profiles_dir,
-            compile=self.compile,
-            profile_name=self.profile_name,
-        )
-
-    def fetch_data(self) -> pd.DataFrame:
-        """Compile DBT model and execute the resulting SQL on DuckDB."""
-        if self._manifest_connector is None:
-            raise DataSourceError("DBT manifest connector is not initialized.")
-        sql_text = self._manifest_connector.get_compiled_query(
-            self.model_alias,
-            model_unique_id=self.model_unique_id,
-            model_package_name=self.model_package_name,
-            model_selector_name=self.model_selector_name,
-        )
-        if not sql_text:
-            raise DataSourceError(f"No compiled model '{self.model_alias}'")
-
-        executor = DuckDBSQLExecutor(
+    def _create_sql_executor(self) -> SQLExecutor:
+        return DuckDBSQLExecutor(
             database=self.database,
             read_only=self.read_only,
             file_search_path=self.file_search_path,
         )
-        return executor.execute(sql_text)
 
 
 def _build_dbt_citation_entries(

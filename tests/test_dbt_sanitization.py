@@ -972,6 +972,61 @@ def test_databricks_connector_forwards_manifest_disambiguation_selectors(monkeyp
     }
 
 
+@pytest.mark.parametrize(
+    ("connector_cls", "extra_kwargs"),
+    [
+        (
+            dbt_module.DBTDatabricksConnector,
+            {},
+        ),
+        (
+            dbt_module.DBTBigQueryConnector,
+            {"project_id": "project", "location": "US"},
+        ),
+        (
+            dbt_module.DBTDuckDBConnector,
+            {"database": "/tmp/warehouse.duckdb"},
+        ),
+    ],
+)
+def test_dbt_warehouse_connectors_share_missing_compiled_model_guard(
+    monkeypatch, connector_cls, extra_kwargs
+):
+    class _ManifestStub:
+        def __init__(self, **_kwargs):
+            pass
+
+        def get_compiled_query(self, _model_alias, **_selectors):
+            return None
+
+    class _ExecutorStub:
+        def execute(self, _sql_query):
+            raise AssertionError("Executor should not run when compiled SQL is missing")
+
+    monkeypatch.setattr(dbt_module, "DBTManifestConnector", _ManifestStub)
+    monkeypatch.setattr(
+        dbt_module, "BigQuerySQLExecutor", lambda **_kwargs: _ExecutorStub()
+    )
+    monkeypatch.setattr(
+        dbt_module, "DuckDBSQLExecutor", lambda **_kwargs: _ExecutorStub()
+    )
+    monkeypatch.setattr(
+        dbt_module.DBTDatabricksConnector,
+        "sql_executor_factory",
+        lambda: _ExecutorStub(),
+    )
+
+    connector = connector_cls(
+        model_alias="metrics_model",
+        package_url="https://github.com/org/repo.git",
+        project_dir="/tmp/workspace",
+        **extra_kwargs,
+    )
+
+    with pytest.raises(DataSourceError, match="No compiled model 'metrics_model'"):
+        connector.fetch_data()
+
+
 def test_composable_dbt_source_config_resolves_to_databricks_connector():
     config = dbt_module.DBTSourceConfig(
         name="metrics",
