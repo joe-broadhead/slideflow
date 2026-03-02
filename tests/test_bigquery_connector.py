@@ -221,3 +221,56 @@ def test_dbt_source_config_rejects_unsupported_warehouse():
             },
             warehouse={"type": "snowflake"},
         )
+
+
+def test_dbt_bigquery_connector_executes_compiled_sql(monkeypatch):
+    captured = {}
+
+    class ManifestStub:
+        def __init__(self, **_kwargs):
+            pass
+
+        def get_compiled_query(self, model_alias, **selectors):
+            captured["model_alias"] = model_alias
+            captured["selectors"] = selectors
+            return "SELECT 7 AS answer"
+
+    class ExecutorStub:
+        def __init__(self, project_id=None, location=None, **kwargs):
+            captured["project_id"] = project_id
+            captured["location"] = location
+            captured["credentials_json"] = kwargs.get("credentials_json")
+            captured["credentials_path"] = kwargs.get("credentials_path")
+
+        def execute(self, sql_query):
+            captured["sql_query"] = sql_query
+            return pd.DataFrame({"answer": [7]})
+
+    monkeypatch.setattr(dbt_module, "DBTManifestConnector", ManifestStub)
+    monkeypatch.setattr(dbt_module, "BigQuerySQLExecutor", ExecutorStub)
+
+    connector = dbt_module.DBTBigQueryConnector(
+        model_alias="metrics_model",
+        model_unique_id="model.pkg.metrics_model",
+        model_package_name="pkg",
+        model_selector_name="metrics_model",
+        package_url="https://github.com/org/repo.git",
+        project_dir="/tmp/workspace",
+        project_id="project",
+        location="US",
+        credentials_path="/tmp/key.json",
+    )
+
+    result = connector.fetch_data()
+
+    assert result.to_dict(orient="records") == [{"answer": 7}]
+    assert captured["model_alias"] == "metrics_model"
+    assert captured["selectors"] == {
+        "model_unique_id": "model.pkg.metrics_model",
+        "model_package_name": "pkg",
+        "model_selector_name": "metrics_model",
+    }
+    assert captured["project_id"] == "project"
+    assert captured["location"] == "US"
+    assert captured["credentials_path"] == "/tmp/key.json"
+    assert captured["sql_query"] == "SELECT 7 AS answer"
