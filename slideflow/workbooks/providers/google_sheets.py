@@ -100,10 +100,25 @@ class GoogleSheetsProvider(WorkbookProvider):
         self.drive_service = build("drive", "v3", credentials=credentials)
         self.rate_limiter = _get_rate_limiter(self.config.requests_per_second)
         self._run_key_cache: Dict[str, Set[Tuple[str, str]]] = {}
+        self._workbook_locks: Dict[str, threading.RLock] = {}
+        self._workbook_locks_guard = threading.Lock()
 
     def _execute_request(self, request):
         """Execute Google API request with shared rate limiting."""
         return execute_rate_limited_request(request, self.rate_limiter, num_retries=3)
+
+    def _workbook_lock(self, workbook_id: str) -> threading.RLock:
+        """Return a per-workbook lock for append/idempotency critical sections."""
+        # Keep compatibility with tests that bypass __init__ via object.__new__.
+        if not hasattr(self, "_workbook_locks"):
+            self._workbook_locks = {}
+        if not hasattr(self, "_workbook_locks_guard"):
+            self._workbook_locks_guard = threading.Lock()
+
+        with self._workbook_locks_guard:
+            if workbook_id not in self._workbook_locks:
+                self._workbook_locks[workbook_id] = threading.RLock()
+            return self._workbook_locks[workbook_id]
 
     def _base_preflight_checks(self) -> List[Tuple[str, bool, str]]:
         """Return credential/service/rate-limiter baseline preflight checks."""
@@ -559,49 +574,53 @@ class GoogleSheetsProvider(WorkbookProvider):
         rows: List[List[Any]],
         run_key: str,
     ) -> Tuple[int, int]:
-        self._ensure_sheet_exists(workbook_id, tab_name)
-        run_keys = self._load_run_key_cache(workbook_id)
-        dedupe_key = (tab_name, run_key)
-        if dedupe_key in run_keys:
-            return 0, len(rows)
+        workbook_lock = self._workbook_lock(workbook_id)
+        with workbook_lock:
+            self._ensure_sheet_exists(workbook_id, tab_name)
+            run_keys = self._load_run_key_cache(workbook_id)
+            dedupe_key = (tab_name, run_key)
+            if dedupe_key in run_keys:
+                return 0, len(rows)
 
-        # Reserve the run key first so retries won't duplicate append writes.
-        self._record_run_key(
-            workbook_id=workbook_id,
-            tab_name=tab_name,
-            run_key=run_key,
-            rows_written=len(rows),
-        )
+            # Reserve the run key first so retries won't duplicate append writes.
+            self._record_run_key(
+                workbook_id=workbook_id,
+                tab_name=tab_name,
+                run_key=run_key,
+                rows_written=len(rows),
+            )
 
-        try:
-            if rows:
-                target_range = self._sheet_range(tab_name, start_cell)
-                self._execute_request(
-                    self.sheets_service.spreadsheets()
-                    .values()
-                    .append(
-                        spreadsheetId=workbook_id,
-                        range=target_range,
-                        valueInputOption="RAW",
-                        insertDataOption="INSERT_ROWS",
-                        body={"values": rows},
-                    )
-                )
-        except Exception:
             try:
-                self._remove_run_key_record(workbook_id, tab_name, run_key)
-                self._run_key_cache.setdefault(workbook_id, set()).discard(dedupe_key)
-            except Exception as cleanup_error:
-                logger.error(
-                    "Failed to clean up reserved run key after append failure "
-                    "(workbook_id=%s, tab=%s, run_key=%s): %s",
-                    workbook_id,
-                    tab_name,
-                    run_key,
-                    cleanup_error,
-                )
-            raise
-        return len(rows), 0
+                if rows:
+                    target_range = self._sheet_range(tab_name, start_cell)
+                    self._execute_request(
+                        self.sheets_service.spreadsheets()
+                        .values()
+                        .append(
+                            spreadsheetId=workbook_id,
+                            range=target_range,
+                            valueInputOption="RAW",
+                            insertDataOption="INSERT_ROWS",
+                            body={"values": rows},
+                        )
+                    )
+            except Exception:
+                try:
+                    self._remove_run_key_record(workbook_id, tab_name, run_key)
+                    self._run_key_cache.setdefault(workbook_id, set()).discard(
+                        dedupe_key
+                    )
+                except Exception as cleanup_error:
+                    logger.error(
+                        "Failed to clean up reserved run key after append failure "
+                        "(workbook_id=%s, tab=%s, run_key=%s): %s",
+                        workbook_id,
+                        tab_name,
+                        run_key,
+                        cleanup_error,
+                    )
+                raise
+            return len(rows), 0
 
     def write_summary_text(
         self,

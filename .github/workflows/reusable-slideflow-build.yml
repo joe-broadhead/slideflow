@@ -83,7 +83,7 @@ on:
         default: false
         type: boolean
       threads:
-        description: "Optional --threads value (presentations + sheets; sheets currently applies 1)"
+        description: "Optional --threads value (presentations + sheets)"
         required: false
         default: ""
         type: string

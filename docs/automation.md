@@ -73,7 +73,7 @@ jobs:
 - `provider-contract-params-path` (optional): CSV path for validate contract checks; falls back to `params-path` when unset.
 - `dry-run` (optional): Run build with `--dry-run`. Default `false`.
 - `threads` (optional): Value passed to `--threads` for both `presentation`
-  and `sheets` builds. Sheets currently normalizes this to `1`.
+  and `sheets` builds.
 - `requests-per-second` (optional): Value passed to `--rps` for both
   `presentation` and `sheets` builds.
 - `upload-log-artifact` (optional): Upload logs and discovered URLs. Default `true`.

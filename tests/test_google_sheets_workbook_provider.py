@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 from typing import Any, Dict, List, Set, Tuple
 
@@ -297,6 +298,72 @@ def test_write_append_rows_keeps_reserved_key_if_cleanup_fails():
         )
 
     assert ("kpi_current", "wk_4") in run_keys
+
+
+def test_write_append_rows_is_thread_safe_for_duplicate_run_keys():
+    provider = _provider_without_init()
+    provider.sheets_service = _minimal_sheets_service()
+
+    def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
+        del workbook_id, tab_name
+
+    provider._ensure_sheet_exists = _ensure_sheet_exists
+
+    run_keys: Set[Tuple[str, str]] = set()
+    run_keys_lock = threading.Lock()
+
+    def _load_run_key_cache(_workbook_id: str) -> Set[Tuple[str, str]]:
+        return run_keys
+
+    provider._load_run_key_cache = _load_run_key_cache
+
+    recorded: List[Tuple[str, str]] = []
+
+    def _record_run_key(
+        workbook_id: str, tab_name: str, run_key: str, rows_written: int
+    ) -> None:
+        del workbook_id, rows_written
+        with run_keys_lock:
+            run_keys.add((tab_name, run_key))
+            recorded.append((tab_name, run_key))
+
+    provider._record_run_key = _record_run_key
+    provider._remove_run_key_record = lambda workbook_id, tab_name, run_key: None
+    provider._sheet_range = lambda tab_name, range_part: f"{tab_name}!{range_part}"
+
+    append_calls = 0
+    append_calls_lock = threading.Lock()
+
+    def _exec(request):
+        nonlocal append_calls
+        if request[0] == "values.append":
+            with append_calls_lock:
+                append_calls += 1
+        return {}
+
+    provider._execute_request = _exec
+
+    results: List[Tuple[int, int]] = []
+
+    def _worker() -> None:
+        outcome = provider.write_append_rows(
+            workbook_id="sheet_123",
+            tab_name="kpi_current",
+            start_cell="A1",
+            rows=[[1]],
+            run_key="wk_concurrent",
+        )
+        results.append(outcome)
+
+    workers = [threading.Thread(target=_worker), threading.Thread(target=_worker)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    assert sorted(results) == [(0, 1), (1, 0)]
+    assert append_calls == 1
+    assert recorded == [("kpi_current", "wk_concurrent")]
 
 
 def test_run_preflight_checks_with_spreadsheet_and_folder_access():
