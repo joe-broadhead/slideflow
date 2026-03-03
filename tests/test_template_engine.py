@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 import slideflow.builtins.template_engine as template_engine_module
-from slideflow.builtins.template_engine import TemplateEngine
 from slideflow.utilities.exceptions import ChartGenerationError
 
 
@@ -22,7 +21,7 @@ def test_render_template_supports_block_scalar_template_section(tmp_path):
         '      name: "{{ label }}"\n'
     )
 
-    engine = TemplateEngine([tmp_path])
+    engine = template_engine_module.TemplateEngine([tmp_path])
     rendered = engine.render_template("block_style", {"label": "Revenue"})
 
     assert rendered["traces"][0]["type"] == "bar"
@@ -42,7 +41,7 @@ def test_render_template_requires_required_parameters(tmp_path):
         '  value: "{{ metric }}"\n'
     )
 
-    engine = TemplateEngine([tmp_path])
+    engine = template_engine_module.TemplateEngine([tmp_path])
 
     with pytest.raises(
         ChartGenerationError, match="Required parameter 'metric' missing"
@@ -58,13 +57,13 @@ def test_list_templates_returns_sorted_template_names(tmp_path):
         "name: Alpha\n" "description: a\n" "parameters: []\n" "template:\n" "  v: 1\n"
     )
 
-    engine = TemplateEngine([tmp_path])
+    engine = template_engine_module.TemplateEngine([tmp_path])
 
     assert engine.list_templates() == ["alpha", "zeta"]
 
 
 def test_default_engine_can_load_packaged_builtin_templates():
-    engine = TemplateEngine()
+    engine = template_engine_module.TemplateEngine()
     rendered = engine.render_template(
         "bar_basic",
         {"title": "Revenue", "x_column": "month", "y_column": "revenue"},
@@ -94,14 +93,14 @@ def test_local_template_precedence_overrides_packaged_builtin(tmp_path):
     builtins_path = (
         Path(template_engine_module.__file__).resolve().parents[1] / "templates"
     )
-    engine = TemplateEngine([custom_templates, builtins_path])
+    engine = template_engine_module.TemplateEngine([custom_templates, builtins_path])
     template = engine.load_template("bar_basic")
 
     assert template.name == "Local Override"
 
 
 def test_kpi_single_template_renders_scalar_column_reference_by_default():
-    engine = TemplateEngine()
+    engine = template_engine_module.TemplateEngine()
 
     rendered = engine.render_template(
         "kpi_cards/kpi_card_single",
@@ -113,7 +112,7 @@ def test_kpi_single_template_renders_scalar_column_reference_by_default():
 
 
 def test_kpi_delta_template_renders_scalar_column_references_by_default():
-    engine = TemplateEngine()
+    engine = template_engine_module.TemplateEngine()
 
     rendered = engine.render_template(
         "kpi_cards/kpi_card_delta",
@@ -126,7 +125,7 @@ def test_kpi_delta_template_renders_scalar_column_references_by_default():
 
 
 def test_waterfall_delta_template_does_not_set_invalid_scalar_measure():
-    engine = TemplateEngine()
+    engine = template_engine_module.TemplateEngine()
 
     rendered = engine.render_template(
         "composition/waterfall_delta",

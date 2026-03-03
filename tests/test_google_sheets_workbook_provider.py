@@ -120,7 +120,7 @@ def test_write_append_rows_skips_when_run_key_already_recorded():
     provider.sheets_service = _minimal_sheets_service()
 
     def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
-        del workbook_id, tab_name
+        _ = (workbook_id, tab_name)
 
     def _load_run_key_cache(_workbook_id: str) -> Set[Tuple[str, str]]:
         return {("kpi_current", "wk_1")}
@@ -161,7 +161,7 @@ def test_write_append_rows_appends_and_records_new_run_key():
     provider.sheets_service = _minimal_sheets_service()
 
     def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
-        del workbook_id, tab_name
+        _ = (workbook_id, tab_name)
 
     provider._ensure_sheet_exists = _ensure_sheet_exists
     run_keys: Set[Tuple[str, str]] = set()
@@ -210,7 +210,7 @@ def test_write_append_rows_cleans_reserved_key_when_data_append_fails():
     provider.sheets_service = _minimal_sheets_service()
 
     def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
-        del workbook_id, tab_name
+        _ = (workbook_id, tab_name)
 
     provider._ensure_sheet_exists = _ensure_sheet_exists
     run_keys: Set[Tuple[str, str]] = set()
@@ -222,12 +222,12 @@ def test_write_append_rows_cleans_reserved_key_when_data_append_fails():
     def _record_run_key(
         workbook_id: str, tab_name: str, run_key: str, rows_written: int
     ) -> None:
-        del workbook_id, rows_written
+        _ = (workbook_id, rows_written)
         reserved.append((tab_name, run_key))
         run_keys.add((tab_name, run_key))
 
     def _remove_run_key_record(workbook_id: str, tab_name: str, run_key: str) -> None:
-        del workbook_id
+        _ = workbook_id
         removed.append((tab_name, run_key))
         run_keys.discard((tab_name, run_key))
 
@@ -261,7 +261,7 @@ def test_write_append_rows_keeps_reserved_key_if_cleanup_fails():
     provider.sheets_service = _minimal_sheets_service()
 
     def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
-        del workbook_id, tab_name
+        _ = (workbook_id, tab_name)
 
     provider._ensure_sheet_exists = _ensure_sheet_exists
     run_keys: Set[Tuple[str, str]] = set()
@@ -270,11 +270,11 @@ def test_write_append_rows_keeps_reserved_key_if_cleanup_fails():
     def _record_run_key(
         workbook_id: str, tab_name: str, run_key: str, rows_written: int
     ) -> None:
-        del workbook_id, rows_written
+        _ = (workbook_id, rows_written)
         run_keys.add((tab_name, run_key))
 
     def _remove_run_key_record(workbook_id: str, tab_name: str, run_key: str) -> None:
-        del workbook_id, tab_name, run_key
+        _ = (workbook_id, tab_name), run_key
         raise RuntimeError("cleanup failed")
 
     provider._record_run_key = _record_run_key
@@ -305,7 +305,7 @@ def test_write_append_rows_is_thread_safe_for_duplicate_run_keys():
     provider.sheets_service = _minimal_sheets_service()
 
     def _ensure_sheet_exists(workbook_id: str, tab_name: str) -> None:
-        del workbook_id, tab_name
+        _ = (workbook_id, tab_name)
 
     provider._ensure_sheet_exists = _ensure_sheet_exists
 
@@ -322,7 +322,7 @@ def test_write_append_rows_is_thread_safe_for_duplicate_run_keys():
     def _record_run_key(
         workbook_id: str, tab_name: str, run_key: str, rows_written: int
     ) -> None:
-        del workbook_id, rows_written
+        _ = (workbook_id, rows_written)
         with run_keys_lock:
             run_keys.add((tab_name, run_key))
             recorded.append((tab_name, run_key))

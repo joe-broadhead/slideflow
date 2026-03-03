@@ -9,20 +9,18 @@ import slideflow.presentations.providers.factory as provider_factory_module
 import slideflow.presentations.providers.google_docs as google_docs_module
 from slideflow.constants import Environment
 from slideflow.presentations.config import ProviderConfig
-from slideflow.presentations.providers.google_docs import (
-    GoogleDocsProvider,
-    GoogleDocsProviderConfig,
-)
 from slideflow.utilities.exceptions import AuthenticationError, RenderingError
 
 
-def _provider_without_init() -> GoogleDocsProvider:
+def _provider_without_init() -> google_docs_module.GoogleDocsProvider:
     provider = object.__new__(google_docs_module.GoogleDocsProvider)
     provider._section_insert_indices = {}
     return provider
 
 
-def _attach_default_docs_config(provider: GoogleDocsProvider) -> None:
+def _attach_default_docs_config(
+    provider: google_docs_module.GoogleDocsProvider,
+) -> None:
     provider.config = SimpleNamespace(
         section_marker_prefix="{{SECTION:",
         section_marker_suffix="}}",
@@ -150,8 +148,8 @@ def test_google_docs_provider_init_success(monkeypatch):
         google_docs_module, "_get_rate_limiter", lambda rps: f"rl:{rps}"
     )
 
-    provider = GoogleDocsProvider(
-        GoogleDocsProviderConfig(
+    provider = google_docs_module.GoogleDocsProvider(
+        google_docs_module.GoogleDocsProviderConfig(
             credentials='{"type":"service_account"}', requests_per_second=2.0
         )
     )
@@ -180,14 +178,20 @@ def test_google_docs_provider_init_authentication_failure(monkeypatch):
     )
 
     with pytest.raises(AuthenticationError, match="Credentials authentication failed"):
-        GoogleDocsProvider(GoogleDocsProviderConfig(credentials='{"invalid":true}'))
+        google_docs_module.GoogleDocsProvider(
+            google_docs_module.GoogleDocsProviderConfig(credentials='{"invalid":true}')
+        )
 
 
 def test_google_docs_config_validates_transfer_ownership_target():
     with pytest.raises(ValueError, match="transfer_ownership_to"):
-        GoogleDocsProviderConfig(transfer_ownership_to="not-an-email")
+        google_docs_module.GoogleDocsProviderConfig(
+            transfer_ownership_to="not-an-email"
+        )
 
-    config = GoogleDocsProviderConfig(transfer_ownership_to=" owner@example.com ")
+    config = google_docs_module.GoogleDocsProviderConfig(
+        transfer_ownership_to=" owner@example.com "
+    )
     assert config.transfer_ownership_to == "owner@example.com"
 
 
@@ -198,7 +202,7 @@ def test_google_docs_provider_factory_registration():
     )
     provider = provider_factory_module.ProviderFactory.create_provider(config)
 
-    assert isinstance(provider, GoogleDocsProvider)
+    assert isinstance(provider, google_docs_module.GoogleDocsProvider)
     assert (
         "google_docs"
         in provider_factory_module.ProviderFactory.get_available_providers()

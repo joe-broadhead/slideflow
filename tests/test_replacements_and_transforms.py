@@ -2,7 +2,6 @@ import pandas as pd
 import pytest
 
 import slideflow.replacements.ai_text as ai_text_module
-from slideflow.replacements.ai_text import AITextReplacement
 from slideflow.replacements.base import BaseReplacement
 from slideflow.replacements.table import (
     TableColumnFormatter,
@@ -12,6 +11,14 @@ from slideflow.replacements.table import (
 from slideflow.replacements.text import TextReplacement
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import DataTransformError, ReplacementError
+
+
+def _series_tolist(series):
+    return list(series)
+
+
+def _identity_transform(frame):
+    return frame
 
 
 def _install_pandas_stub_compat(monkeypatch):
@@ -33,9 +40,7 @@ def _install_pandas_stub_compat(monkeypatch):
             raising=False,
         )
     if not hasattr(series_type, "tolist"):
-        monkeypatch.setattr(
-            series_type, "tolist", lambda self: list(self), raising=False
-        )
+        monkeypatch.setattr(series_type, "tolist", _series_tolist, raising=False)
 
 
 def test_apply_data_transforms_noop_success_and_failure_paths(monkeypatch):
@@ -47,7 +52,10 @@ def test_apply_data_transforms_noop_success_and_failure_paths(monkeypatch):
     assert apply_data_transforms([], df) is df
 
     empty_df = pd.DataFrame({})
-    assert apply_data_transforms([{"transform_fn": lambda x: x}], empty_df) is empty_df
+    assert (
+        apply_data_transforms([{"transform_fn": _identity_transform}], empty_df)
+        is empty_df
+    )
 
     def add_scaled_column(frame, multiplier=2):
         frame["b"] = [value * multiplier for value in frame["a"]]
@@ -168,7 +176,7 @@ def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch)
         ai_text_module, "get_provider_class", lambda _name: DummyProvider
     )
 
-    string_provider = AITextReplacement(
+    string_provider = ai_text_module.AITextReplacement(
         type="ai_text",
         placeholder="{{AI}}",
         prompt="Prompt",
@@ -179,7 +187,7 @@ def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch)
     assert call_args == {"temperature": 0.4}
     assert fn("hello", **call_args).startswith("k:0.4:hello")
 
-    instance_provider = AITextReplacement(
+    instance_provider = ai_text_module.AITextReplacement(
         type="ai_text",
         placeholder="{{AI2}}",
         prompt="Prompt",
@@ -189,7 +197,7 @@ def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch)
     fn2, call_args2 = instance_provider._prepare_provider()
     assert fn2("hello", **call_args2).startswith("instance:0.2:hello")
 
-    callable_provider = AITextReplacement(
+    callable_provider = ai_text_module.AITextReplacement(
         type="ai_text",
         placeholder="{{AI3}}",
         prompt="Prompt",
@@ -201,7 +209,7 @@ def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch)
     assert callable_provider.to_placeholder_values("output") == [("{{AI3}}", "output")]
     assert callable_provider.get_referenced_data_sources() == []
 
-    invalid_provider = AITextReplacement.model_construct(
+    invalid_provider = ai_text_module.AITextReplacement.model_construct(
         type="ai_text",
         placeholder="{{BAD}}",
         prompt="Prompt",
@@ -224,7 +232,7 @@ def test_ai_text_replacement_data_context_and_transform_failure_fallback(monkeyp
         def fetch_data(self):
             return pd.DataFrame({"metric": [42]})
 
-    ok = AITextReplacement.model_construct(
+    ok = ai_text_module.AITextReplacement.model_construct(
         type="ai_text",
         placeholder="{{AI_OK}}",
         prompt="Summarize",
@@ -248,7 +256,7 @@ def test_ai_text_replacement_data_context_and_transform_failure_fallback(monkeyp
         lambda *args, **kwargs: warning_calls.append((args, kwargs)),
     )
 
-    failing = AITextReplacement.model_construct(
+    failing = ai_text_module.AITextReplacement.model_construct(
         type="ai_text",
         placeholder="{{AI_FAIL}}",
         prompt="Summarize",

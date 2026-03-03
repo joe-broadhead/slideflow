@@ -188,6 +188,7 @@ def test_class_and_provider_registry_behavior_and_factory_helpers():
 
     class Exploding(Impl):
         def __init__(self, *_args, **_kwargs):
+            super().__init__()
             raise RuntimeError("ctor failed")
 
     provider_registry.register_class("exploding", Exploding)

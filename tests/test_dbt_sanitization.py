@@ -866,7 +866,7 @@ def test_manifest_index_single_flight_recovers_after_loader_failure(
         start_barrier.wait()
         try:
             results.append(dbt_module._get_manifest_index(clone_dir))
-        except BaseException as error:  # pragma: no cover - assertion helper path
+        except Exception as error:  # pragma: no cover - assertion helper path
             errors.append(error)
 
     t1 = threading.Thread(target=_worker)
@@ -1333,14 +1333,14 @@ def test_parallel_model_fetches_with_low_cache_do_not_delete_active_manifest(
     )
 
     results: dict[str, str] = {}
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
 
     def _run(name: str, connector: dbt_module.DBTManifestConnector) -> None:
         try:
             sql = connector.get_compiled_query("metrics_model")
             assert sql is not None
             results[name] = sql
-        except BaseException as error:  # pragma: no cover - assertion helper path
+        except Exception as error:  # pragma: no cover - assertion helper path
             errors.append(error)
 
     us_thread = threading.Thread(target=_run, args=("us", us_connector))

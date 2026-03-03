@@ -10,14 +10,12 @@ import slideflow.data.cache as data_cache_module
 import slideflow.presentations.rate_limiter as presentation_rate_limiter_module
 import slideflow.utilities.rate_limiter as rate_limiter_module
 from slideflow.constants import Environment
-from slideflow.data.cache import DataSourceCache, get_data_cache
 from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
-from slideflow.utilities.rate_limiter import RateLimiter
 
 
 def test_data_source_cache_lifecycle_and_singleton_behavior():
-    cache = get_data_cache()
+    cache = data_cache_module.get_data_cache()
     cache.enable()
     cache.clear()
 
@@ -27,7 +25,7 @@ def test_data_source_cache_lifecycle_and_singleton_behavior():
     assert cache.get("csv", file_path="data.csv") is df
     assert cache.size == 1
     assert cache.is_enabled is True
-    assert get_data_cache() is cache
+    assert data_cache_module.get_data_cache() is cache
 
     info = cache.get_cache_info()
     assert info["enabled"] is True
@@ -46,14 +44,14 @@ def test_data_source_cache_lifecycle_and_singleton_behavior():
 
 
 def test_data_source_cache_key_generation_is_order_stable():
-    cache = DataSourceCache()
+    cache = data_cache_module.DataSourceCache()
     key_a = cache._generate_key("databricks", query="select 1", target="prod")
     key_b = cache._generate_key("databricks", target="prod", query="select 1")
     assert key_a == key_b
 
 
 def test_data_source_cache_key_generation_is_order_stable_for_nested_values():
-    cache = DataSourceCache()
+    cache = data_cache_module.DataSourceCache()
     key_a = cache._generate_key(
         "dbt",
         query="select 1",
@@ -76,7 +74,7 @@ def test_data_source_cache_key_generation_is_order_stable_for_nested_values():
 
 
 def test_data_source_cache_key_generation_distinguishes_dict_key_types():
-    cache = DataSourceCache()
+    cache = data_cache_module.DataSourceCache()
     key_with_int = cache._generate_key(
         "dbt",
         vars={
@@ -99,7 +97,7 @@ def test_data_source_cache_key_generation_distinguishes_dict_key_types():
 
 
 def test_data_source_cache_key_generation_distinguishes_tuple_from_list():
-    cache = DataSourceCache()
+    cache = data_cache_module.DataSourceCache()
     key_with_tuple = cache._generate_key(
         "dbt",
         vars={"dimensions": ("region", "segment")},
@@ -112,7 +110,7 @@ def test_data_source_cache_key_generation_distinguishes_tuple_from_list():
 
 
 def test_data_source_cache_logs_model_dump_normalization_failures(monkeypatch):
-    cache = DataSourceCache()
+    cache = data_cache_module.DataSourceCache()
     debug_calls = []
     monkeypatch.setattr(
         data_cache_module.logger,
@@ -137,7 +135,7 @@ def test_data_source_cache_logs_model_dump_normalization_failures(monkeypatch):
 
 def test_data_source_cache_enforces_lru_entry_cap(monkeypatch):
     monkeypatch.setenv(Environment.SLIDEFLOW_DATA_CACHE_MAX_ENTRIES, "2")
-    cache = get_data_cache()
+    cache = data_cache_module.get_data_cache()
     cache.enable()
     cache.clear()
     original_max_entries = cache.max_entries
@@ -166,10 +164,10 @@ def test_data_source_cache_enforces_lru_entry_cap(monkeypatch):
 
 
 def test_data_source_cache_singleton_init_is_thread_safe():
-    DataSourceCache._instance = None
+    data_cache_module.DataSourceCache._instance = None
 
     def create_cache_instance_id() -> int:
-        return id(DataSourceCache())
+        return id(data_cache_module.DataSourceCache())
 
     with ThreadPoolExecutor(max_workers=16) as executor:
         instance_ids = list(
@@ -181,13 +179,13 @@ def test_data_source_cache_singleton_init_is_thread_safe():
 
 def test_data_source_cache_invalid_env_max_entries_falls_back(monkeypatch):
     monkeypatch.setenv(Environment.SLIDEFLOW_DATA_CACHE_MAX_ENTRIES, "not-an-int")
-    cache = get_data_cache()
+    cache = data_cache_module.get_data_cache()
     cache.enable()
     assert cache.max_entries > 0
 
 
 def test_data_source_cache_get_or_load_deduplicates_concurrent_loads():
-    cache = get_data_cache()
+    cache = data_cache_module.get_data_cache()
     cache.enable()
     cache.clear()
 
@@ -217,7 +215,7 @@ def test_data_source_cache_get_or_load_deduplicates_concurrent_loads():
 
 
 def test_data_source_cache_get_or_load_unblocks_waiters_on_base_exception():
-    cache = get_data_cache()
+    cache = data_cache_module.get_data_cache()
     cache.enable()
     cache.clear()
 
@@ -333,11 +331,11 @@ def test_handle_google_credentials_validation_errors(tmp_path, monkeypatch):
 
 def test_rate_limiter_validates_rates():
     with pytest.raises(ValueError, match="must be > 0"):
-        RateLimiter(0)
+        rate_limiter_module.RateLimiter(0)
     with pytest.raises(ValueError, match="must be > 0"):
-        RateLimiter(-1)
+        rate_limiter_module.RateLimiter(-1)
 
-    limiter = RateLimiter(2.0)
+    limiter = rate_limiter_module.RateLimiter(2.0)
     with pytest.raises(ValueError, match="must be > 0"):
         limiter.set_rate(0)
 
@@ -353,7 +351,7 @@ def test_rate_limiter_wait_sleeps_only_when_needed(monkeypatch):
         rate_limiter_module.time, "sleep", lambda seconds: sleep_calls.append(seconds)
     )
 
-    limiter = RateLimiter(2.0)  # 0.5 seconds/request
+    limiter = rate_limiter_module.RateLimiter(2.0)  # 0.5 seconds/request
     limiter.wait()  # sleeps 0.5
     limiter.wait()  # sleeps 0.4
     limiter.wait()  # no sleep

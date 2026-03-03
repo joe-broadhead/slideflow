@@ -5,12 +5,13 @@ import pandas as pd
 import pytest
 
 import slideflow.presentations.charts as charts_module
-from slideflow.presentations.charts import PlotlyGraphObjects
 from slideflow.utilities.exceptions import ChartGenerationError
 
 
-def _chart() -> PlotlyGraphObjects:
-    return PlotlyGraphObjects(type="plotly_go", traces=[{"type": "indicator"}])
+def _chart() -> charts_module.PlotlyGraphObjects:
+    return charts_module.PlotlyGraphObjects(
+        type="plotly_go", traces=[{"type": "indicator"}]
+    )
 
 
 def test_process_trace_config_column_reference_with_index_returns_scalar():

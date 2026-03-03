@@ -9,7 +9,6 @@ import slideflow.cli.commands.build as build_command_module
 import slideflow.presentations.base as base_module
 import slideflow.presentations.builder as builder_module
 import slideflow.presentations.providers.google_slides as google_provider_module
-from slideflow.presentations.base import Presentation, Slide
 from slideflow.presentations.config import PresentationConfig
 
 
@@ -25,6 +24,14 @@ def _stub_build_cli_output(monkeypatch):
     )
     monkeypatch.setattr(build_command_module, "print_build_error", lambda *a, **k: None)
     monkeypatch.setattr(build_command_module.time, "sleep", lambda *_: None)
+
+
+def _as_completed_identity(futures):
+    return list(futures)
+
+
+def _presentation_namespace(**kwargs):
+    return SimpleNamespace(**kwargs)
 
 
 def test_build_single_presentation_applies_rps_override_and_returns_result(monkeypatch):
@@ -307,9 +314,7 @@ def test_build_command_uses_configured_default_worker_cap(tmp_path, monkeypatch)
             return _Future(func(*args, **kwargs))
 
     monkeypatch.setattr(build_command_module, "ThreadPoolExecutor", _Executor)
-    monkeypatch.setattr(
-        build_command_module, "as_completed", lambda futures: list(futures)
-    )
+    monkeypatch.setattr(build_command_module, "as_completed", _as_completed_identity)
     monkeypatch.setattr(build_command_module.Timing, "BUILD_MAX_WORKERS_DEFAULT", 2)
 
     def _fake_build_single(
@@ -421,9 +426,7 @@ def test_presentation_builder_from_config_sets_templates_and_builds_slides(monke
         "_build_slide",
         classmethod(_build_slide),
     )
-    monkeypatch.setattr(
-        builder_module, "Presentation", lambda **kwargs: SimpleNamespace(**kwargs)
-    )
+    monkeypatch.setattr(builder_module, "Presentation", _presentation_namespace)
 
     presentation = builder_module.PresentationBuilder.from_config(config)
 
@@ -450,10 +453,10 @@ def test_prefetch_data_sources_deduplicates_sources(monkeypatch):
 
     replacement = SimpleNamespace(get_referenced_data_sources=lambda: [shared, unique])
     chart = SimpleNamespace(data_source=shared)
-    slide = Slide.model_construct(
+    slide = base_module.Slide.model_construct(
         id="slide_1", title="S1", replacements=[replacement], charts=[chart]
     )
-    presentation = Presentation.model_construct(
+    presentation = base_module.Presentation.model_construct(
         name="Demo",
         name_fn=None,
         slides=[slide],
@@ -470,7 +473,7 @@ def test_prefetch_data_sources_deduplicates_sources(monkeypatch):
             task_func(source)
         return []
 
-    monkeypatch.setattr(Presentation, "_execute_concurrent_tasks", _execute)
+    monkeypatch.setattr(base_module.Presentation, "_execute_concurrent_tasks", _execute)
 
     presentation._prefetch_data_sources()
 
@@ -483,7 +486,7 @@ def test_prefetch_data_sources_deduplicates_sources(monkeypatch):
 
 
 def test_execute_concurrent_tasks_collects_results_and_reraises_errors():
-    presentation = Presentation.model_construct(
+    presentation = base_module.Presentation.model_construct(
         name="Demo",
         name_fn=None,
         slides=[],
@@ -590,13 +593,13 @@ def test_render_shares_presentation_and_processes_table_replacements(monkeypatch
             return 0.0
 
     provider = FakeProvider()
-    slide = Slide.model_construct(
+    slide = base_module.Slide.model_construct(
         id="slide_1",
         title="S1",
         replacements=[TextReplacement(), TableReplacement()],
         charts=[],
     )
-    presentation = Presentation.model_construct(
+    presentation = base_module.Presentation.model_construct(
         name="Demo",
         name_fn=None,
         slides=[slide],
@@ -674,10 +677,10 @@ def test_render_inserts_error_placeholder_after_chart_retries(monkeypatch):
             return None
 
     provider = FakeProvider()
-    slide = Slide.model_construct(
+    slide = base_module.Slide.model_construct(
         id="slide_1", title="S1", replacements=[], charts=[FailingChart()]
     )
-    presentation = Presentation.model_construct(
+    presentation = base_module.Presentation.model_construct(
         name="Demo",
         name_fn=None,
         slides=[slide],
