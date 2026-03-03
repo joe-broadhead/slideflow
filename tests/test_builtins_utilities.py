@@ -1,3 +1,4 @@
+import builtins
 import decimal
 
 import pandas as pd
@@ -24,6 +25,10 @@ from slideflow.builtins.table_utils import (
 from slideflow.utilities.exceptions import DataTransformError
 
 
+def _series_tolist(series):
+    return list(series)
+
+
 def _install_pandas_stub_compat(monkeypatch):
     """Add minimal methods expected by transformation helpers."""
     df_type = type(pd.DataFrame({}))
@@ -47,9 +52,7 @@ def _install_pandas_stub_compat(monkeypatch):
         monkeypatch.setattr(series_type, "round", _series_round, raising=False)
 
     if not hasattr(series_type, "tolist"):
-        monkeypatch.setattr(
-            series_type, "tolist", lambda self: list(self), raising=False
-        )
+        monkeypatch.setattr(series_type, "tolist", _series_tolist, raising=False)
 
 
 def test_formatting_functions_cover_numeric_and_edge_cases(monkeypatch):
@@ -96,12 +99,20 @@ def test_formatting_functions_cover_numeric_and_edge_cases(monkeypatch):
     }
 
     # Force the hard-failure path in format_currency (unexpected conversion error).
-    class BadFloat:
-        def __float__(self):
-            raise RuntimeError("boom")
+    sentinel = object()
+    original_float = builtins.float
 
-    with pytest.raises(DataTransformError, match="Critical currency formatting error"):
-        format_module.format_currency(BadFloat())
+    def _float_with_failure(value):
+        if value is sentinel:
+            raise RuntimeError("boom")
+        return original_float(value)
+
+    with monkeypatch.context() as context:
+        context.setattr(builtins, "float", _float_with_failure)
+        with pytest.raises(
+            DataTransformError, match="Critical currency formatting error"
+        ):
+            format_module.format_currency(sentinel)
 
     # Force hard-failure path for percentage.
     monkeypatch.setattr(

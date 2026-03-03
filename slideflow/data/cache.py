@@ -183,7 +183,7 @@ class DataSourceCache:
                 DataSourceCache._normalize_for_key(inner) for inner in value
             ]
             normalized_items = sorted(
-                normalized_items, key=lambda item: DataSourceCache._stable_json(item)
+                normalized_items, key=DataSourceCache._stable_json
             )
             set_tag = "__frozenset__" if isinstance(value, frozenset) else "__set__"
             return {set_tag: normalized_items}

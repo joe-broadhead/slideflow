@@ -6,14 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytest
 
 import slideflow.presentations.providers.google_slides as google_provider_module
-from slideflow.presentations.providers.google_slides import (
-    GoogleSlidesProvider,
-    GoogleSlidesProviderConfig,
-)
 from slideflow.utilities.exceptions import AuthenticationError
 
 
-def _provider_without_init() -> GoogleSlidesProvider:
+def _provider_without_init() -> google_provider_module.GoogleSlidesProvider:
     return object.__new__(google_provider_module.GoogleSlidesProvider)
 
 
@@ -51,8 +47,8 @@ def test_google_provider_init_success(monkeypatch):
         google_provider_module, "_get_rate_limiter", lambda rps: f"rl:{rps}"
     )
 
-    provider = GoogleSlidesProvider(
-        GoogleSlidesProviderConfig(
+    provider = google_provider_module.GoogleSlidesProvider(
+        google_provider_module.GoogleSlidesProviderConfig(
             credentials='{"type":"service_account"}', requests_per_second=2.5
         )
     )
@@ -79,16 +75,24 @@ def test_google_provider_init_authentication_failure(monkeypatch):
     with pytest.raises(
         AuthenticationError, match="Credentials authentication failed"
     ) as exc_info:
-        GoogleSlidesProvider(GoogleSlidesProviderConfig(credentials='{"invalid":true}'))
+        google_provider_module.GoogleSlidesProvider(
+            google_provider_module.GoogleSlidesProviderConfig(
+                credentials='{"invalid":true}'
+            )
+        )
 
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 def test_google_slides_config_validates_transfer_ownership_target():
     with pytest.raises(ValueError, match="transfer_ownership_to"):
-        GoogleSlidesProviderConfig(transfer_ownership_to="not-an-email")
+        google_provider_module.GoogleSlidesProviderConfig(
+            transfer_ownership_to="not-an-email"
+        )
 
-    config = GoogleSlidesProviderConfig(transfer_ownership_to=" owner@example.com ")
+    config = google_provider_module.GoogleSlidesProviderConfig(
+        transfer_ownership_to=" owner@example.com "
+    )
     assert config.transfer_ownership_to == "owner@example.com"
 
 

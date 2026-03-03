@@ -21,6 +21,7 @@ def _require_first_env(var_names: Iterable[str], reason: str) -> str:
         if value:
             return value
     pytest.skip(reason)
+    raise RuntimeError("unreachable")
 
 
 def _parse_optional_email_list(var_name: str) -> List[str]:

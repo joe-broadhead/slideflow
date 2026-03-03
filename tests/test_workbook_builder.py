@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pandas as pd
 
 import slideflow.workbooks.builder as workbook_builder_module
-from slideflow.workbooks.builder import WorkbookBuilder, dataframe_to_sheet_rows
 from slideflow.workbooks.config import WorkbookConfig
 
 
@@ -132,7 +131,7 @@ def _set_tab_ai_summaries(payload: dict, summaries: list[dict]) -> None:
 def test_dataframe_to_sheet_rows_normalizes_nan_values():
     df = pd.DataFrame({"month": ["Jan", "Feb"], "value": [10.0, float("nan")]})
 
-    rows = dataframe_to_sheet_rows(df, include_header=True)
+    rows = workbook_builder_module.dataframe_to_sheet_rows(df, include_header=True)
 
     assert rows[0] == ["month", "value"]
     assert rows[1] == ["Jan", 10.0]
@@ -144,16 +143,13 @@ def test_dataframe_to_sheet_rows_handles_pandas_index_without_truthiness_error()
         def __iter__(self):
             return iter(["region", "gmv"])
 
-        def __bool__(self):
-            raise ValueError("ambiguous truth value")
-
     class _DataFrameLike:
         columns = _AmbiguousColumns()
         values = []
 
     df = _DataFrameLike()
 
-    rows = dataframe_to_sheet_rows(df, include_header=True)
+    rows = workbook_builder_module.dataframe_to_sheet_rows(df, include_header=True)
 
     assert rows == [["region", "gmv"]]
 
@@ -161,7 +157,7 @@ def test_dataframe_to_sheet_rows_handles_pandas_index_without_truthiness_error()
 def test_dataframe_to_sheet_rows_normalizes_decimal_values():
     df = pd.DataFrame({"region": ["WEUR"], "gmv": [Decimal("123.45")]})
 
-    rows = dataframe_to_sheet_rows(df, include_header=True)
+    rows = workbook_builder_module.dataframe_to_sheet_rows(df, include_header=True)
 
     assert rows[0] == ["region", "gmv"]
     assert rows[1] == ["WEUR", 123.45]
@@ -175,7 +171,7 @@ def test_dataframe_to_sheet_rows_normalizes_non_finite_decimal_values():
         }
     )
 
-    rows = dataframe_to_sheet_rows(df, include_header=True)
+    rows = workbook_builder_module.dataframe_to_sheet_rows(df, include_header=True)
 
     assert rows[0] == ["region", "gmv"]
     assert rows[1] == ["A", None]
@@ -195,7 +191,7 @@ def test_workbook_builder_build_success(tmp_path, monkeypatch):
         staticmethod(lambda _config: fake_provider),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "success"
     assert result.workbook_id == "sheet_123"
@@ -233,7 +229,7 @@ def test_workbook_builder_collects_tab_errors_without_aborting(tmp_path, monkeyp
         staticmethod(lambda _config: fake_provider),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "error"
     assert result.tabs_total == 2
@@ -293,7 +289,9 @@ def test_workbook_builder_uses_multiple_workers_for_tabs(tmp_path, monkeypatch):
         staticmethod(lambda _config: concurrent_provider),
     )
 
-    result = WorkbookBuilder.from_config(config).build(threads=2)
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build(
+        threads=2
+    )
 
     assert result.status == "success"
     assert result.tabs_succeeded == 2
@@ -336,7 +334,9 @@ def test_workbook_builder_parallel_execution_preserves_tab_result_order(
         staticmethod(lambda _config: ordered_provider),
     )
 
-    result = WorkbookBuilder.from_config(config).build(threads=2)
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build(
+        threads=2
+    )
 
     assert result.status == "success"
     assert [tab.tab_name for tab in result.tab_results] == [
@@ -361,8 +361,8 @@ def test_workbook_builder_append_mode_tracks_idempotent_skips(tmp_path, monkeypa
         staticmethod(lambda _config: fake_provider),
     )
 
-    first_result = WorkbookBuilder.from_config(config).build()
-    second_result = WorkbookBuilder.from_config(config).build()
+    first_result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
+    second_result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert first_result.status == "success"
     assert first_result.tab_results[0].run_key == "week_2026_09"
@@ -424,7 +424,7 @@ def test_workbook_builder_generates_and_writes_same_sheet_summary(
         lambda provider_name, **kwargs: ai_provider,
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "success"
     assert result.summaries_total == 1
@@ -483,7 +483,7 @@ def test_workbook_builder_marks_error_when_summary_write_fails(tmp_path, monkeyp
         lambda provider_name, **kwargs: _FakeAIProvider(),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "error"
     assert result.tabs_failed == 0
@@ -537,7 +537,7 @@ def test_workbook_builder_history_mode_appends_timestamped_summary(
         lambda provider_name, **kwargs: _FakeAIProvider(),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "success"
     assert result.summaries_succeeded == 1
@@ -594,7 +594,7 @@ def test_workbook_builder_append_source_can_write_summary_to_summary_tab(
         lambda provider_name, **kwargs: _FakeAIProvider(),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "success"
     assert result.tabs_succeeded == 1
@@ -642,7 +642,7 @@ def test_workbook_builder_marks_error_when_same_sheet_anchor_overlaps_data(
         ),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "error"
     assert result.summaries_failed == 1
@@ -691,7 +691,7 @@ def test_workbook_builder_marks_error_when_same_sheet_clear_range_overlaps_data(
         ),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "error"
     assert result.summaries_failed == 1
@@ -751,7 +751,7 @@ def test_workbook_builder_marks_error_when_summary_source_tab_has_no_data(
         ),
     )
 
-    result = WorkbookBuilder.from_config(config).build()
+    result = workbook_builder_module.WorkbookBuilder.from_config(config).build()
 
     assert result.status == "error"
     assert result.tabs_failed == 1
@@ -868,20 +868,24 @@ def test_summary_placement_overlap_helper_reports_anchor_and_clear_range_collisi
         placement=SimpleNamespace(type="same_sheet", clear_range="A1:B2"),
     )
 
-    anchor_overlap = WorkbookBuilder._summary_placement_overlap_result(
-        summary=summary,
-        target_tab="kpi_current",
-        target_cell="A1",
-        source_bounds=(1, 1, 4, 10),
+    anchor_overlap = (
+        workbook_builder_module.WorkbookBuilder._summary_placement_overlap_result(
+            summary=summary,
+            target_tab="kpi_current",
+            target_cell="A1",
+            source_bounds=(1, 1, 4, 10),
+        )
     )
     assert anchor_overlap is not None
     assert "anchor cell overlaps" in (anchor_overlap.error or "")
 
-    clear_overlap = WorkbookBuilder._summary_placement_overlap_result(
-        summary=summary,
-        target_tab="kpi_current",
-        target_cell="F1",
-        source_bounds=(1, 1, 4, 10),
+    clear_overlap = (
+        workbook_builder_module.WorkbookBuilder._summary_placement_overlap_result(
+            summary=summary,
+            target_tab="kpi_current",
+            target_cell="F1",
+            source_bounds=(1, 1, 4, 10),
+        )
     )
     assert clear_overlap is not None
     assert "clear_range overlaps" in (clear_overlap.error or "")

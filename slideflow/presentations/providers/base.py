@@ -224,7 +224,7 @@ class PresentationProvider(ABC):
         Args:
             presentation_id: Unique identifier of the rendered presentation.
         """
-        del presentation_id
+        _ = presentation_id
 
     def render_citations(
         self,
@@ -237,7 +237,7 @@ class PresentationProvider(ABC):
         Providers can override this hook to apply source citations once chart and
         replacement operations are complete.
         """
-        del presentation_id, citations_by_scope, location
+        _ = presentation_id, citations_by_scope, location
 
     @abstractmethod
     def create_presentation(self, name: str, template_id: Optional[str] = None) -> str:
