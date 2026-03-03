@@ -93,6 +93,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - Google Docs and Google Sheets providers
   - shared-drive/service-account operational patterns
   - CI quality and release quality controls
+- Local contributor quality-gate commands in docs now consistently use `uv run ...`
+  invocation patterns for lint/test/ABI checks.
 
 ### Fixed
 
@@ -111,6 +113,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - tighten overlap/history/clear-range validation behavior
   - normalize non-finite decimal cell values
 - Citation/speaker-notes rendering fixes for Slides notes index edge cases.
+- Stabilized shared test-helper imports for direct `pytest` invocation by making
+  `tests` an explicit package (`tests/__init__.py`).
+- Unit-test dependency stubs now gracefully fall back when local NumPy/Pandas ABI
+  mismatch warnings occur during import, reducing noisy local test output.
+- NumPy/Pandas ABI compatibility checker now exercises `numpy.random` paths and
+  prints `uv`-native remediation commands.
 
 ## [0.0.6] - 2026-02-26
 

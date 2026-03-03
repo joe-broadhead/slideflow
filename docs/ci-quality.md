@@ -76,14 +76,14 @@ uv sync --extra docs --extra dev --extra ai --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check
-python scripts/ci/check_numpy_binary_compatibility.py
+uv run python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
-pytest -q
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-fail-under=82
-pytest -q -m integration
-pytest -q -m e2e
+uv run pytest -q
+uv run pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-fail-under=82
+uv run pytest -q -m integration
+uv run pytest -q -m e2e
 uv run mkdocs build --strict
 ```
 

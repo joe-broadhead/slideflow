@@ -59,11 +59,11 @@ uv sync --extra docs --extra dev --extra ai --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check
-python scripts/ci/check_numpy_binary_compatibility.py
+uv run python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
-pytest -q
+uv run pytest -q
 uv run mkdocs build --strict
 ```
 
