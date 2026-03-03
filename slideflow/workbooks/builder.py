@@ -26,6 +26,15 @@ from slideflow.workbooks.providers.factory import WorkbookProviderFactory
 logger = get_logger(__name__)
 
 
+def _is_nan_scalar(value: Any) -> bool:
+    """Return True when the provided scalar value is NaN."""
+
+    try:
+        return math.isnan(value)
+    except (TypeError, ValueError):
+        return False
+
+
 def _normalize_cell_value(value: Any) -> Any:
     """Convert DataFrame cell values into Google Sheets-compatible scalar values."""
     if value is None:
@@ -37,7 +46,7 @@ def _normalize_cell_value(value: Any) -> Any:
         except (TypeError, ValueError, OverflowError):
             return str(value)
     if isinstance(value, float):
-        if math.isnan(value) or math.isinf(value):
+        if _is_nan_scalar(value) or math.isinf(value):
             return None
         return value
     if isinstance(value, (datetime, date)):
@@ -45,14 +54,11 @@ def _normalize_cell_value(value: Any) -> Any:
     if hasattr(value, "item") and callable(getattr(value, "item")):
         try:
             return _normalize_cell_value(value.item())
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             return str(value)
     # Catch NaN-like scalar sentinels without importing pandas/numpy directly.
-    try:
-        if value != value:  # noqa: PLR0124
-            return None
-    except Exception:
-        pass
+    if _is_nan_scalar(value):
+        return None
     return value
 
 

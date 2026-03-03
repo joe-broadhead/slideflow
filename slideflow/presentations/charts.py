@@ -100,13 +100,13 @@ def _reset_chart_export_executor() -> None:
     try:
         for process in getattr(executor, "_processes", {}).values():
             process.terminate()
-    except Exception:
-        pass
+    except Exception as error:
+        logger.debug("Chart export worker teardown failed: %s", error, exc_info=True)
 
     try:
         executor.shutdown(wait=False, cancel_futures=True)
-    except Exception:
-        pass
+    except Exception as error:
+        logger.debug("Chart export executor shutdown failed: %s", error, exc_info=True)
 
 
 def _shutdown_chart_export_executor() -> None:
@@ -441,7 +441,7 @@ class BaseChart(BaseModel, ABC):
             ...     fig = create_bar_chart(transformed_df, self.config)
             ...     return fig.to_png(width=self.width, height=self.height)
         """
-        ...
+        raise NotImplementedError
 
 
 class PlotlyGraphObjects(BaseChart):

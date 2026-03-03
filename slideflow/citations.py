@@ -80,13 +80,19 @@ def build_repo_file_url(
     base = repo_web_url.rstrip("/")
     encoded_ref = ref.strip()
 
-    if "github.com" in host:
+    def _host_is(candidate: str) -> bool:
+        return host == candidate or host.endswith(f".{candidate}")
+
+    def _host_has_label(label: str) -> bool:
+        return label in host.split(".")
+
+    if _host_is("github.com") or _host_has_label("github"):
         return f"{base}/blob/{encoded_ref}/{clean_path}"
-    if "gitlab" in host:
+    if _host_is("gitlab.com") or _host_has_label("gitlab"):
         return f"{base}/-/blob/{encoded_ref}/{clean_path}"
-    if "bitbucket" in host:
+    if _host_is("bitbucket.org") or _host_has_label("bitbucket"):
         return f"{base}/src/{encoded_ref}/{clean_path}"
-    if "dev.azure.com" in host or host.endswith("visualstudio.com"):
+    if _host_is("dev.azure.com") or host.endswith(".visualstudio.com"):
         return f"{base}?path=/{clean_path}" f"&version=GB{encoded_ref}&_a=contents"
 
     return None

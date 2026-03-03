@@ -48,6 +48,17 @@ def test_build_repo_file_url_supports_common_hosts():
     )
 
 
+def test_build_repo_file_url_rejects_substring_host_confusion():
+    assert (
+        build_repo_file_url(
+            repo_web_url="https://notgithub.com/org/repo",
+            ref="main",
+            file_path="models/model.sql",
+        )
+        is None
+    )
+
+
 def test_citation_registry_dedupes_and_tracks_scope_usage():
     registry = CitationRegistry(max_items=2, dedupe=True)
     one = CitationEntry(

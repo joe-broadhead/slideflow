@@ -105,7 +105,7 @@ class DataConnector(ABC):
             ...     def fetch_data(self) -> pd.DataFrame:
             ...         return pd.read_csv(self.file_path)
         """
-        ...
+        raise NotImplementedError
 
     def connect(self) -> Optional[Any]:
         """Establish connection to data source.
@@ -182,7 +182,7 @@ class SQLExecutor(ABC):
     @abstractmethod
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL and return the resulting DataFrame."""
-        ...
+        raise NotImplementedError
 
 
 class BaseSourceConfig(BaseModel):

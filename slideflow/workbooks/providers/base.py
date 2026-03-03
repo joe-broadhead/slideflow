@@ -76,7 +76,7 @@ class WorkbookProvider(ABC):
 
     def finalize_workbook(self, workbook_id: str) -> None:
         """Run provider-specific finalize hooks after tab writes."""
-        del workbook_id
+        _ = workbook_id
 
     @abstractmethod
     def get_workbook_url(self, workbook_id: str) -> str:

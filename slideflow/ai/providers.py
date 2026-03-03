@@ -53,7 +53,7 @@ class AIProvider(Protocol):
             APIRateLimitError: When rate limits are exceeded.
             APIAuthenticationError: For authentication failures.
         """
-        ...
+        raise NotImplementedError
 
 
 class OpenAIProvider:
