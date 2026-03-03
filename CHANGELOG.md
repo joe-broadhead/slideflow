@@ -9,31 +9,48 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Optional citation/provenance pipeline for rendered outputs with top-level config:
+- Google Docs provider support (`provider.type: google_docs`) with section-marker
+  scoped rendering for replacements and charts.
+- Google Sheets workbook support (`provider.type: google_sheets`) with workbook
+  schema and dedicated CLI:
+  - `slideflow sheets validate`
+  - `slideflow sheets build`
+  - `slideflow sheets doctor`
+- Google Sheets tab-level write modes and idempotency model (`replace` / `append`)
+  with metadata tracking and bounded parallel tab execution.
+- Tab-local workbook AI summary schema (`workbook.tabs[].ai.summaries[]`) using
+  `type: ai_text` + `config` pattern.
+- Optional citation/provenance pipeline with top-level config:
   - `citations.enabled`
   - `citations.mode` (`model` | `execution` | `both`)
   - `citations.location` (`per_slide` | `per_section` | `document_end`)
   - `citations.max_items`
   - `citations.dedupe`
   - `citations.include_query_text`
-- Citation rendering hooks:
-  - Google Slides speaker-notes `Sources` rendering
-  - Google Docs section footnote or document-end `Sources` rendering
-- Ownership handoff controls for Google Slides/Docs providers:
+- Citation rendering hooks for:
+  - Google Slides speaker notes
+  - Google Docs section footnotes/document-end sources
+- Ownership handoff controls for Google Slides/Docs:
   - `provider.config.transfer_ownership_to`
   - `provider.config.transfer_ownership_strict`
-- Chart image sharing-mode controls for Google Slides/Docs providers:
+- Chart image sharing-mode controls for Google Slides/Docs:
   - `provider.config.chart_image_sharing_mode` (`public` | `restricted`)
 - Shared Google API utility layer for provider internals:
-  - shared service-account credential construction
+  - shared credential construction
   - shared rate-limited request execution helper
   - shared Drive image upload primitive
-- Dedicated CI optional-connectors coverage path (BigQuery/DuckDB extras).
-- New targeted test coverage for:
+- Live Google Docs and Google Sheets test suites + manual workflows.
+- Security/quality automation additions:
+  - `CodeQL` workflow
+  - `dependabot.yml` for pip + GitHub Actions updates
+  - pre-commit hooks including `detect-secrets`
+  - CI optional-connectors coverage path (BigQuery/DuckDB extras)
+- New test coverage for:
   - auth utilities
   - rate limiter behavior
-  - Google Drive ownership helper utilities
-  - extracted chart/workbook/sheets preflight helper paths
+  - Google Drive ownership helpers
+  - charts/workbook/sheets preflight/runtime helper paths
+  - property-based data pipeline invariants
 
 ### Changed
 
@@ -50,24 +67,50 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `ownership_transfer_target`
   - `ownership_transfer_error`
 - Source connectors expose citation entries across `csv`/`json`/`databricks`/`duckdb`/`dbt`.
-- Packaging is now modular for dbt/databricks stack:
+- Packaging is modular for dbt/databricks stack:
   - base install excludes dbt/databricks-specific runtime dependencies
   - dbt/databricks usage requires connector extras
   - connectors now raise actionable install errors when optional dependencies are missing
-- Release workflow now enforces lockfile parity with CI (`uv lock --check` + `uv sync --locked`).
+- Runtime orchestration/refactor hardening:
+  - `Presentation.render()` split into phased helper orchestration
+  - replacement dispatch moved away from `hasattr` branching to explicit polymorphism
+  - DBT warehouse connector execution flow deduplicated
+  - legacy/dead chart upload paths removed in favor of active provider abstractions
+  - chart rate limiting decoupled from provider-specific imports
+  - runtime logging standardized across key modules
+- CI/runtime quality hardening:
+  - branch coverage enabled (`--cov-branch`) with fail-under staged to `82`
+  - `pytest` strict markers enabled
+  - release workflow enforces lockfile parity (`uv lock --check` + `uv sync --locked`)
 - Reusable workflow now supports explicit install-extra selection via `slideflow-install-extras`.
-- Charts now use a provider-neutral presentation rate limiter utility (no provider-module coupling).
-- Google provider internals have been consolidated to reduce duplicate auth/request/upload code.
-- High-complexity runtime methods were split into smaller helpers in:
-  - `slideflow/presentations/charts.py`
-  - `slideflow/workbooks/builder.py`
-  - `slideflow/workbooks/providers/google_sheets.py`
+- Google provider internals are consolidated to reduce duplicate auth/request/upload code.
+- GitHub Actions runtime versions were refreshed:
+  - `actions/checkout` `v4 -> v6`
+  - `actions/setup-python` `v5 -> v6`
+  - `actions/upload-pages-artifact` `v3 -> v4`
+  - `astral-sh/setup-uv` `v5 -> v7`
+- Docs were expanded/updated for:
+  - Google Docs and Google Sheets providers
+  - shared-drive/service-account operational patterns
+  - CI quality and release quality controls
 
 ### Fixed
 
 - Exception chaining now preserves root causes in provider/auth error wrapping (`raise ... from error`).
 - Citation validation no longer fails silently; malformed entries emit contextual warnings while rendering continues.
-- Corrected malformed DBT warehouse YAML code fence rendering in docs config reference.
+- Corrected malformed DBT warehouse YAML code fence rendering in config docs.
+- Google Docs provider correctness fixes:
+  - UTF-16 section offset handling
+  - split-run marker handling
+  - TOC duplication avoidance in contract checks
+  - section marker removal finalization path
+  - stable chart insertion ordering across repeated sections
+- Google Sheets/workbook robustness fixes:
+  - enforce explicit `target_tab` for `summary_tab` AI placement
+  - prevent summary writes from clobbering source-tab data regions
+  - tighten overlap/history/clear-range validation behavior
+  - normalize non-finite decimal cell values
+- Citation/speaker-notes rendering fixes for Slides notes index edge cases.
 
 ## [0.0.6] - 2026-02-26
 
