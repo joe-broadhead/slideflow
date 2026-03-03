@@ -26,10 +26,12 @@ uv run pre-commit run --all-files
 ```bash
 uv pip check
 uv run pre-commit run --all-files
+uv run python scripts/ci/check_numpy_binary_compatibility.py
 python -m black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
-python -m pytest -q
+uv run pytest -q
+uv run python -m pytest -q
 ```
 
 Docs validation:
@@ -42,16 +44,16 @@ uv run mkdocs build --strict
 Optional marker suites:
 
 ```bash
-python -m pytest -q -m integration
-python -m pytest -q -m e2e
+uv run pytest -q -m integration
+uv run pytest -q -m e2e
 ```
 
 Live Google suite (optional, requires credentials):
 
 ```bash
-python -m pytest -q tests/live_tests -m live_google
-python -m pytest -q tests/live_tests -m live_google_docs
-python -m pytest -q tests/live_tests -m live_google_sheets
+uv run pytest -q tests/live_tests -m live_google
+uv run pytest -q tests/live_tests -m live_google_docs
+uv run pytest -q tests/live_tests -m live_google_sheets
 ```
 
 ## Contribution expectations

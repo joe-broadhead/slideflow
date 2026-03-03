@@ -1,9 +1,15 @@
 import csv
 import importlib
 import json
+import math
+import random
 import sys
 import types
+import warnings
 from pathlib import Path
+from typing import Sequence
+
+_ABI_WARNING_FRAGMENT = "size changed, may indicate binary incompatibility"
 
 
 def _is_live_google_run(config) -> bool:
@@ -21,13 +27,52 @@ def _is_live_google_run(config) -> bool:
     return any("live_tests" in arg for arg in args)
 
 
+def _is_live_google_cli_args(argv: Sequence[str]) -> bool:
+    """Best-effort live test detection before pytest config is available."""
+
+    args = [str(arg).lower() for arg in argv]
+    if any("live_tests" in arg for arg in args):
+        return True
+
+    for idx, arg in enumerate(args):
+        if arg in {"-m", "--markexpr"} and idx + 1 < len(args):
+            if "live_google" in args[idx + 1]:
+                return True
+        if arg.startswith("-m") and "live_google" in arg:
+            return True
+    return False
+
+
+def _is_nan_scalar(value: object) -> bool:
+    """Return True when value is NaN without relying on self-comparison."""
+
+    try:
+        return math.isnan(value)
+    except (TypeError, ValueError):
+        return False
+
+
 def _ensure_module(name: str) -> types.ModuleType:
     module = sys.modules.get(name)
     if module is not None:
         return module
 
     try:
-        return importlib.import_module(name)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "error",
+                message=r".*size changed, may indicate binary incompatibility.*",
+                category=RuntimeWarning,
+            )
+            return importlib.import_module(name)
+    except RuntimeWarning as warning:
+        if _ABI_WARNING_FRAGMENT not in str(warning):
+            raise
+        # If local binary wheels are ABI-mismatched, use deterministic test stubs
+        # instead of noisy/partial imports.
+        for module_name in list(sys.modules):
+            if module_name == name or module_name.startswith(f"{name}."):
+                sys.modules.pop(module_name, None)
     except ImportError:
         pass
 
@@ -46,14 +91,44 @@ def _ensure_module(name: str) -> types.ModuleType:
 
 
 def _install_numpy_stub() -> None:
-    numpy = _ensure_module("numpy")
+    # Always use a deterministic in-process stub for non-live runs to avoid
+    # local ABI/runtime drift from compiled wheels during unit tests.
+    numpy = types.ModuleType("numpy")
+    numpy.__path__ = []
     numpy.integer = int
     numpy.floating = float
+    numpy.ndarray = type("ndarray", (), {})
     numpy.nan = float("nan")
+    numpy.isnan = _is_nan_scalar
+
+    numpy_random = types.ModuleType("numpy.random")
+    _state = random.getstate()
+
+    def _seed(seed=None):
+        nonlocal _state
+        random.seed(seed)
+        _state = random.getstate()
+
+    def _get_state():
+        return _state
+
+    def _set_state(state):
+        nonlocal _state
+        _state = state
+        random.setstate(state)
+
+    numpy_random.seed = _seed
+    numpy_random.get_state = _get_state
+    numpy_random.set_state = _set_state
+
+    numpy.random = numpy_random
+    sys.modules["numpy"] = numpy
+    sys.modules["numpy.random"] = numpy_random
 
 
 def _install_pandas_stub() -> None:
-    pandas = _ensure_module("pandas")
+    pandas = types.ModuleType("pandas")
+    pandas.__path__ = []
 
     class Series(list):
         def apply(self, fn):
@@ -149,10 +224,15 @@ def _install_pandas_stub() -> None:
             return DataFrame(payload)
         raise ValueError("Unsupported JSON payload")
 
+    def isna(value):
+        return value is None or _is_nan_scalar(value)
+
     pandas.Series = Series
     pandas.DataFrame = DataFrame
     pandas.read_csv = read_csv
     pandas.read_json = read_json
+    pandas.isna = isna
+    sys.modules["pandas"] = pandas
 
 
 def _install_typer_stub() -> None:
@@ -455,3 +535,10 @@ def pytest_configure(config):
     _install_git_stub()
     _install_dbt_stub()
     _install_databricks_stub()
+
+
+# Install NumPy/Pandas stubs early for non-live runs so module-level test imports
+# do not emit ABI warnings during collection before pytest_configure runs.
+if not _is_live_google_cli_args(sys.argv):
+    _install_numpy_stub()
+    _install_pandas_stub()

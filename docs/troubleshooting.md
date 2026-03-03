@@ -122,7 +122,7 @@ scratch so NumPy/Pandas are installed as a compatible pair:
 rm -rf .venv
 uv sync --extra docs --extra dev --extra ai --locked
 source .venv/bin/activate
-python scripts/ci/check_numpy_binary_compatibility.py
+uv run python scripts/ci/check_numpy_binary_compatibility.py
 ```
 
 Notes:

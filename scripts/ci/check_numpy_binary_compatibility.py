@@ -31,6 +31,7 @@ def main() -> int:
         # during this check rather than later in runtime.
         frame = pd.DataFrame({"value": [1, 2, 3]})
         _ = frame["value"].to_numpy()
+        _ = np.random.default_rng(0)
         _ = np.asarray([1, 2, 3], dtype=np.int64)
 
     abi_warnings = [
@@ -46,10 +47,10 @@ def main() -> int:
             print(f"- {_format_warning(warning_item)}")
         print("")
         print("Recommended fix:")
-        print("  python -m venv .venv")
+        print("  rm -rf .venv")
+        print("  uv sync --extra dev --extra ai --extra docs --locked")
         print("  source .venv/bin/activate")
-        print("  python -m pip install --upgrade pip")
-        print('  python -m pip install -e ".[dev,ai,docs]"')
+        print("  uv run python scripts/ci/check_numpy_binary_compatibility.py")
         return 1
 
     print("NumPy/Pandas ABI check passed.")
