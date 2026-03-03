@@ -1,5 +1,5 @@
 site_name: SlideFlow
-site_description: Automated data-driven generation for Google Slides and Google Docs.
+site_description: Automated data-driven generation for Google Slides, Docs, and Sheets.
 site_url: https://joe-broadhead.github.io/slideflow/
 repo_url: https://github.com/joe-broadhead/slideflow
 repo_name: slideflow
