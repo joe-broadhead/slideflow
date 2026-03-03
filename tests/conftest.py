@@ -1,6 +1,7 @@
 import csv
 import importlib
 import json
+import math
 import random
 import sys
 import types
@@ -40,6 +41,15 @@ def _is_live_google_cli_args(argv: Sequence[str]) -> bool:
         if arg.startswith("-m") and "live_google" in arg:
             return True
     return False
+
+
+def _is_nan_scalar(value: object) -> bool:
+    """Return True when value is NaN without relying on self-comparison."""
+
+    try:
+        return math.isnan(value)
+    except (TypeError, ValueError):
+        return False
 
 
 def _ensure_module(name: str) -> types.ModuleType:
@@ -89,7 +99,7 @@ def _install_numpy_stub() -> None:
     numpy.floating = float
     numpy.ndarray = type("ndarray", (), {})
     numpy.nan = float("nan")
-    numpy.isnan = lambda value: value != value
+    numpy.isnan = _is_nan_scalar
 
     numpy_random = types.ModuleType("numpy.random")
     _state = random.getstate()
@@ -215,7 +225,7 @@ def _install_pandas_stub() -> None:
         raise ValueError("Unsupported JSON payload")
 
     def isna(value):
-        return value is None or value != value
+        return value is None or _is_nan_scalar(value)
 
     pandas.Series = Series
     pandas.DataFrame = DataFrame
