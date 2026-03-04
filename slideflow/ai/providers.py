@@ -119,7 +119,7 @@ class OpenAIProvider:
         try:
             import openai
         except ImportError as e:
-            raise APIError(f"Missing Databricks dependencies: {e}") from e
+            raise APIError(f"Missing OpenAI dependencies: {e}") from e
 
         start_time = time.time()
         try:
@@ -239,7 +239,10 @@ class DatabricksProvider:
                 "Databricks text mode does not support arguments: " + ", ".join(blocked)
             )
 
-        import openai
+        try:
+            import openai
+        except ImportError as e:
+            raise APIError(f"Missing Databricks dependencies: {e}") from e
 
         start_time = time.time()
         try:
