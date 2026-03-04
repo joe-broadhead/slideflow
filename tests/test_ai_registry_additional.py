@@ -17,6 +17,7 @@ def test_ai_registry_custom_registration_and_factory_flow():
     ai_registry_module.register_provider(temp_name, CustomProvider)
     try:
         assert "openai" in ai_registry_module.list_available_providers()
+        assert "databricks" in ai_registry_module.list_available_providers()
         assert "gemini" in ai_registry_module.list_available_providers()
         assert ai_registry_module.get_provider_class(temp_name) is CustomProvider
 

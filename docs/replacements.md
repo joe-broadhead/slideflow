@@ -68,7 +68,7 @@ This would map the value in the first row and first column of your CSV to the pl
 
 ### 3. AI Text Replacement (`ai_text`)
 
-This replacement type uses an AI provider (like OpenAI or Gemini) to generate text based on a prompt. You can also provide a data source to enrich the prompt with your data.
+This replacement type uses an AI provider (like OpenAI, Databricks, or Gemini) to generate text based on a prompt. You can also provide a data source to enrich the prompt with your data.
 
 **Example:**
 
@@ -86,7 +86,7 @@ This replacement type uses an AI provider (like OpenAI or Gemini) to generate te
       file_path: "data/sales.csv"
 ```
 
-When this replacement is processed, SlideFlow will append the data from `sales.csv` to the prompt before sending it to the OpenAI API.
+When this replacement is processed, SlideFlow appends the data from `sales.csv` to the prompt before sending it to the configured AI provider.
 
 ## Data Sources and Transformations
 

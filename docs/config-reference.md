@@ -245,7 +245,7 @@ All replacements follow:
   config:
     placeholder: "{{SUMMARY}}"
     prompt: "Summarize key insights"
-    provider: "openai"          # or provider class/instance/callable
+    provider: "openai"          # or "databricks" / "gemini" / class / instance / callable
     provider_args:
       model: "gpt-4o"
     data_source: {...}            # optional (single or list)

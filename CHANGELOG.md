@@ -40,6 +40,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - shared rate-limited request execution helper
   - shared Drive image upload primitive
 - Live Google Docs and Google Sheets test suites + manual workflows.
+- Databricks AI provider (`provider: databricks`) for `ai_text` replacements
+  via Databricks Serving Endpoints (OpenAI-compatible chat completions).
 - Security/quality automation additions:
   - `CodeQL` workflow
   - `dependabot.yml` for pip + GitHub Actions updates
