@@ -4,6 +4,7 @@ SlideFlow's `ai_text` replacement can generate text with AI providers.
 Built-in provider names are:
 
 - `openai`
+- `databricks`
 - `gemini`
 
 You can also supply a provider class, provider instance, or plain callable.
@@ -43,6 +44,51 @@ Typical args in `provider_args`:
 - `top_p`
 - `frequency_penalty`
 - `presence_penalty`
+
+## Databricks Provider
+
+Runtime requirement:
+
+```bash
+export DATABRICKS_TOKEN="<token>"
+export DATABRICKS_SERVING_BASE_URL="https://<DATABRICKS_HOST>/serving-endpoints"
+```
+
+Typical `provider_args`:
+
+- `model` (serving endpoint name, required)
+- `max_tokens`
+- `temperature`
+- `top_p`
+- `stop`
+- `response_format`
+
+Supported optional text-generation args:
+
+- `frequency_penalty`
+- `presence_penalty`
+- `reasoning_effort`
+
+Text-only guardrails:
+
+- SlideFlow's Databricks provider blocks tool-calling and streaming args in
+  `ai_text` mode (`tools`, `tool_choice`, `stream`, `n`, `logprobs`, `top_logprobs`).
+
+Example:
+
+```yaml
+- type: "ai_text"
+  config:
+    placeholder: "{{SUMMARY}}"
+    prompt: "Summarize this week's results in three bullets."
+    provider: "databricks"
+    provider_args:
+      model: "<SERVING_ENDPOINT_NAME>"
+      base_url: "https://<DATABRICKS_HOST>/serving-endpoints"
+      max_tokens: 256
+      temperature: 0.2
+      top_p: 0.95
+```
 
 ## Gemini Provider
 
@@ -116,6 +162,7 @@ Data transforms run before prompt injection, so you can filter/aggregate context
 Common failures:
 
 - missing API credentials (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, etc.)
+- missing Databricks runtime settings (`DATABRICKS_TOKEN`, Databricks base URL)
 - invalid model/provider combination
 - upstream rate limits
 - data transform failures before provider call

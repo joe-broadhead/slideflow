@@ -7,6 +7,7 @@ with a protocol-based interface for adding new providers.
 The module provides:
     - AIProvider protocol defining the provider interface
     - OpenAIProvider for OpenAI's GPT models
+    - DatabricksProvider for Databricks Serving Endpoints
     - GeminiProvider for Google's Gemini models (both regular and Vertex AI)
 """
 
@@ -115,7 +116,10 @@ class OpenAIProvider:
             APIRateLimitError: When OpenAI rate limits are exceeded.
             APIAuthenticationError: When OpenAI API key is invalid or missing.
         """
-        import openai
+        try:
+            import openai
+        except ImportError as e:
+            raise APIError(f"Missing OpenAI dependencies: {e}") from e
 
         start_time = time.time()
         try:
@@ -166,6 +170,136 @@ class OpenAIProvider:
                 "openai", "generate_text", False, duration, error="unexpected"
             )
             raise APIError(f"Unexpected OpenAI error: {e}") from e
+
+
+class DatabricksProvider:
+    """Databricks Serving Endpoints provider for text generation.
+
+    This provider targets Databricks OpenAI-compatible Serving Endpoints via
+    the `openai` SDK and is focused on text generation for SlideFlow
+    `ai_text` replacements.
+    """
+
+    provider_name: ClassVar[str] = "databricks"
+    _BLOCKED_TEXT_MODE_PARAMS: ClassVar[set[str]] = {
+        "tools",
+        "tool_choice",
+        "stream",
+        "n",
+        "logprobs",
+        "top_logprobs",
+    }
+
+    def __init__(
+        self,
+        model: str,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        **defaults: Any,
+    ) -> None:
+        """Initialize Databricks provider with endpoint and defaults.
+
+        Args:
+            model: Databricks serving endpoint name.
+            base_url: OpenAI-compatible Databricks base URL. Defaults to
+                `DATABRICKS_SERVING_BASE_URL`.
+            api_key: Databricks token. Defaults to `DATABRICKS_TOKEN`.
+            **defaults: Default generation parameters for requests.
+        """
+        self.model = model.strip() if model else ""
+        self.base_url = base_url
+        self.api_key = api_key
+        self.defaults = defaults
+
+    def generate_text(self, prompt: str, **kwargs: Any) -> str:
+        """Generate text using Databricks chat completions."""
+        if not self.model:
+            raise APIAuthenticationError(
+                "Databricks provider requires a non-empty model endpoint name"
+            )
+
+        resolved_base_url = self.base_url or os.getenv(
+            Environment.DATABRICKS_SERVING_BASE_URL
+        )
+        if not resolved_base_url:
+            raise APIAuthenticationError(
+                f"Databricks provider requires base_url or {Environment.DATABRICKS_SERVING_BASE_URL}"
+            )
+
+        resolved_api_key = self.api_key or os.getenv(Environment.DATABRICKS_TOKEN)
+        if not resolved_api_key:
+            raise APIAuthenticationError(
+                f"Databricks provider requires api_key or {Environment.DATABRICKS_TOKEN}"
+            )
+
+        params = {**self.defaults, **kwargs}
+        blocked = sorted(key for key in params if key in self._BLOCKED_TEXT_MODE_PARAMS)
+        if blocked:
+            raise APIError(
+                "Databricks text mode does not support arguments: " + ", ".join(blocked)
+            )
+
+        try:
+            import openai
+        except ImportError as e:
+            raise APIError(f"Missing Databricks dependencies: {e}") from e
+
+        start_time = time.time()
+        try:
+            client = openai.OpenAI(
+                api_key=resolved_api_key,
+                base_url=resolved_base_url,
+            )
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                **params,
+            )
+            content = response.choices[0].message.content
+            if content is None:
+                raise APIError("Databricks API returned empty response")
+
+            text = content.strip() if isinstance(content, str) else str(content).strip()
+            if not text:
+                raise APIError("Databricks API returned empty response")
+
+            duration = time.time() - start_time
+            log_api_operation(
+                "databricks",
+                "generate_text",
+                True,
+                duration,
+                model=self.model,
+                chars_generated=len(text),
+            )
+            return text
+
+        except openai.RateLimitError as e:
+            duration = time.time() - start_time
+            log_api_operation(
+                "databricks", "generate_text", False, duration, error="rate_limit"
+            )
+            raise APIRateLimitError(f"Databricks rate limit exceeded: {e}") from e
+        except openai.AuthenticationError as e:
+            duration = time.time() - start_time
+            log_api_operation(
+                "databricks", "generate_text", False, duration, error="auth_failed"
+            )
+            raise APIAuthenticationError(
+                f"Databricks authentication failed: {e}"
+            ) from e
+        except openai.APIError as e:
+            duration = time.time() - start_time
+            log_api_operation(
+                "databricks", "generate_text", False, duration, error=str(e)
+            )
+            raise APIError(f"Databricks API error: {e}") from e
+        except Exception as e:
+            duration = time.time() - start_time
+            log_api_operation(
+                "databricks", "generate_text", False, duration, error="unexpected"
+            )
+            raise APIError(f"Unexpected Databricks error: {e}") from e
 
 
 class GeminiProvider:

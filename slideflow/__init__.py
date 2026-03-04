@@ -91,7 +91,7 @@ Integration Features:
 __version__ = "0.0.6"
 
 # AI providers
-from slideflow.ai import AIProvider, GeminiProvider, OpenAIProvider
+from slideflow.ai import AIProvider, DatabricksProvider, GeminiProvider, OpenAIProvider
 from slideflow.builtins.formatting import (
     abbreviate,
     format_currency,
@@ -210,6 +210,7 @@ __all__ = [
     # AI
     "AIProvider",
     "OpenAIProvider",
+    "DatabricksProvider",
     "GeminiProvider",
     # Presentations
     "PresentationBuilder",

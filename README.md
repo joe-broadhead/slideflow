@@ -53,7 +53,7 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 -   **Dynamic Content Replacements:**
     -   **Text:** Replace simple placeholders like `{{TOTAL_REVENUE}}` with dynamic values.
     -   **Tables:** Populate entire tables in your slides from a DataFrame.
-    -   **AI-Generated Text:** Use OpenAI or Gemini to generate summaries, insights, or any other text, right from your data.
+    -   **AI-Generated Text:** Use OpenAI, Databricks Serving Endpoints, or Gemini to generate summaries, insights, or any other text, right from your data.
 -   **Powerful Charting Engine:**
     -   **Plotly Graph Objects:** Create any chart you can imagine with the full power of Plotly.
     -   **YAML Chart Templates:** Use packaged built-ins or define reusable local templates.

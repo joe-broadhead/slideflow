@@ -1,3 +1,4 @@
+import builtins
 import sys
 import types
 
@@ -44,6 +45,22 @@ def test_openai_rate_limit_error_maps_to_api_rate_limit_error(monkeypatch):
     provider = providers_module.OpenAIProvider(model="gpt-test")
 
     with pytest.raises(APIRateLimitError):
+        provider.generate_text("hello")
+
+
+def test_openai_import_error_maps_to_api_error(monkeypatch):
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "openai":
+            raise ImportError("missing openai")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "openai", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    provider = providers_module.OpenAIProvider(model="gpt-test")
+    with pytest.raises(APIError, match="Missing OpenAI dependencies"):
         provider.generate_text("hello")
 
 
@@ -269,4 +286,119 @@ def test_gemini_import_error_maps_to_api_error(monkeypatch):
 
     provider = providers_module.GeminiProvider(model="gemini-test")
     with pytest.raises(APIError, match="Missing Gemini dependencies"):
+        provider.generate_text("hello")
+
+
+def test_databricks_success_uses_env_defaults_and_forwards_args(monkeypatch):
+    fake_openai = types.ModuleType("openai")
+    captured = {}
+
+    class APIError(Exception):
+        pass
+
+    class RateLimitError(APIError):
+        pass
+
+    class AuthenticationError(APIError):
+        pass
+
+    class _Message:
+        content = "  databricks response  "
+
+    class _Choice:
+        message = _Message()
+
+    class _Completions:
+        def create(self, *args, **kwargs):
+            captured["create_kwargs"] = kwargs
+            return types.SimpleNamespace(choices=[_Choice()])
+
+    class _Chat:
+        completions = _Completions()
+
+    class OpenAI:
+        def __init__(self, *args, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.chat = _Chat()
+
+    fake_openai.APIError = APIError
+    fake_openai.RateLimitError = RateLimitError
+    fake_openai.AuthenticationError = AuthenticationError
+    fake_openai.OpenAI = OpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dbx-token")
+    monkeypatch.setenv(
+        "DATABRICKS_SERVING_BASE_URL",
+        "https://workspace.cloud.databricks.com/serving-endpoints",
+    )
+
+    provider = providers_module.DatabricksProvider(
+        model="endpoint-name", temperature=0.2
+    )
+    text = provider.generate_text("summarize", max_tokens=256, top_p=0.95)
+
+    assert text == "databricks response"
+    assert captured["client_kwargs"]["api_key"] == "dbx-token"
+    assert (
+        captured["client_kwargs"]["base_url"]
+        == "https://workspace.cloud.databricks.com/serving-endpoints"
+    )
+    assert captured["create_kwargs"]["model"] == "endpoint-name"
+    assert captured["create_kwargs"]["temperature"] == 0.2
+    assert captured["create_kwargs"]["max_tokens"] == 256
+    assert captured["create_kwargs"]["top_p"] == 0.95
+    assert captured["create_kwargs"]["messages"] == [
+        {"role": "user", "content": "summarize"}
+    ]
+
+
+def test_databricks_missing_token_raises_auth_error(monkeypatch):
+    monkeypatch.delenv("DATABRICKS_TOKEN", raising=False)
+    provider = providers_module.DatabricksProvider(
+        model="endpoint-name",
+        base_url="https://workspace.cloud.databricks.com/serving-endpoints",
+    )
+    with pytest.raises(APIAuthenticationError, match="DATABRICKS_TOKEN"):
+        provider.generate_text("hello")
+
+
+def test_databricks_missing_base_url_raises_auth_error(monkeypatch):
+    monkeypatch.delenv("DATABRICKS_SERVING_BASE_URL", raising=False)
+    provider = providers_module.DatabricksProvider(
+        model="endpoint-name", api_key="dbx-token"
+    )
+    with pytest.raises(APIAuthenticationError, match="DATABRICKS_SERVING_BASE_URL"):
+        provider.generate_text("hello")
+
+
+def test_databricks_blocks_tooling_and_streaming_args(monkeypatch):
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dbx-token")
+    monkeypatch.setenv(
+        "DATABRICKS_SERVING_BASE_URL",
+        "https://workspace.cloud.databricks.com/serving-endpoints",
+    )
+    provider = providers_module.DatabricksProvider(model="endpoint-name")
+    with pytest.raises(APIError, match="tools"):
+        provider.generate_text("hello", tools=[{"name": "calculator"}])
+
+
+def test_databricks_import_error_maps_to_api_error(monkeypatch):
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "openai":
+            raise ImportError("missing openai")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dbx-token")
+    monkeypatch.setenv(
+        "DATABRICKS_SERVING_BASE_URL",
+        "https://workspace.cloud.databricks.com/serving-endpoints",
+    )
+    monkeypatch.delitem(sys.modules, "openai", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    provider = providers_module.DatabricksProvider(model="endpoint-name")
+    with pytest.raises(APIError, match="Missing Databricks dependencies"):
         provider.generate_text("hello")

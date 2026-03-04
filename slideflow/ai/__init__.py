@@ -1,12 +1,13 @@
 """AI module for Slideflow.
 
 This module provides AI-powered text generation capabilities for presentations.
-It includes a provider system that supports multiple AI backends (OpenAI, Gemini)
+It includes a provider system that supports multiple AI backends (OpenAI,
+Databricks, Gemini)
 and a registry system for managing and extending AI providers.
 
 The module provides:
     - Base AI provider interface for implementing new providers
-    - Built-in providers for OpenAI and Google Gemini
+    - Built-in providers for OpenAI, Databricks, and Google Gemini
     - Registry system for discovering and managing providers
     - Factory functions for creating provider instances
 
@@ -27,7 +28,12 @@ Attributes:
     ai_provider_registry: Global registry instance for AI providers
 """
 
-from slideflow.ai.providers import AIProvider, GeminiProvider, OpenAIProvider
+from slideflow.ai.providers import (
+    AIProvider,
+    DatabricksProvider,
+    GeminiProvider,
+    OpenAIProvider,
+)
 from slideflow.ai.registry import (
     ai_provider_registry,
     create_provider,
@@ -39,6 +45,7 @@ from slideflow.ai.registry import (
 __all__ = [
     "AIProvider",
     "OpenAIProvider",
+    "DatabricksProvider",
     "GeminiProvider",
     "ai_provider_registry",
     "get_provider_class",

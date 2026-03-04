@@ -6,7 +6,7 @@ for registering new providers, retrieving provider classes, and creating
 provider instances.
 
 The registry supports:
-    - Registration of built-in providers (OpenAI, Gemini)
+    - Registration of built-in providers (OpenAI, Databricks, Gemini)
     - Dynamic registration of custom providers
     - Provider discovery and listing
     - Factory functions for provider instantiation
@@ -33,13 +33,19 @@ Attributes:
 
 from typing import Type
 
-from slideflow.ai.providers import AIProvider, GeminiProvider, OpenAIProvider
+from slideflow.ai.providers import (
+    AIProvider,
+    DatabricksProvider,
+    GeminiProvider,
+    OpenAIProvider,
+)
 from slideflow.core.registry import create_provider_registry
 
 ai_provider_registry = create_provider_registry("ai_providers", AIProvider)
 
 ai_provider_registry.register_class("openai", OpenAIProvider)
 ai_provider_registry.register_class("gemini", GeminiProvider)
+ai_provider_registry.register_class("databricks", DatabricksProvider)
 
 
 def get_provider_class(provider_name: str) -> Type[AIProvider]:
@@ -49,7 +55,8 @@ def get_provider_class(provider_name: str) -> Type[AIProvider]:
     It's useful when you need the class itself rather than an instance.
 
     Args:
-        provider_name: Name of the provider (e.g., "openai", "gemini", or custom names).
+        provider_name: Name of the provider (e.g., "openai", "databricks",
+            "gemini", or custom names).
             Case-insensitive.
 
     Returns:
@@ -111,13 +118,13 @@ def list_available_providers() -> list[str]:
     Returns:
         List of provider names (strings) that can be used with create_provider()
         or get_provider_class(). The list includes built-in providers like
-        'openai' and 'gemini', plus any custom registered providers.
+        'openai', 'databricks', and 'gemini', plus any custom registered providers.
 
     Example:
         >>> from slideflow.ai import list_available_providers
         >>> providers = list_available_providers()
         >>> print(providers)
-        ['openai', 'gemini', 'custom']
+        ['openai', 'databricks', 'gemini', 'custom']
     """
     return ai_provider_registry.list_available()
 
@@ -130,7 +137,8 @@ def create_provider(provider_name: str, *args, **kwargs) -> AIProvider:
     the provided arguments.
 
     Args:
-        provider_name: Name of the registered provider (e.g., "openai", "gemini").
+        provider_name: Name of the registered provider (e.g., "openai",
+            "databricks", "gemini").
             Case-insensitive.
         *args: Positional arguments to pass to the provider's constructor.
         **kwargs: Keyword arguments to pass to the provider's constructor.
