@@ -126,6 +126,15 @@ When `provider` is a class or registered provider name, SlideFlow splits `provid
 
 This lets you keep all AI settings in one place.
 
+## Request Identification
+
+For observability/auditing, SlideFlow tags built-in AI provider HTTP requests
+with a `User-Agent` identifier of `Slideflow`:
+
+- OpenAI provider
+- Databricks provider (serving-endpoints mode)
+- Gemini provider (API and Vertex modes)
+
 ## Custom Provider Options
 
 ### Option 1: callable function

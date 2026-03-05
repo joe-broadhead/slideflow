@@ -57,6 +57,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - Build JSON output includes citation summary fields and per-result citation payloads.
+- Outbound provider/data requests now include a consistent `Slideflow` client
+  identifier where supported:
+  - Databricks SQL connector (`user_agent_entry`)
+  - Google Slides/Docs/Sheets/Drive API requests (`User-Agent` header)
+  - BigQuery client metadata (`client_info.user_agent`)
+  - OpenAI/Databricks/Gemini AI provider calls (`User-Agent` header)
 - `slideflow sheets build` now executes workbook tabs with bounded parallel workers
   (`--threads`), capped by tab count.
 - Sheets build runtime JSON now includes richer thread controls metadata:
