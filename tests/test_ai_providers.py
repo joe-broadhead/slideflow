@@ -83,6 +83,7 @@ def test_gemini_non_vertex_uses_google_genai_client_api(monkeypatch):
     class Client:
         def __init__(self, api_key=None, **kwargs):
             captured["api_key"] = api_key
+            captured["client_kwargs"] = kwargs
             self.models = self
 
         def generate_content(self, model, contents, config=None):
@@ -116,6 +117,10 @@ def test_gemini_non_vertex_uses_google_genai_client_api(monkeypatch):
     assert captured["config_kwargs"]["max_output_tokens"] == 128
     assert captured["config_kwargs"]["temperature"] == 0.25
     assert captured["config_kwargs"]["top_p"] == 0.7
+    assert (
+        captured["client_kwargs"]["http_options"]["headers"]["User-Agent"]
+        == providers_module.Defaults.CLIENT_USER_AGENT
+    )
 
 
 def test_openai_authentication_error_maps_to_api_authentication_error(monkeypatch):
@@ -197,6 +202,10 @@ def test_openai_success_trims_response_content(monkeypatch):
     assert captured["kwargs"]["model"] == "gpt-test"
     assert captured["kwargs"]["temperature"] == 0.1
     assert captured["kwargs"]["top_p"] == 0.8
+    assert (
+        captured["kwargs"]["extra_headers"]["User-Agent"]
+        == providers_module.Defaults.CLIENT_USER_AGENT
+    )
 
 
 def test_gemini_non_vertex_missing_api_key_raises_auth_error(monkeypatch):
@@ -351,6 +360,10 @@ def test_databricks_success_uses_env_defaults_and_forwards_args(monkeypatch):
     assert captured["create_kwargs"]["messages"] == [
         {"role": "user", "content": "summarize"}
     ]
+    assert (
+        captured["create_kwargs"]["extra_headers"]["User-Agent"]
+        == providers_module.Defaults.CLIENT_USER_AGENT
+    )
 
 
 def test_databricks_missing_token_raises_auth_error(monkeypatch):

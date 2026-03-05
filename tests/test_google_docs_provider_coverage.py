@@ -139,11 +139,19 @@ def test_google_docs_provider_init_success(monkeypatch):
         lambda info, scopes: captured.update({"info": info, "scopes": scopes})
         or "creds",
     )
-    monkeypatch.setattr(
-        google_docs_module,
-        "build",
-        lambda service, version, credentials: f"{service}:{version}:{credentials}",
-    )
+
+    def _fake_build(service, version, credentials, **kwargs):
+        captured.setdefault("build_calls", []).append(
+            {
+                "service": service,
+                "version": version,
+                "credentials": credentials,
+                "kwargs": kwargs,
+            }
+        )
+        return f"{service}:{version}:{credentials}"
+
+    monkeypatch.setattr(google_docs_module, "build", _fake_build)
     monkeypatch.setattr(
         google_docs_module, "_get_rate_limiter", lambda rps: f"rl:{rps}"
     )
@@ -163,6 +171,11 @@ def test_google_docs_provider_init_success(monkeypatch):
         Environment.GOOGLE_DOCS_CREDENTIALS,
         Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
     ]
+    assert len(captured["build_calls"]) == 2
+    assert all(
+        callable(call["kwargs"].get("requestBuilder"))
+        for call in captured["build_calls"]
+    )
 
 
 def test_google_docs_provider_init_authentication_failure(monkeypatch):

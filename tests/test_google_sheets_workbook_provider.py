@@ -374,8 +374,9 @@ def test_provider_uses_thread_local_google_clients(monkeypatch):
     created: List[Tuple[str, int]] = []
     sequence = {"value": 0}
 
-    def _fake_build(api_name: str, _version: str, credentials: Any):
+    def _fake_build(api_name: str, _version: str, credentials: Any, **kwargs: Any):
         del credentials
+        assert callable(kwargs.get("requestBuilder"))
         sequence["value"] += 1
         marker = sequence["value"]
         created.append((api_name, marker))

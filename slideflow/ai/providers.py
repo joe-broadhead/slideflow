@@ -29,6 +29,28 @@ from slideflow.utilities.logging import get_logger, log_api_operation
 logger = get_logger(__name__)
 
 
+def _apply_slideflow_extra_headers(
+    headers: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """Merge caller headers with a Slideflow user-agent identifier."""
+    merged: dict[str, Any] = dict(headers or {})
+    user_agent_key = next(
+        (key for key in merged.keys() if key.lower() == "user-agent"), None
+    )
+    if user_agent_key is None:
+        merged["User-Agent"] = Defaults.CLIENT_USER_AGENT
+        return merged
+
+    existing = str(merged.get(user_agent_key, "")).strip()
+    if Defaults.CLIENT_USER_AGENT.lower() not in existing.lower():
+        merged[user_agent_key] = (
+            f"{existing} {Defaults.CLIENT_USER_AGENT}".strip()
+            if existing
+            else Defaults.CLIENT_USER_AGENT
+        )
+    return merged
+
+
 @runtime_checkable
 class AIProvider(Protocol):
     """Protocol for AI text generation providers.
@@ -125,6 +147,9 @@ class OpenAIProvider:
         try:
             client = openai.OpenAI()
             params = {**self.defaults, **kwargs}
+            params["extra_headers"] = _apply_slideflow_extra_headers(
+                params.get("extra_headers")
+            )
             messages: Any = [{"role": "user", "content": prompt}]
 
             resp = client.chat.completions.create(
@@ -233,6 +258,9 @@ class DatabricksProvider:
             )
 
         params = {**self.defaults, **kwargs}
+        params["extra_headers"] = _apply_slideflow_extra_headers(
+            params.get("extra_headers")
+        )
         blocked = sorted(key for key in params if key in self._BLOCKED_TEXT_MODE_PARAMS)
         if blocked:
             raise APIError(
@@ -404,6 +432,9 @@ class GeminiProvider:
                     project=self.project,
                     location=self.location,
                     credentials=credentials,
+                    http_options={
+                        "headers": {"User-Agent": Defaults.CLIENT_USER_AGENT}
+                    },
                 )
 
                 config = (
@@ -435,7 +466,12 @@ class GeminiProvider:
                         f"Gemini API requires {Environment.GOOGLE_API_KEY} or {Environment.GEMINI_API_KEY} environment variable"
                     )
 
-                client = genai.Client(api_key=api_key)
+                client = genai.Client(
+                    api_key=api_key,
+                    http_options={
+                        "headers": {"User-Agent": Defaults.CLIENT_USER_AGENT}
+                    },
+                )
                 config = (
                     types.GenerateContentConfig(**generation_config)
                     if generation_config

@@ -18,6 +18,7 @@ from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.google_api import (
     build_service_account_credentials,
     execute_rate_limited_request,
+    slideflow_google_request_builder,
 )
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
@@ -100,8 +101,18 @@ class GoogleSheetsProvider(WorkbookProvider):
         self._thread_local_services = threading.local()
 
         # Preserve existing attributes for compatibility and preflight checks.
-        self.sheets_service = build("sheets", "v4", credentials=credentials)
-        self.drive_service = build("drive", "v3", credentials=credentials)
+        self.sheets_service = build(
+            "sheets",
+            "v4",
+            credentials=credentials,
+            requestBuilder=slideflow_google_request_builder,
+        )
+        self.drive_service = build(
+            "drive",
+            "v3",
+            credentials=credentials,
+            requestBuilder=slideflow_google_request_builder,
+        )
         self._thread_local_services.sheets_service = self.sheets_service
         self._thread_local_services.drive_service = self.drive_service
         self.rate_limiter = _get_rate_limiter(self.config.requests_per_second)
@@ -138,7 +149,12 @@ class GoogleSheetsProvider(WorkbookProvider):
 
         sheets_service = getattr(self._thread_local_services, "sheets_service", None)
         if sheets_service is None:
-            sheets_service = build("sheets", "v4", credentials=self._credentials)
+            sheets_service = build(
+                "sheets",
+                "v4",
+                credentials=self._credentials,
+                requestBuilder=slideflow_google_request_builder,
+            )
             self._thread_local_services.sheets_service = sheets_service
         return sheets_service
 
@@ -154,7 +170,12 @@ class GoogleSheetsProvider(WorkbookProvider):
 
         drive_service = getattr(self._thread_local_services, "drive_service", None)
         if drive_service is None:
-            drive_service = build("drive", "v3", credentials=self._credentials)
+            drive_service = build(
+                "drive",
+                "v3",
+                credentials=self._credentials,
+                requestBuilder=slideflow_google_request_builder,
+            )
             self._thread_local_services.drive_service = drive_service
         return drive_service
 
