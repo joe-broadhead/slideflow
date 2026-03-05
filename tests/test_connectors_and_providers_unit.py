@@ -247,6 +247,7 @@ def test_databricks_connector_connect_disconnect_and_fetch(monkeypatch):
         connect_calls[0]["_retry_stop_after_attempts_duration"]
         == Defaults.DATABRICKS_RETRY_MAX_DURATION_S
     )
+    assert connect_calls[0]["user_agent_entry"] == "Slideflow"
     assert connect_calls[0]["_retry_delay_min"] == Defaults.DATABRICKS_RETRY_DELAY_MIN_S
     assert connect_calls[0]["_retry_delay_max"] == Defaults.DATABRICKS_RETRY_DELAY_MAX_S
 
