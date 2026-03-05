@@ -240,9 +240,11 @@ def _validate_plotly_index(path: Path, errors: list[str]) -> None:
     missing_traces = sorted(required_traces - set(traces.keys()))
     _expect(
         not missing_traces,
-        f"{path}: missing trace entries: {', '.join(missing_traces)}"
-        if missing_traces
-        else "",
+        (
+            f"{path}: missing trace entries: {', '.join(missing_traces)}"
+            if missing_traces
+            else ""
+        ),
         errors,
     )
 
