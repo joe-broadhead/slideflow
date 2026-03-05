@@ -7,8 +7,9 @@ import time
 from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 from google.oauth2.service_account import Credentials
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.http import HttpRequest, MediaIoBaseUpload
 
+from slideflow.constants import Defaults
 from slideflow.utilities.exceptions import AuthenticationError
 from slideflow.utilities.rate_limiter import RateLimiter
 
@@ -35,6 +36,39 @@ def execute_rate_limited_request(
     """Execute a Google API request through a shared rate-limited wrapper."""
     rate_limiter.wait()
     return request.execute(num_retries=num_retries)
+
+
+def apply_user_agent_header(
+    headers: Optional[Dict[str, Any]],
+    user_agent: str = Defaults.CLIENT_USER_AGENT,
+) -> Dict[str, Any]:
+    """Return headers with a Slideflow user-agent token added/preserved.
+
+    If a User-Agent already exists and does not include Slideflow, append
+    Slideflow to preserve upstream caller metadata.
+    """
+    merged: Dict[str, Any] = dict(headers or {})
+    user_agent_key = next(
+        (key for key in merged.keys() if key.lower() == "user-agent"), None
+    )
+    if user_agent_key is None:
+        merged["User-Agent"] = user_agent
+        return merged
+
+    existing = str(merged.get(user_agent_key, "")).strip()
+    if user_agent.lower() not in existing.lower():
+        merged[user_agent_key] = (
+            f"{existing} {user_agent}".strip() if existing else user_agent
+        )
+    return merged
+
+
+def slideflow_google_request_builder(
+    http: Any, *args: Any, **kwargs: Any
+) -> HttpRequest:
+    """Build Google API requests with Slideflow User-Agent tagging."""
+    kwargs["headers"] = apply_user_agent_header(kwargs.get("headers"))
+    return HttpRequest(http, *args, **kwargs)
 
 
 def upload_png_to_drive(

@@ -92,6 +92,7 @@ from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.google_api import (
     build_service_account_credentials,
     execute_rate_limited_request,
+    slideflow_google_request_builder,
     upload_png_to_drive,
 )
 from slideflow.utilities.logging import get_logger, log_api_operation
@@ -265,8 +266,18 @@ class GoogleSlidesProvider(PresentationProvider):
             loaded_credentials, self.SCOPES, credentials_cls=Credentials
         )
 
-        self.slides_service = build("slides", "v1", credentials=credentials)
-        self.drive_service = build("drive", "v3", credentials=credentials)
+        self.slides_service = build(
+            "slides",
+            "v1",
+            credentials=credentials,
+            requestBuilder=slideflow_google_request_builder,
+        )
+        self.drive_service = build(
+            "drive",
+            "v3",
+            credentials=credentials,
+            requestBuilder=slideflow_google_request_builder,
+        )
 
         self.rate_limiter = _get_rate_limiter(self.config.requests_per_second)
 

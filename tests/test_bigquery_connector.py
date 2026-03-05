@@ -72,6 +72,44 @@ def test_bigquery_connector_connect_uses_project_env_fallback(monkeypatch):
     assert captured["project"] == "env-project"
 
 
+def test_bigquery_connector_connect_sets_slideflow_client_info(monkeypatch):
+    captured = {}
+    sentinel_client_info = object()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    def _client_class():
+        return FakeClient
+
+    def _credentials_class():
+        return object()
+
+    monkeypatch.setattr(
+        bigquery_module.BigQueryConnector,
+        "_load_bigquery_client_class",
+        staticmethod(_client_class),
+    )
+    monkeypatch.setattr(
+        bigquery_module.BigQueryConnector,
+        "_load_service_account_credentials_class",
+        staticmethod(_credentials_class),
+    )
+    monkeypatch.setattr(
+        bigquery_module.BigQueryConnector,
+        "_build_client_info",
+        staticmethod(lambda: sentinel_client_info),
+    )
+    monkeypatch.setenv("BIGQUERY_PROJECT", "env-project")
+
+    connector = bigquery_module.BigQueryConnector("SELECT 1")
+    connector.connect()
+
+    assert captured["project"] == "env-project"
+    assert captured["client_info"] is sentinel_client_info
+
+
 def test_bigquery_connector_connect_fails_with_missing_project(monkeypatch):
     monkeypatch.delenv("BIGQUERY_PROJECT", raising=False)
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)

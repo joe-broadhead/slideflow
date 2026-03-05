@@ -38,11 +38,19 @@ def test_google_provider_init_success(monkeypatch):
         lambda info, scopes: captured.update({"info": info, "scopes": scopes})
         or "creds",
     )
-    monkeypatch.setattr(
-        google_provider_module,
-        "build",
-        lambda service, version, credentials: f"{service}:{version}:{credentials}",
-    )
+
+    def _fake_build(service, version, credentials, **kwargs):
+        captured.setdefault("build_calls", []).append(
+            {
+                "service": service,
+                "version": version,
+                "credentials": credentials,
+                "kwargs": kwargs,
+            }
+        )
+        return f"{service}:{version}:{credentials}"
+
+    monkeypatch.setattr(google_provider_module, "build", _fake_build)
     monkeypatch.setattr(
         google_provider_module, "_get_rate_limiter", lambda rps: f"rl:{rps}"
     )
@@ -58,6 +66,11 @@ def test_google_provider_init_success(monkeypatch):
     assert provider.rate_limiter == "rl:2.5"
     assert captured["info"] == {"client_email": "svc@example.com"}
     assert captured["scopes"] == google_provider_module.GoogleSlidesProvider.SCOPES
+    assert len(captured["build_calls"]) == 2
+    assert all(
+        callable(call["kwargs"].get("requestBuilder"))
+        for call in captured["build_calls"]
+    )
 
 
 def test_google_provider_init_authentication_failure(monkeypatch):

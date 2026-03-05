@@ -19,7 +19,7 @@ from typing import Any, Optional
 import pandas as pd
 from google.auth.exceptions import DefaultCredentialsError
 
-from slideflow.constants import Environment
+from slideflow.constants import Defaults, Environment
 from slideflow.data.connectors.base import DataConnector, SQLExecutor
 from slideflow.utilities.error_messages import safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
@@ -98,6 +98,23 @@ class BigQueryConnector(DataConnector):
                 "google.oauth2.service_account.Credentials is unavailable.",
             )
         return credentials_cls
+
+    @staticmethod
+    def _build_client_info() -> Optional[Any]:
+        """Build BigQuery ClientInfo with Slideflow user-agent when available."""
+        try:
+            client_info_module = importlib.import_module("google.api_core.client_info")
+        except ImportError:
+            return None
+
+        client_info_cls = getattr(client_info_module, "ClientInfo", None)
+        if client_info_cls is None:
+            return None
+
+        try:
+            return client_info_cls(user_agent=Defaults.CLIENT_USER_AGENT)
+        except Exception:  # pragma: no cover - defensive guard
+            return None
 
     @staticmethod
     def _categorize_error(error: Exception) -> str:
@@ -205,6 +222,9 @@ class BigQueryConnector(DataConnector):
                 client_kwargs["location"] = self.location
             if credentials is not None:
                 client_kwargs["credentials"] = credentials
+            client_info = self._build_client_info()
+            if client_info is not None:
+                client_kwargs["client_info"] = client_info
 
             client_cls = self._load_bigquery_client_class()
             try:

@@ -162,6 +162,7 @@ class Defaults:
     # AI provider defaults
     OPENAI_MODEL = "gpt-4o"
     GEMINI_MODEL = "gemini-pro"
+    CLIENT_USER_AGENT = "Slideflow"
 
     # Cache defaults
     CACHE_MAX_SIZE = 50
