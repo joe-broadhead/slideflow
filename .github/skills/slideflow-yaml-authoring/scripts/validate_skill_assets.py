@@ -320,7 +320,7 @@ def _validate_example_config(
         if tabs:
             mode = tabs[0].get("mode")
             _expect(
-                mode in {"replace", "append", "update"},
+                mode in {"replace", "append"},
                 f"{path}: invalid tab mode `{mode}`",
                 errors,
             )
@@ -414,9 +414,9 @@ def _validate_markdown_contracts(root: Path, errors: list[str]) -> None:
         "slideflow sheets doctor config.yml --strict",
         "slideflow sheets validate config.yml",
         "slideflow sheets build config.yml --threads 10",
-        "assets/examples/slides.minimal.yml",
-        "assets/examples/docs.minimal.yml",
-        "assets/examples/sheets.minimal.yml",
+        ".github/skills/slideflow-yaml-authoring/assets/examples/slides.minimal.yml",
+        ".github/skills/slideflow-yaml-authoring/assets/examples/docs.minimal.yml",
+        ".github/skills/slideflow-yaml-authoring/assets/examples/sheets.minimal.yml",
     ]:
         _expect(token in matrix_text, f"{command_matrix}: missing `{token}`", errors)
 
@@ -440,7 +440,6 @@ def _validate_markdown_contracts(root: Path, errors: list[str]) -> None:
     for token in [
         "replace",
         "append",
-        "update",
         "slideflow sheets doctor config.yml --strict",
     ]:
         _expect(token in sheets_text, f"{sheets_modes}: missing `{token}`", errors)

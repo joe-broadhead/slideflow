@@ -59,7 +59,7 @@ registry: []
 
 ```yaml
 - name: "tab_name"
-  mode: replace   # replace|append|update
+  mode: replace   # replace|append
   start_cell: A1
   include_header: true
   data_source: {}
@@ -112,4 +112,3 @@ data_source:
 - `{param}`: runtime substitution token
 - `{{PLACEHOLDER}}`: presentation placeholder token (preserved)
 - `$column_name`: DataFrame column reference
-

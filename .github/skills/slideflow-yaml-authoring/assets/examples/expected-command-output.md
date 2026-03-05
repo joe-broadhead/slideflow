@@ -5,12 +5,12 @@ Slideflow version; use the expected summary markers below.
 
 ## Slides example
 
-Config: `assets/examples/slides.minimal.yml`
+Config: `.github/skills/slideflow-yaml-authoring/assets/examples/slides.minimal.yml`
 
 ```bash
-slideflow doctor --config-file assets/examples/slides.minimal.yml --strict
-slideflow validate assets/examples/slides.minimal.yml
-slideflow build assets/examples/slides.minimal.yml --dry-run
+slideflow doctor --config-file .github/skills/slideflow-yaml-authoring/assets/examples/slides.minimal.yml --strict
+slideflow validate .github/skills/slideflow-yaml-authoring/assets/examples/slides.minimal.yml
+slideflow build .github/skills/slideflow-yaml-authoring/assets/examples/slides.minimal.yml --dry-run
 ```
 
 Expected markers:
@@ -21,12 +21,12 @@ Expected markers:
 
 ## Docs example
 
-Config: `assets/examples/docs.minimal.yml`
+Config: `.github/skills/slideflow-yaml-authoring/assets/examples/docs.minimal.yml`
 
 ```bash
-slideflow doctor --config-file assets/examples/docs.minimal.yml --strict
-slideflow validate assets/examples/docs.minimal.yml
-slideflow build assets/examples/docs.minimal.yml --dry-run
+slideflow doctor --config-file .github/skills/slideflow-yaml-authoring/assets/examples/docs.minimal.yml --strict
+slideflow validate .github/skills/slideflow-yaml-authoring/assets/examples/docs.minimal.yml
+slideflow build .github/skills/slideflow-yaml-authoring/assets/examples/docs.minimal.yml --dry-run
 ```
 
 Expected markers:
@@ -37,12 +37,12 @@ Expected markers:
 
 ## Sheets example
 
-Config: `assets/examples/sheets.minimal.yml`
+Config: `.github/skills/slideflow-yaml-authoring/assets/examples/sheets.minimal.yml`
 
 ```bash
-slideflow sheets doctor assets/examples/sheets.minimal.yml --strict
-slideflow sheets validate assets/examples/sheets.minimal.yml
-slideflow sheets build assets/examples/sheets.minimal.yml --output-json /tmp/sheets-example-result.json
+slideflow sheets doctor .github/skills/slideflow-yaml-authoring/assets/examples/sheets.minimal.yml --strict
+slideflow sheets validate .github/skills/slideflow-yaml-authoring/assets/examples/sheets.minimal.yml
+slideflow sheets build .github/skills/slideflow-yaml-authoring/assets/examples/sheets.minimal.yml --output-json /tmp/sheets-example-result.json
 ```
 
 Expected markers:

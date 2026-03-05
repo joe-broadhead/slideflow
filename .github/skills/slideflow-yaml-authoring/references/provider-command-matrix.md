@@ -32,7 +32,7 @@ slideflow sheets build config.yml --threads 10
 
 ## Runnable minimal examples
 
-- `assets/examples/slides.minimal.yml`
-- `assets/examples/docs.minimal.yml`
-- `assets/examples/sheets.minimal.yml`
-- `assets/examples/expected-command-output.md`
+- `.github/skills/slideflow-yaml-authoring/assets/examples/slides.minimal.yml`
+- `.github/skills/slideflow-yaml-authoring/assets/examples/docs.minimal.yml`
+- `.github/skills/slideflow-yaml-authoring/assets/examples/sheets.minimal.yml`
+- `.github/skills/slideflow-yaml-authoring/assets/examples/expected-command-output.md`

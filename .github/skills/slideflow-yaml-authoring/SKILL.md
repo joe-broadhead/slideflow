@@ -54,7 +54,7 @@ Supported provider ids:
 - Keep secrets in env vars; never hardcode credentials/token values.
 - Use explicit template ids and registry paths when ambiguous.
 - For Databricks serving AI provider, use serving-endpoints base URL (not `/invocations`).
-- For Google Sheets, define tab `mode` intentionally (`replace`, `append`, `update`).
+- For Google Sheets, define tab `mode` intentionally (`replace`, `append`).
 - For citations-enabled slides configs, keep source metadata stable and deterministic.
 
 ## Output contract
@@ -80,4 +80,4 @@ When producing config output, include:
 - `assets/snippets/connectors.yml`
 - `assets/snippets/replacements.yml`
 - `assets/snippets/charts.yml`
-- `assets/examples/`
+- `.github/skills/slideflow-yaml-authoring/assets/examples/`
