@@ -113,6 +113,11 @@ Optional Databricks connector runtime env tuning:
 - `SLIDEFLOW_DATABRICKS_RETRY_DELAY_MIN_S`
 - `SLIDEFLOW_DATABRICKS_RETRY_DELAY_MAX_S`
 
+Databricks request identification:
+
+- SlideFlow sets Databricks SQL `user_agent_entry` to `Slideflow` so warehouse
+  query history can attribute sessions to SlideFlow runs.
+
 Tips:
 
 - Keep SQL deterministic for reporting workflows.
@@ -221,6 +226,8 @@ BigQuery runtime options:
   - `warehouse.credentials_path`, or
   - `warehouse.credentials_json`, or
   - Application Default Credentials (for example `GOOGLE_APPLICATION_CREDENTIALS`).
+- SlideFlow initializes the BigQuery client with `client_info.user_agent` set to
+  `Slideflow` for request attribution in Google-side telemetry.
 
 ## dbt on DuckDB (`dbt`)
 

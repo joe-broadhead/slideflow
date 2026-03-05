@@ -60,6 +60,8 @@ Set `DBT_GIT_TOKEN` in environment, not in YAML.
 - Do not print raw credential payloads.
 - Keep logs at `INFO` or lower in production.
 - Use `--debug` only for short-lived troubleshooting sessions.
+- Built-in networked providers/connectors include a `Slideflow` client
+  identifier where SDK/API support exists, improving service-side auditability.
 
 ## Registry execution risk
 
