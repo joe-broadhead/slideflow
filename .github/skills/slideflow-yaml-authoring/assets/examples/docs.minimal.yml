@@ -1,0 +1,30 @@
+provider:
+  type: google_docs
+  config:
+    credentials: null
+    template_id: "{template_id}"
+    drive_folder_id: "{folder_id}"
+
+presentation:
+  name: "Minimal Docs Example {run_label}"
+  slides:
+    - id: "{section_id}"
+      replacements:
+        - type: text
+          config:
+            placeholder: "{HEADING}"
+            replacement: "Minimal Docs Example"
+      charts:
+        - type: plotly_go
+          config:
+            data_source:
+              type: csv
+              name: sample_metrics
+              file_path: ./sample_metrics.csv
+            traces:
+              - type: bar
+                x: $month
+                y: $revenue
+            layout_config:
+              title: Revenue by Month
+

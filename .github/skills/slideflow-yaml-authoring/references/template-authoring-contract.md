@@ -1,6 +1,6 @@
 # Template Authoring Contract
 
-Template files must include:
+Template files should include:
 
 - `name`
 - `description`
@@ -12,11 +12,12 @@ Parameter fields:
 
 - `name`
 - `type`
-- `required` (default true)
+- `required` (default `true`)
 - `default` (optional)
 - `description`
 
-Required parameter enforcement is strict. Missing required params are runtime errors.
+Required parameter enforcement is strict. Missing required params are runtime
+errors.
 
 Template precedence order:
 
@@ -26,3 +27,4 @@ Template precedence order:
 4. packaged built-ins
 
 Local templates override built-ins when names collide.
+
