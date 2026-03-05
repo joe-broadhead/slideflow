@@ -10,16 +10,31 @@ json:
   file_path: "./data/events.json"
   orient: "records"
 
-databricks:
+databricks_sql:
   type: "databricks"
   name: "warehouse_query"
   query: "SELECT * FROM mart.sales LIMIT 100"
 
-databricks_dbt:
-  type: "databricks_dbt"
+dbt_preferred:
+  type: "dbt"
   name: "dbt_model"
-  model_alias: "revenue_model"
-  package_url: "https://github.com/org/dbt-project.git"
-  project_dir: "/tmp/dbt_workspace"
+  model_alias: "slide__revenue_model"
+  dbt:
+    package_url: "https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git"
+    project_dir: "/tmp/dbt_project"
+    branch: "main"
+    target: "prod"
+    vars:
+      time_period: "weekly"
+  warehouse:
+    type: "databricks"
+
+databricks_dbt_legacy:
+  type: "databricks_dbt"
+  name: "dbt_model_legacy"
+  model_alias: "slide__revenue_model"
+  package_url: "https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git"
+  project_dir: "/tmp/dbt_project"
   branch: "main"
   target: "prod"
+

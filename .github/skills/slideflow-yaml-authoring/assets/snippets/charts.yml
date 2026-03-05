@@ -11,6 +11,11 @@ plotly_go:
       - type: "bar"
         x: "$month"
         y: "$revenue"
+    layout_config:
+      xaxis:
+        title: "Month"
+      yaxis:
+        title: "Revenue"
 
 template:
   type: "template"
@@ -35,3 +40,4 @@ custom:
       type: "csv"
       name: "sales"
       file_path: "./data/sales.csv"
+

@@ -1,0 +1,33 @@
+provider:
+  type: google_slides
+  config:
+    credentials: null
+    template_id: "{template_id}"
+    presentation_folder_id: "{folder_id}"
+
+presentation:
+  name: "Minimal Slides Example {run_label}"
+  slides:
+    - id: "{slide_id}"
+      replacements:
+        - type: text
+          config:
+            placeholder: "{{TITLE}}"
+            replacement: "Minimal Slides Example"
+      charts:
+        - type: plotly_go
+          config:
+            x: 120
+            y: 90
+            width: 480
+            height: 280
+            data_source:
+              type: csv
+              name: sample_metrics
+              file_path: ./sample_metrics.csv
+            traces:
+              - type: bar
+                x: $month
+                y: $revenue
+            layout_config:
+              title: Revenue by Month

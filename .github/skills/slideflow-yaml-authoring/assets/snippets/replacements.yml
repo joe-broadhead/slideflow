@@ -14,11 +14,26 @@ table:
       name: "metrics"
       file_path: "./data/metrics.csv"
 
-ai_text:
+ai_text_openai:
   type: "ai_text"
   config:
     placeholder: "{{SUMMARY}}"
     prompt: "Summarize top 3 insights"
     provider: "openai"
     provider_args:
-      model: "gpt-4o"
+      model: "gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 256
+
+ai_text_databricks:
+  type: "ai_text"
+  config:
+    placeholder: "{{SUMMARY}}"
+    prompt: "Summarize top 3 insights"
+    provider: "databricks"
+    provider_args:
+      model: "databricks-claude-sonnet-4-6"
+      base_url: "https://<workspace-host>/serving-endpoints"
+      temperature: 0.2
+      max_tokens: 256
+

@@ -1,80 +1,83 @@
 ---
 name: slideflow-yaml-authoring
-description: Generate and validate SlideFlow configuration YAML, choose chart strategy, and map Plotly options safely using SlideFlow contracts.
-version: 1.0.0
+description: Author and validate production-safe Slideflow YAML for Google Slides, Google Docs, and Google Sheets, including composable dbt connectors and AI providers.
+version: 2.0.0
 spec: open-skill-v1
 ---
 
-# SlideFlow YAML Authoring Skill
+# Slideflow YAML Authoring Skill
 
 ## Purpose
 
-Use this skill to produce production-safe SlideFlow YAML configurations and chart
-configs while preserving compatibility guarantees.
+Use this skill to produce production-safe Slideflow YAML and deterministic run
+commands across artifact kinds (`slides`, `docs`, `sheets`).
+
+Supported provider ids:
+
+- `google_slides`
+- `google_docs`
+- `google_sheets`
 
 ## Use this skill when
 
-- building a new `config.yml` for SlideFlow
-- translating reporting intent into connectors + replacements + charts
-- deciding between `template`, `plotly_go`, and `custom` chart types
-- validating YAML parameter contracts before runtime
-- mapping Plotly configuration parameters into `traces` and `layout_config`
+- creating or editing Slideflow config for Google Slides, Docs, or Sheets
+- translating reporting intent into data sources, transforms, replacements, and charts
+- selecting between `template`, `plotly_go`, and `custom` charts
+- defining AI summaries/replacements across providers (OpenAI, Gemini, Databricks serving)
+- validating provider contracts before runtime failures
 
 ## Required inputs
 
-- presentation intent (audience + desired slides)
-- target provider configuration (`google_slides` settings)
-- data source details (csv/json/databricks/dbt)
-- template usage preference (`template` vs `plotly_go` vs `custom`)
+- target artifact kind (`slides`, `docs`, or `sheets`)
+- provider configuration (template id/folder ids/credentials behavior)
+- data source details (dbt/warehouse or direct sql/csv/json)
+- runtime parameter shape (`{param}` tokens and optional params CSV)
+- preferred AI provider (if AI summaries are required)
 
 ## Deterministic workflow
 
-1. Build root contract:
-   - `provider`
-   - `presentation.name`
-   - `presentation.slides[]`
-2. Add connectors and replacements with explicit names.
-3. Select chart strategy:
-   - use `template` for reusable patterns
-   - use `plotly_go` for direct Plotly control
-   - use `custom` only when required by specialized rendering logic
-4. Validate references:
-   - every `$column` maps to a real column
-   - every registry function exists in `function_registry`
-   - every required template parameter is present
-5. Validate runtime safety:
-   - preserve `{{PLACEHOLDER}}` tokens
-   - use `{param}` only for CLI/runtime substitution
-6. Run:
-   - `slideflow validate config.yml`
-   - `slideflow build config.yml --dry-run`
-7. Run gotchas pass:
-   - check `references/gotchas.md` before final output
-   - confirm no unresolved `{param}` tokens unless explicitly intended
+1. Build the root contract for the artifact kind.
+2. Define data sources with explicit names.
+3. Prefer `type: dbt` + `dbt:` + `warehouse:` for new work.
+4. Add replacements/charts (or workbook tabs for sheets) with explicit function names.
+5. Validate references:
+   - `$column` references map to real output columns.
+   - every `*_fn` exists in `function_registry`.
+   - template ids/placeholders/markers are valid for provider.
+6. Run commands from `references/provider-command-matrix.md`.
+7. Run gotchas pass from `references/gotchas.md`.
 
 ## Guardrails
 
-- Never deprecate or remove existing features in generated output.
-- Favor additive changes and deterministic behavior.
-- Prefer built-in templates before generating custom one-off templates.
-- Keep local template overrides explicit and intentional.
-- Always choose explicit template IDs and registry paths when ambiguity exists.
+- Prefer additive, backward-compatible changes.
+- Keep legacy `databricks_dbt` examples clearly marked as legacy-only.
+- Keep secrets in env vars; never hardcode credentials/token values.
+- Use explicit template ids and registry paths when ambiguous.
+- For Databricks serving AI provider, use serving-endpoints base URL (not `/invocations`).
+- For Google Sheets, define tab `mode` intentionally (`replace`, `append`).
+- For citations-enabled slides configs, keep source metadata stable and deterministic.
 
 ## Output contract
 
-When producing config output, always include:
+When producing config output, include:
 
-- complete YAML (no omitted required keys)
-- a short assumptions list
-- exact validation commands
-- explicit note on whether templates are built-in or local
+- complete YAML for the selected artifact kind
+- assumptions list (provider, runtime params, env vars)
+- exact `doctor`/`validate`/`build` commands
+- env var contract for data + AI provider
+- note on whether templates are built-in or local
 
 ## References
 
 - `references/config-schema-cheatsheet.md`
+- `references/provider-command-matrix.md`
+- `references/ai-provider-cheatsheet.md`
+- `references/citations.md`
+- `references/sheets-modes.md`
 - `references/template-authoring-contract.md`
 - `references/plotly-parameter-lookup.md`
 - `references/gotchas.md`
 - `assets/snippets/connectors.yml`
 - `assets/snippets/replacements.yml`
 - `assets/snippets/charts.yml`
+- `.github/skills/slideflow-yaml-authoring/assets/examples/`

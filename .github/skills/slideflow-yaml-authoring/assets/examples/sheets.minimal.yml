@@ -1,0 +1,34 @@
+provider:
+  type: google_sheets
+  config:
+    credentials: null
+    drive_folder_id: "{folder_id}"
+    requests_per_second: 10
+
+workbook:
+  title: "Minimal Sheets Example {run_label}"
+  tabs:
+    - name: metrics
+      mode: replace
+      start_cell: A1
+      include_header: true
+      data_source:
+        type: csv
+        name: sample_metrics
+        file_path: ./sample_metrics.csv
+      ai:
+        summaries:
+          - type: ai_text
+            config:
+              name: metrics_summary
+              provider: openai
+              provider_args:
+                model: gpt-4o-mini
+              prompt: "Summarize revenue trend in 2 bullet points."
+              mode: latest
+              placement:
+                type: same_sheet
+                target_tab: metrics
+                anchor_cell: E2
+                clear_range: E2:E40
+
