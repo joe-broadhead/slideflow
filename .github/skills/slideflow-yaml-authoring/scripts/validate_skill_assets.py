@@ -44,25 +44,45 @@ def _validate_connectors(path: Path, errors: list[str]) -> None:
         "dbt_preferred",
         "databricks_dbt_legacy",
     }
-    _expect(required.issubset(payload.keys()), f"{path}: missing required connectors", errors)
+    _expect(
+        required.issubset(payload.keys()),
+        f"{path}: missing required connectors",
+        errors,
+    )
 
     csv_conn = payload.get("csv", {})
     _expect(csv_conn.get("type") == "csv", f"{path}: csv.type must be csv", errors)
     _expect(bool(csv_conn.get("file_path")), f"{path}: csv.file_path missing", errors)
 
     dbt_conn = payload.get("dbt_preferred", {})
-    _expect(dbt_conn.get("type") == "dbt", f"{path}: dbt_preferred.type must be dbt", errors)
+    _expect(
+        dbt_conn.get("type") == "dbt", f"{path}: dbt_preferred.type must be dbt", errors
+    )
     dbt_cfg = dbt_conn.get("dbt", {})
-    _expect(isinstance(dbt_cfg, dict), f"{path}: dbt_preferred.dbt must be mapping", errors)
-    _expect(bool(dbt_cfg.get("package_url")), f"{path}: dbt_preferred.dbt.package_url missing", errors)
+    _expect(
+        isinstance(dbt_cfg, dict), f"{path}: dbt_preferred.dbt must be mapping", errors
+    )
+    _expect(
+        bool(dbt_cfg.get("package_url")),
+        f"{path}: dbt_preferred.dbt.package_url missing",
+        errors,
+    )
     _expect(
         "$DBT_GIT_TOKEN" in str(dbt_cfg.get("package_url", "")),
         f"{path}: dbt_preferred.dbt.package_url should use $DBT_GIT_TOKEN",
         errors,
     )
-    _expect(bool(dbt_cfg.get("project_dir")), f"{path}: dbt_preferred.dbt.project_dir missing", errors)
+    _expect(
+        bool(dbt_cfg.get("project_dir")),
+        f"{path}: dbt_preferred.dbt.project_dir missing",
+        errors,
+    )
     warehouse = dbt_conn.get("warehouse", {})
-    _expect(isinstance(warehouse, dict), f"{path}: dbt_preferred.warehouse must be mapping", errors)
+    _expect(
+        isinstance(warehouse, dict),
+        f"{path}: dbt_preferred.warehouse must be mapping",
+        errors,
+    )
     _expect(
         warehouse.get("type") == "databricks",
         f"{path}: dbt_preferred.warehouse.type must be databricks",
@@ -84,7 +104,9 @@ def _validate_replacements(path: Path, errors: list[str]) -> None:
 
     required = {"text", "table", "ai_text_openai", "ai_text_databricks"}
     _expect(
-        required.issubset(payload.keys()), f"{path}: missing required replacement snippets", errors
+        required.issubset(payload.keys()),
+        f"{path}: missing required replacement snippets",
+        errors,
     )
 
     openai_cfg = payload.get("ai_text_openai", {}).get("config", {})
@@ -102,8 +124,16 @@ def _validate_replacements(path: Path, errors: list[str]) -> None:
     )
     provider_args = databricks_cfg.get("provider_args", {})
     base_url = str(provider_args.get("base_url", ""))
-    _expect("/serving-endpoints" in base_url, f"{path}: databricks base_url must contain /serving-endpoints", errors)
-    _expect("/invocations" not in base_url, f"{path}: databricks base_url must not include /invocations", errors)
+    _expect(
+        "/serving-endpoints" in base_url,
+        f"{path}: databricks base_url must contain /serving-endpoints",
+        errors,
+    )
+    _expect(
+        "/invocations" not in base_url,
+        f"{path}: databricks base_url must not include /invocations",
+        errors,
+    )
 
 
 def _validate_charts(path: Path, errors: list[str]) -> None:
@@ -112,22 +142,48 @@ def _validate_charts(path: Path, errors: list[str]) -> None:
         return
 
     required = {"plotly_go", "template", "custom"}
-    _expect(required.issubset(payload.keys()), f"{path}: missing required chart snippets", errors)
+    _expect(
+        required.issubset(payload.keys()),
+        f"{path}: missing required chart snippets",
+        errors,
+    )
 
     plotly_cfg = payload.get("plotly_go", {}).get("config", {})
-    _expect(isinstance(plotly_cfg.get("traces"), list), f"{path}: plotly_go.traces must be a list", errors)
+    _expect(
+        isinstance(plotly_cfg.get("traces"), list),
+        f"{path}: plotly_go.traces must be a list",
+        errors,
+    )
     traces = plotly_cfg.get("traces", [])
     _expect(bool(traces), f"{path}: plotly_go.traces cannot be empty", errors)
     if traces:
-        _expect(traces[0].get("type") == "bar", f"{path}: first plotly_go trace should be bar", errors)
-    _expect("layout_config" in plotly_cfg, f"{path}: plotly_go.layout_config missing", errors)
+        _expect(
+            traces[0].get("type") == "bar",
+            f"{path}: first plotly_go trace should be bar",
+            errors,
+        )
+    _expect(
+        "layout_config" in plotly_cfg,
+        f"{path}: plotly_go.layout_config missing",
+        errors,
+    )
 
     template_cfg = payload.get("template", {}).get("config", {})
-    _expect(bool(template_cfg.get("template_name")), f"{path}: template.template_name missing", errors)
-    _expect(isinstance(template_cfg.get("template_config"), dict), f"{path}: template.template_config must be mapping", errors)
+    _expect(
+        bool(template_cfg.get("template_name")),
+        f"{path}: template.template_name missing",
+        errors,
+    )
+    _expect(
+        isinstance(template_cfg.get("template_config"), dict),
+        f"{path}: template.template_config must be mapping",
+        errors,
+    )
 
     custom_cfg = payload.get("custom", {}).get("config", {})
-    _expect(bool(custom_cfg.get("chart_fn")), f"{path}: custom.chart_fn missing", errors)
+    _expect(
+        bool(custom_cfg.get("chart_fn")), f"{path}: custom.chart_fn missing", errors
+    )
 
 
 def _validate_plotly_index(path: Path, errors: list[str]) -> None:
@@ -141,11 +197,27 @@ def _validate_plotly_index(path: Path, errors: list[str]) -> None:
     traces = payload.get("traces", {})
     layout = payload.get("layout", [])
 
-    _expect(isinstance(metadata, dict) and bool(metadata), f"{path}: missing metadata", errors)
-    _expect(isinstance(traces, dict) and bool(traces), f"{path}: traces payload missing or empty", errors)
-    _expect(isinstance(layout, list) and len(layout) >= 10, f"{path}: layout property list too small", errors)
+    _expect(
+        isinstance(metadata, dict) and bool(metadata),
+        f"{path}: missing metadata",
+        errors,
+    )
+    _expect(
+        isinstance(traces, dict) and bool(traces),
+        f"{path}: traces payload missing or empty",
+        errors,
+    )
+    _expect(
+        isinstance(layout, list) and len(layout) >= 10,
+        f"{path}: layout property list too small",
+        errors,
+    )
 
-    _expect(bool(metadata.get("plotly_version")), f"{path}: metadata.plotly_version missing", errors)
+    _expect(
+        bool(metadata.get("plotly_version")),
+        f"{path}: metadata.plotly_version missing",
+        errors,
+    )
     _expect(
         metadata.get("trace_count") == len(traces),
         f"{path}: metadata.trace_count does not match trace entries",
@@ -168,13 +240,23 @@ def _validate_plotly_index(path: Path, errors: list[str]) -> None:
     missing_traces = sorted(required_traces - set(traces.keys()))
     _expect(
         not missing_traces,
-        f"{path}: missing trace entries: {', '.join(missing_traces)}" if missing_traces else "",
+        f"{path}: missing trace entries: {', '.join(missing_traces)}"
+        if missing_traces
+        else "",
         errors,
     )
 
     for name, props in traces.items():
-        _expect(isinstance(props, list) and len(props) >= 5, f"{path}: trace `{name}` has too few properties", errors)
-        _expect(props != ["type"], f"{path}: trace `{name}` unresolved (only `type` present)", errors)
+        _expect(
+            isinstance(props, list) and len(props) >= 5,
+            f"{path}: trace `{name}` has too few properties",
+            errors,
+        )
+        _expect(
+            props != ["type"],
+            f"{path}: trace `{name}` unresolved (only `type` present)",
+            errors,
+        )
 
 
 def _validate_example_config(
@@ -189,36 +271,66 @@ def _validate_example_config(
 
     provider = payload.get("provider", {})
     _expect(isinstance(provider, dict), f"{path}: provider must be mapping", errors)
-    _expect(provider.get("type") == expected_provider, f"{path}: provider.type must be {expected_provider}", errors)
+    _expect(
+        provider.get("type") == expected_provider,
+        f"{path}: provider.type must be {expected_provider}",
+        errors,
+    )
 
     if expected_provider in {"google_slides", "google_docs"}:
         presentation = payload.get("presentation", {})
-        _expect(isinstance(presentation, dict), f"{path}: presentation must be mapping", errors)
+        _expect(
+            isinstance(presentation, dict),
+            f"{path}: presentation must be mapping",
+            errors,
+        )
         slides = presentation.get("slides", [])
-        _expect(isinstance(slides, list) and bool(slides), f"{path}: presentation.slides must be non-empty list", errors)
+        _expect(
+            isinstance(slides, list) and bool(slides),
+            f"{path}: presentation.slides must be non-empty list",
+            errors,
+        )
         if slides:
-            _expect(bool(slides[0].get("id")), f"{path}: first slide id missing", errors)
+            _expect(
+                bool(slides[0].get("id")), f"{path}: first slide id missing", errors
+            )
             charts = slides[0].get("charts", [])
             if charts:
                 ds = charts[0].get("config", {}).get("data_source", {})
                 file_path = ds.get("file_path")
                 if file_path:
                     target = (example_dir / file_path).resolve()
-                    _expect(target.exists(), f"{path}: referenced file_path not found: {file_path}", errors)
+                    _expect(
+                        target.exists(),
+                        f"{path}: referenced file_path not found: {file_path}",
+                        errors,
+                    )
 
     if expected_provider == "google_sheets":
         workbook = payload.get("workbook", {})
         _expect(isinstance(workbook, dict), f"{path}: workbook must be mapping", errors)
         tabs = workbook.get("tabs", [])
-        _expect(isinstance(tabs, list) and bool(tabs), f"{path}: workbook.tabs must be non-empty list", errors)
+        _expect(
+            isinstance(tabs, list) and bool(tabs),
+            f"{path}: workbook.tabs must be non-empty list",
+            errors,
+        )
         if tabs:
             mode = tabs[0].get("mode")
-            _expect(mode in {"replace", "append", "update"}, f"{path}: invalid tab mode `{mode}`", errors)
+            _expect(
+                mode in {"replace", "append", "update"},
+                f"{path}: invalid tab mode `{mode}`",
+                errors,
+            )
             ds = tabs[0].get("data_source", {})
             file_path = ds.get("file_path")
             if file_path:
                 target = (example_dir / file_path).resolve()
-                _expect(target.exists(), f"{path}: referenced file_path not found: {file_path}", errors)
+                _expect(
+                    target.exists(),
+                    f"{path}: referenced file_path not found: {file_path}",
+                    errors,
+                )
 
 
 def _validate_examples(root: Path, errors: list[str]) -> None:
@@ -241,8 +353,16 @@ def _validate_examples(root: Path, errors: list[str]) -> None:
 
     if sample_csv.exists():
         lines = sample_csv.read_text().strip().splitlines()
-        _expect(len(lines) >= 2, f"{sample_csv}: must include header and at least one data row", errors)
-        _expect(lines[0] == "month,revenue", f"{sample_csv}: unexpected header (expected month,revenue)", errors)
+        _expect(
+            len(lines) >= 2,
+            f"{sample_csv}: must include header and at least one data row",
+            errors,
+        )
+        _expect(
+            lines[0] == "month,revenue",
+            f"{sample_csv}: unexpected header (expected month,revenue)",
+            errors,
+        )
 
     if expected_outputs.exists():
         content = expected_outputs.read_text()
@@ -279,7 +399,11 @@ def _validate_markdown_contracts(root: Path, errors: list[str]) -> None:
         "google_docs",
         "google_sheets",
     ]:
-        _expect(token in skill_text, f"{skill_md}: missing required reference `{token}`", errors)
+        _expect(
+            token in skill_text,
+            f"{skill_md}: missing required reference `{token}`",
+            errors,
+        )
 
     matrix_text = command_matrix.read_text()
     for token in [
@@ -303,11 +427,20 @@ def _validate_markdown_contracts(root: Path, errors: list[str]) -> None:
         _expect(token in ai_text, f"{ai_cheatsheet}: missing `{token}`", errors)
 
     citations_text = citations.read_text()
-    for token in ["citations:", "per_slide", "slideflow validate config.yml --provider-contract-check"]:
+    for token in [
+        "citations:",
+        "per_slide",
+        "slideflow validate config.yml --provider-contract-check",
+    ]:
         _expect(token in citations_text, f"{citations}: missing `{token}`", errors)
 
     sheets_text = sheets_modes.read_text()
-    for token in ["replace", "append", "update", "slideflow sheets doctor config.yml --strict"]:
+    for token in [
+        "replace",
+        "append",
+        "update",
+        "slideflow sheets doctor config.yml --strict",
+    ]:
         _expect(token in sheets_text, f"{sheets_modes}: missing `{token}`", errors)
 
 
@@ -335,4 +468,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
