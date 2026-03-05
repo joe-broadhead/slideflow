@@ -12,7 +12,7 @@ presentation:
       replacements:
         - type: text
           config:
-            placeholder: "{HEADING}"
+            placeholder: "{{HEADING}}"
             replacement: "Minimal Docs Example"
       charts:
         - type: plotly_go
@@ -27,4 +27,3 @@ presentation:
                 y: $revenue
             layout_config:
               title: Revenue by Month
-
