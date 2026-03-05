@@ -284,6 +284,7 @@ class DatabricksConnector(DataConnector):
                     server_hostname=host,
                     http_path=http_path,
                     access_token=access_token,
+                    user_agent_entry="Slideflow",
                     _socket_timeout=self.socket_timeout_s,
                     _retry_stop_after_attempts_count=self.retry_max_attempts,
                     _retry_stop_after_attempts_duration=self.retry_max_duration_s,
