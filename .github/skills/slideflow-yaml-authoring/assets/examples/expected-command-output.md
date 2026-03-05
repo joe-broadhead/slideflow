@@ -49,4 +49,4 @@ Expected markers:
 
 - doctor: provider diagnostics summary
 - validate: `Workbook config is valid`
-- build dry-run: command completes without schema/runtime config errors
+- build: command executes a real write path; use a disposable workbook/folder for smoke tests

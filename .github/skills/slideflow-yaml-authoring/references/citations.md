@@ -4,41 +4,36 @@ Use citations in Google Slides configs to retain source traceability for each ru
 
 ## Core principles
 
-- Prefer stable source identifiers (model alias, file path, or table name).
-- Keep citation scope explicit: deck-level or per-slide.
-- Avoid runtime-volatile values in source labels.
+- Prefer stable model/query metadata to produce durable source links.
+- Configure citations at the root `citations:` block (not slide-level fields).
+- Avoid runtime-volatile values in source path metadata.
 
-## Deck-level citations (single source block for all slides)
+## Supported citations schema
 
 ```yaml
 citations:
-  mode: deck
-  sources:
-    - label: channel_performance (dbt model)
-      url: https://github.com/org/repo/blob/<sha>/analyses/slide__channel_performance.sql
+  enabled: true
+  mode: both              # model | execution | both
+  location: per_slide     # per_slide | per_section | document_end
+  max_items: 25
+  dedupe: true
+  include_query_text: false
+  repo_url_template: https://github.com/org/repo/blob/{sha}/{path}
 ```
 
-## Per-slide citations
+## Notes on source links
 
-```yaml
-presentation:
-  slides:
-    - id: g123abc_0_0
-      citations:
-        mode: per_slide
-        sources:
-          - label: country_gmv_growth_share (dbt model)
-            url: https://github.com/org/repo/blob/<sha>/analyses/slide__country_gmv_growth_share.sql
-```
+- Slideflow derives citation entries from model + execution metadata.
+- Use immutable commit SHAs for stable source link resolution where possible.
 
 ## Operational checks
 
 1. Run `slideflow validate config.yml --provider-contract-check`.
 2. Build one small smoke run and inspect slide notes manually.
-3. Confirm all expected source labels are present and correctly mapped.
+3. Confirm citation entries are present at the configured `location`.
 
 ## Gotchas
 
+- `mode` only accepts: `model`, `execution`, `both`.
+- `location` only accepts: `per_slide`, `per_section`, `document_end`.
 - If source URLs point to mutable branches, citation traceability weakens over time.
-- Missing slide-level citation blocks can produce uneven source attribution across the deck.
-
