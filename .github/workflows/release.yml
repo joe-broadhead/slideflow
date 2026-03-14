@@ -56,7 +56,7 @@ jobs:
 
       - name: Check code formatting
         run: |
-          uv run python -m black --check slideflow tests scripts
+          uvx --from black==26.3.1 black --check slideflow tests scripts
 
       - name: Run lint checks
         run: |

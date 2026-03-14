@@ -65,8 +65,7 @@ def print_slideflow_banner() -> None:
         - Colors automatically fallback on terminals with limited support
         - Banner is consistent across all CLI operations
     """
-    console.print(
-        r"""[bold blue]
+    console.print(r"""[bold blue]
   ____  _ _     _       __ _                
  / ___|| (_) __| | ___ / _| | _____      __ 
  \___ \| | |/ _` |/ _ \ |_| |/ _ \ \ /\ / / 
@@ -76,8 +75,7 @@ def print_slideflow_banner() -> None:
          Generate
      Beautiful slides.
        Direct from your data.[/bold magenta]
-"""
-    )
+""")
 
 
 def print_validation_header(config_file: str) -> None:
@@ -355,8 +353,6 @@ def print_help_footer() -> None:
         # ⚡ Need help? Check the docs or run with --verbose for more details ⚡
         # 🌐 slideflow.dev | 📧 support@slideflow.dev
     """
-    console.print(
-        """
+    console.print("""
 [dim cyan]⚡ Need help? Check the docs ⚡[/dim cyan]
-"""
-    )
+""")

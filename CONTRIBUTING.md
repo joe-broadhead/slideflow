@@ -27,7 +27,7 @@ uv run pre-commit run --all-files
 uv pip check
 uv run pre-commit run --all-files
 uv run python scripts/ci/check_numpy_binary_compatibility.py
-python -m black --check slideflow tests scripts
+uvx --from black==26.3.1 black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 uv run pytest -q
