@@ -112,7 +112,7 @@ If anything fails:
 
 ```bash
 source .venv/bin/activate
-python -m black --check slideflow tests scripts
+uvx --from black==26.3.1 black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 pytest -q

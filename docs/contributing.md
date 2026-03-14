@@ -14,7 +14,7 @@ source .venv/bin/activate
 ```bash
 uv lock --check
 uv pip check
-python -m black --check slideflow tests scripts
+uvx --from black==26.3.1 black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 python -m pytest -q

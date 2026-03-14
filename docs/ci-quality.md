@@ -7,7 +7,7 @@
   - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
   - runs `uv pip check`
   - runs NumPy/Pandas ABI compatibility check (`scripts/ci/check_numpy_binary_compatibility.py`)
-  - runs `black --check`, `ruff check`, and `mypy`
+  - runs pinned `black --check` via `uvx --from black==26.3.1`, plus `ruff check` and `mypy`
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
   - runs integration marker tests (`-m integration`)
   - runs e2e marker tests (`-m e2e`)
@@ -77,7 +77,7 @@ source .venv/bin/activate
 uv lock --check
 uv pip check
 uv run python scripts/ci/check_numpy_binary_compatibility.py
-python -m black --check slideflow tests scripts
+uvx --from black==26.3.1 black --check slideflow tests scripts
 python -m ruff check slideflow tests scripts
 python -m mypy slideflow
 uv run pytest -q

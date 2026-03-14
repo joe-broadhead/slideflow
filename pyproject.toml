@@ -46,7 +46,6 @@ dev = [
     "pytest",
     "pytest-cov",
     "hypothesis",
-    "black",
     "ruff",
     "mypy",
     "pre-commit",
