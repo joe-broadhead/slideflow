@@ -135,6 +135,10 @@ def _plotly_to_image(
     try:
         import kaleido  # type: ignore[import-untyped]
 
+        # Workaround for plotly/Kaleido#402 to prevent random hangs on export.
+        if hasattr(kaleido, "get_chrome_sync"):
+            kaleido.get_chrome_sync()
+
         # Reuse a single sync server per process to avoid repeatedly spawning
         # browser processes for each chart export.
         kaleido.start_sync_server(
