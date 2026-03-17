@@ -21,6 +21,16 @@ Example:
         $ slideflow --verbose validate config.yaml
 """
 
+import warnings
+
+# Suppress known noisy dependency warnings globally before any other imports happen
+warnings.filterwarnings("ignore", message=".*urllib3.*match a supported version.*")
+try:
+    from requests import RequestsDependencyWarning  # type: ignore
+    warnings.filterwarnings("ignore", category=RequestsDependencyWarning)
+except ImportError:
+    pass
+
 import typer
 
 from slideflow.cli.commands import (

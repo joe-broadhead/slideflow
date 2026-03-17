@@ -106,8 +106,13 @@ def _initialize_chart_export_worker() -> None:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             import kaleido  # type: ignore[import-untyped]
+            import plotly.io as pio
 
             # Workaround for plotly/Kaleido#402 to prevent random hangs on export.
+            # Disabling MathJax prevents the browser from hanging while fetching CDNs.
+            if hasattr(pio.kaleido, "scope"):
+                pio.kaleido.scope.mathjax = None
+
             # This initializes the internal Chromium engine.
             if hasattr(kaleido, "get_chrome_sync"):
                 kaleido.get_chrome_sync()
@@ -176,6 +181,10 @@ def _plotly_to_image(
             warnings.simplefilter("ignore")
             import kaleido  # type: ignore[import-untyped]
 
+            # Ensure MathJax is disabled in the main process too.
+            if hasattr(pio.kaleido, "scope"):
+                pio.kaleido.scope.mathjax = None
+
             # Reuse a single sync server per process to avoid repeatedly spawning
             # browser processes for each chart export.
             kaleido.start_sync_server(
@@ -195,6 +204,9 @@ def _plotly_to_image(
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            # Ensure MathJax is disabled before falling back.
+            if hasattr(pio.kaleido, "scope"):
+                pio.kaleido.scope.mathjax = None
             return pio.to_image(
                 fig,
                 format=fmt,
@@ -261,7 +273,17 @@ def _execute_with_retry(func, *args, **kwargs):
                 )
                 continue
             raise
-        except Exception:
+        except Exception as e:
+            # We catch generic exceptions to ensure we reset the executor on unexpected crashes.
+            # Logging exc_info here ensures we see the EXACT error (e.g. ValueError from Kaleido)
+            # rather than just the generic "failed after all retries" wrapper.
+            logger.error(
+                "[%s] Unexpected error in worker during %s: %s",
+                execution_id,
+                func.__name__,
+                type(e).__name__,
+                exc_info=True,
+            )
             _reset_chart_export_executor()
             raise
     raise ChartGenerationError(
