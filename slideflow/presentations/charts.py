@@ -56,6 +56,7 @@ import re
 import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
+from concurrent.futures.process import BrokenProcessPool
 from threading import Lock
 from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Union
 
@@ -79,11 +80,31 @@ _CHART_EXPORT_EXECUTOR: Optional[ProcessPoolExecutor] = None
 _CHART_EXPORT_EXECUTOR_LOCK = Lock()
 
 
+def _initialize_chart_export_worker() -> None:
+    """Prepare worker process for chart generation.
+
+    Includes workarounds for upstream library issues (like Kaleido #402).
+    This function runs once per worker process creation.
+    """
+    try:
+        import kaleido  # type: ignore[import-untyped]
+
+        # Workaround for plotly/Kaleido#402 to prevent random hangs on export.
+        # This initializes the internal Chromium engine.
+        if hasattr(kaleido, "get_chrome_sync"):
+            kaleido.get_chrome_sync()
+    except Exception as error:
+        # Avoid crashing worker during initialization; fall back to normal execution.
+        logger.debug("Kaleido worker initialization failed: %s", error, exc_info=True)
+
+
 def _get_chart_export_executor() -> ProcessPoolExecutor:
     global _CHART_EXPORT_EXECUTOR
     with _CHART_EXPORT_EXECUTOR_LOCK:
         if _CHART_EXPORT_EXECUTOR is None:
-            _CHART_EXPORT_EXECUTOR = ProcessPoolExecutor(max_workers=1)
+            _CHART_EXPORT_EXECUTOR = ProcessPoolExecutor(
+                max_workers=1, initializer=_initialize_chart_export_worker
+            )
         return _CHART_EXPORT_EXECUTOR
 
 
@@ -134,10 +155,6 @@ def _plotly_to_image(
 
     try:
         import kaleido  # type: ignore[import-untyped]
-
-        # Workaround for plotly/Kaleido#402 to prevent random hangs on export.
-        if hasattr(kaleido, "get_chrome_sync"):
-            kaleido.get_chrome_sync()
 
         # Reuse a single sync server per process to avoid repeatedly spawning
         # browser processes for each chart export.
@@ -194,19 +211,34 @@ def _execute_with_retry(func, *args, **kwargs):
                 func.__name__,
             )
             return result
-        except TimeoutError:
-            # Reset the worker on timeout to clear stuck browser state.
+        except (TimeoutError, BrokenProcessPool) as error:
+            # Reset the worker on timeout or process crash to clear stuck/broken state.
             _reset_chart_export_executor()
 
+            error_type = type(error).__name__
             logger.warning(
-                "[%s] Function %s timed out after %s seconds. Retrying... Attempt %s of %s",
+                "[%s] Function %s failed with %s. Retrying... Attempt %s of %s",
                 execution_id,
                 func.__name__,
-                timeout,
+                error_type,
                 i + 1,
                 len(timeouts),
             )
             continue
+        except RuntimeError as error:
+            # Catching RuntimeError handles cases where the executor was shut down
+            # by a parallel task resetting it. Only retry if it's a shutdown error.
+            _reset_chart_export_executor()
+            if "cannot schedule new futures" in str(error):
+                logger.warning(
+                    "[%s] Function %s failed because executor was shut down. Retrying... Attempt %s of %s",
+                    execution_id,
+                    func.__name__,
+                    i + 1,
+                    len(timeouts),
+                )
+                continue
+            raise
         except Exception:
             _reset_chart_export_executor()
             raise
