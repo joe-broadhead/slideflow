@@ -77,16 +77,10 @@ from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import ChartGenerationError
 from slideflow.utilities.logging import get_logger
 
-# Suppress known noisy dependency warnings that can interfere with process execution
-# or be incorrectly treated as errors in some environments.
+# Suppress known noisy dependency warnings globally.
+# String-based filtering catches them even if triggered during import.
 warnings.filterwarnings("ignore", message=".*urllib3.*match a supported version.*")
-try:
-    # Some versions of requests define this specific warning class
-    from requests import RequestsDependencyWarning  # type: ignore
-
-    warnings.filterwarnings("ignore", category=RequestsDependencyWarning)
-except ImportError:
-    pass
+warnings.filterwarnings("ignore", message=".*RequestsDependencyWarning.*")
 
 logger = get_logger(__name__)
 _LIST_COLUMN_REF_PATTERN = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
@@ -197,9 +191,11 @@ def _plotly_to_image(
             # Force headless browser execution so local desktop runs avoid visible windows
             # and orchestrated runs remain deterministic.
             return kaleido.calc_fig_sync(fig.to_plotly_json(), opts=opts)
-    except Exception:
+    except Exception as e:
         logger.debug(
-            "Direct Kaleido export failed; falling back to plotly.io.to_image.",
+            "Direct Kaleido export failed with %s: %s; falling back to plotly.io.to_image.",
+            type(e).__name__,
+            e,
             exc_info=True,
         )
         with warnings.catch_warnings():
@@ -274,18 +270,21 @@ def _execute_with_retry(func, *args, **kwargs):
                 continue
             raise
         except Exception as e:
-            # We catch generic exceptions to ensure we reset the executor on unexpected crashes.
-            # Logging exc_info here ensures we see the EXACT error (e.g. ValueError from Kaleido)
-            # rather than just the generic "failed after all retries" wrapper.
-            logger.error(
-                "[%s] Unexpected error in worker during %s: %s",
+            # For non-recoverable (at the worker level) exceptions, we still want to log them as a warning
+            # if we are going to retry from the higher-level loop, but here we raise them.
+            # Actually, _execute_with_retry IS the retry loop for THIS worker process.
+            # If we get a ValueError from Kaleido, we should probably just fail this attempt.
+            logger.warning(
+                "[%s] Unexpected error in worker during %s: %s. Retrying... Attempt %s of %s",
                 execution_id,
                 func.__name__,
                 type(e).__name__,
+                i + 1,
+                len(timeouts),
                 exc_info=True,
             )
             _reset_chart_export_executor()
-            raise
+            continue
     raise ChartGenerationError(
         f"[{execution_id}] Function {func.__name__} failed after all retries."
     )

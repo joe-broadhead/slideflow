@@ -23,13 +23,10 @@ Example:
 
 import warnings
 
-# Suppress known noisy dependency warnings globally before any other imports happen
+# Suppress known noisy dependency warnings globally before any other imports happen.
+# We use string-based filtering to catch them even if triggered during import.
 warnings.filterwarnings("ignore", message=".*urllib3.*match a supported version.*")
-try:
-    from requests import RequestsDependencyWarning  # type: ignore
-    warnings.filterwarnings("ignore", category=RequestsDependencyWarning)
-except ImportError:
-    pass
+warnings.filterwarnings("ignore", message=".*RequestsDependencyWarning.*")
 
 import typer
 
