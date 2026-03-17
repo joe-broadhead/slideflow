@@ -54,9 +54,13 @@ Example:
 import atexit
 import re
 import uuid
+import warnings
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
-from concurrent.futures.process import BrokenProcessPool
+try:
+    from concurrent.futures import BrokenProcessPool  # type: ignore[attr-defined]
+except ImportError:
+    from concurrent.futures.process import BrokenProcessPool  # type: ignore[assignment]
 from threading import Lock
 from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Union
 
@@ -73,6 +77,17 @@ from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.exceptions import ChartGenerationError
 from slideflow.utilities.logging import get_logger
 
+# Suppress known noisy dependency warnings that can interfere with process execution
+# or be incorrectly treated as errors in some environments.
+warnings.filterwarnings("ignore", message=".*urllib3.*match a supported version.*")
+try:
+    # Some versions of requests define this specific warning class
+    from requests import RequestsDependencyWarning  # type: ignore
+
+    warnings.filterwarnings("ignore", category=RequestsDependencyWarning)
+except ImportError:
+    pass
+
 logger = get_logger(__name__)
 _LIST_COLUMN_REF_PATTERN = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
 
@@ -87,12 +102,15 @@ def _initialize_chart_export_worker() -> None:
     This function runs once per worker process creation.
     """
     try:
-        import kaleido  # type: ignore[import-untyped]
+        # Suppress noisy dependency warnings in worker
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import kaleido  # type: ignore[import-untyped]
 
-        # Workaround for plotly/Kaleido#402 to prevent random hangs on export.
-        # This initializes the internal Chromium engine.
-        if hasattr(kaleido, "get_chrome_sync"):
-            kaleido.get_chrome_sync()
+            # Workaround for plotly/Kaleido#402 to prevent random hangs on export.
+            # This initializes the internal Chromium engine.
+            if hasattr(kaleido, "get_chrome_sync"):
+                kaleido.get_chrome_sync()
     except Exception as error:
         # Avoid crashing worker during initialization; fall back to normal execution.
         logger.debug("Kaleido worker initialization failed: %s", error, exc_info=True)
@@ -154,32 +172,36 @@ def _plotly_to_image(
         opts["scale"] = scale
 
     try:
-        import kaleido  # type: ignore[import-untyped]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import kaleido  # type: ignore[import-untyped]
 
-        # Reuse a single sync server per process to avoid repeatedly spawning
-        # browser processes for each chart export.
-        kaleido.start_sync_server(
-            n=1,
-            timeout=Timing.CHART_EXPORT_KALEIDO_START_TIMEOUT_S,
-            headless=True,
-            silence_warnings=True,
-        )
+            # Reuse a single sync server per process to avoid repeatedly spawning
+            # browser processes for each chart export.
+            kaleido.start_sync_server(
+                n=1,
+                timeout=Timing.CHART_EXPORT_KALEIDO_START_TIMEOUT_S,
+                headless=True,
+                silence_warnings=True,
+            )
 
-        # Force headless browser execution so local desktop runs avoid visible windows
-        # and orchestrated runs remain deterministic.
-        return kaleido.calc_fig_sync(fig.to_plotly_json(), opts=opts)
+            # Force headless browser execution so local desktop runs avoid visible windows
+            # and orchestrated runs remain deterministic.
+            return kaleido.calc_fig_sync(fig.to_plotly_json(), opts=opts)
     except Exception:
         logger.debug(
             "Direct Kaleido export failed; falling back to plotly.io.to_image.",
             exc_info=True,
         )
-        return pio.to_image(
-            fig,
-            format=fmt,
-            width=width,
-            height=height,
-            scale=scale,
-        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return pio.to_image(
+                fig,
+                format=fmt,
+                width=width,
+                height=height,
+                scale=scale,
+            )
 
 
 def _execute_with_retry(func, *args, **kwargs):
