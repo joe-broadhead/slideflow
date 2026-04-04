@@ -228,7 +228,8 @@ class DatabricksProvider:
             model: Databricks serving endpoint name.
             base_url: OpenAI-compatible Databricks base URL. Defaults to
                 `DATABRICKS_SERVING_BASE_URL`.
-            api_key: Databricks token. Defaults to `DATABRICKS_TOKEN`.
+            api_key: Databricks token. Defaults to `DATABRICKS_TOKEN` and
+                then `DATABRICKS_ACCESS_TOKEN`.
             **defaults: Default generation parameters for requests.
         """
         self.model = model.strip() if model else ""
@@ -251,10 +252,15 @@ class DatabricksProvider:
                 f"Databricks provider requires base_url or {Environment.DATABRICKS_SERVING_BASE_URL}"
             )
 
-        resolved_api_key = self.api_key or os.getenv(Environment.DATABRICKS_TOKEN)
+        resolved_api_key = (
+            self.api_key
+            or os.getenv(Environment.DATABRICKS_TOKEN)
+            or os.getenv(Environment.DATABRICKS_ACCESS_TOKEN)
+        )
         if not resolved_api_key:
             raise APIAuthenticationError(
-                f"Databricks provider requires api_key or {Environment.DATABRICKS_TOKEN}"
+                "Databricks provider requires api_key or "
+                f"{Environment.DATABRICKS_TOKEN}/{Environment.DATABRICKS_ACCESS_TOKEN}"
             )
 
         params = {**self.defaults, **kwargs}
