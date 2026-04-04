@@ -366,13 +366,65 @@ def test_databricks_success_uses_env_defaults_and_forwards_args(monkeypatch):
     )
 
 
+def test_databricks_access_token_fallback_is_used(monkeypatch):
+    fake_openai = types.ModuleType("openai")
+    captured = {}
+
+    class APIError(Exception):
+        pass
+
+    class RateLimitError(APIError):
+        pass
+
+    class AuthenticationError(APIError):
+        pass
+
+    class _Message:
+        content = "fallback response"
+
+    class _Choice:
+        message = _Message()
+
+    class _Completions:
+        def create(self, *args, **kwargs):
+            return types.SimpleNamespace(choices=[_Choice()])
+
+    class _Chat:
+        completions = _Completions()
+
+    class OpenAI:
+        def __init__(self, *args, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.chat = _Chat()
+
+    fake_openai.APIError = APIError
+    fake_openai.RateLimitError = RateLimitError
+    fake_openai.AuthenticationError = AuthenticationError
+    fake_openai.OpenAI = OpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+    monkeypatch.delenv("DATABRICKS_TOKEN", raising=False)
+    monkeypatch.setenv("DATABRICKS_ACCESS_TOKEN", "dbx-access-token")
+    monkeypatch.setenv(
+        "DATABRICKS_SERVING_BASE_URL",
+        "https://workspace.cloud.databricks.com/serving-endpoints",
+    )
+
+    provider = providers_module.DatabricksProvider(model="endpoint-name")
+    text = provider.generate_text("hello")
+
+    assert text == "fallback response"
+    assert captured["client_kwargs"]["api_key"] == "dbx-access-token"
+
+
 def test_databricks_missing_token_raises_auth_error(monkeypatch):
     monkeypatch.delenv("DATABRICKS_TOKEN", raising=False)
+    monkeypatch.delenv("DATABRICKS_ACCESS_TOKEN", raising=False)
     provider = providers_module.DatabricksProvider(
         model="endpoint-name",
         base_url="https://workspace.cloud.databricks.com/serving-endpoints",
     )
-    with pytest.raises(APIAuthenticationError, match="DATABRICKS_TOKEN"):
+    with pytest.raises(APIAuthenticationError, match="DATABRICKS_ACCESS_TOKEN"):
         provider.generate_text("hello")
 
 
