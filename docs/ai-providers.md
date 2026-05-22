@@ -50,9 +50,16 @@ Typical args in `provider_args`:
 Runtime requirement:
 
 ```bash
-export DATABRICKS_TOKEN="<token>"
+export DATABRICKS_TOKEN="<token>" # preferred for AI-only runs
+# or reuse the standard Databricks warehouse token:
+export DATABRICKS_ACCESS_TOKEN="<token>"
 export DATABRICKS_SERVING_BASE_URL="https://<DATABRICKS_HOST>/serving-endpoints"
 ```
+
+Token precedence is `provider_args.api_key`, then `DATABRICKS_TOKEN`, then
+`DATABRICKS_ACCESS_TOKEN`. The fallback lets deployments that already provide
+warehouse credentials use Databricks Serving Endpoints without a second token
+variable.
 
 Typical `provider_args`:
 
@@ -171,7 +178,7 @@ Data transforms run before prompt injection, so you can filter/aggregate context
 Common failures:
 
 - missing API credentials (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, etc.)
-- missing Databricks runtime settings (`DATABRICKS_TOKEN`, Databricks base URL)
+- missing Databricks runtime settings (`DATABRICKS_TOKEN`/`DATABRICKS_ACCESS_TOKEN`, Databricks base URL)
 - invalid model/provider combination
 - upstream rate limits
 - data transform failures before provider call

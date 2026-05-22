@@ -1,12 +1,12 @@
-"""Build command implementation for generating presentations.
+"""Build command implementation for generating deck/document artifacts.
 
 This module provides the core build functionality for Slideflow, including
-single presentation building and batch processing with concurrent execution.
-It handles YAML configuration loading, parameter substitution, presentation
-rendering, and comprehensive error reporting.
+single artifact building and batch processing with concurrent execution.
+It handles YAML configuration loading, parameter substitution, rendering, and
+comprehensive error reporting.
 
 Key Features:
-    - Single and batch presentation generation
+    - Single and batch artifact generation
     - Concurrent processing for improved performance
     - Parameter file support for generating multiple variants
     - Dry-run validation without actual generation
@@ -16,7 +16,7 @@ Key Features:
 Example:
     Command-line usage::
 
-        # Build single presentation
+        # Build single artifact
         slideflow build config.yaml
 
         # Build with custom registry
@@ -74,36 +74,36 @@ def build_single_presentation(
     print_lock: threading.Lock,
     requests_per_second: Optional[float] = None,
 ) -> Tuple[str, Any, int, dict[str, Any]]:
-    """Build and render a single presentation with thread-safe logging.
+    """Build and render a single artifact with thread-safe logging.
 
-    This function handles the complete presentation generation process for
+    This function handles the complete artifact generation process for
     a single configuration, including building from YAML, parameter
-    substitution, and rendering to the target provider (e.g., Google Slides).
+    substitution, and rendering to the target provider (for example Google Slides).
 
     The function is designed to be used in concurrent execution contexts
     and provides thread-safe progress reporting.
 
     Args:
         config_file: Path to the YAML configuration file containing the
-            presentation definition.
+            artifact definition.
         registry_files: List of Python files containing function registries
             for custom data transformations and formatting.
         params: Dictionary of parameters for template substitution in the
-            configuration. Used for generating presentation variants.
-        index: Current presentation index (1-based) for progress reporting.
-        total: Total number of presentations being generated.
+            configuration. Used for generating output variants.
+        index: Current artifact index (1-based) for progress reporting.
+        total: Total number of artifacts being generated.
         print_lock: Threading lock to ensure thread-safe console output.
         requests_per_second: Optional override for the API rate limit.
 
     Returns:
         Tuple containing:
-            - presentation_name (str): Name of the generated presentation
+            - presentation_name (str): Name of the generated artifact
             - result: Presentation result object with URL and metadata
             - index (int): Original index for tracking purposes
-            - params (dict): The parameters used for this presentation.
+            - params (dict): The parameters used for this artifact.
 
     Raises:
-        Exception: Any error during presentation building or rendering.
+        Exception: Any error during artifact building or rendering.
             The function re-raises exceptions after logging them with
             thread-safe output.
 
@@ -111,7 +111,7 @@ def build_single_presentation(
         >>> import threading
         >>> from pathlib import Path
         >>>
-        >>> config = Path("presentation.yaml")
+        >>> config = Path("config.yaml")
         >>> registries = [Path("registry.py")]
         >>> params = {"title": "Q3 Report", "quarter": "Q3"}
         >>> lock = threading.Lock()
@@ -202,19 +202,19 @@ def build_command(
         ),
     ] = None,
 ) -> List[dict]:
-    """Generate presentations from YAML configuration.
+    """Generate deck/document artifacts from YAML configuration.
 
     This is the main entry point for the build command, which processes
-    YAML configuration files and generates presentations using the specified
-    providers (e.g., Google Slides). It supports both single presentation
-    generation and batch processing with parameter substitution.
+    YAML configuration files and generates artifacts using the specified
+    providers (for example Google Slides or Google Docs). It supports both
+    single-artifact generation and batch processing with parameter substitution.
 
     The command provides comprehensive progress tracking, concurrent execution
     for batch operations, and detailed error reporting.
 
     Args:
         config_file: Path to the YAML configuration file that defines the
-            presentation structure, data sources, and rendering options.
+            artifact structure, data sources, and rendering options.
         registry_files: List of Python files containing custom function
             registries. Defaults to ["registry.py"]. Functions in these
             files can be referenced in YAML configurations for data
@@ -223,7 +223,7 @@ def build_command(
             for batch generation. Each row represents a set of parameters
             that will be substituted into the configuration template.
         dry_run: If True, validates the configuration and parameters without
-            actually generating presentations. Useful for testing
+            actually generating artifacts. Useful for testing
             configurations.
         threads: Number of concurrent threads to use.
         requests_per_second: Override the API rate limit.
@@ -238,7 +238,7 @@ def build_command(
     Examples:
         Basic usage::
 
-            slideflow build presentation.yaml
+            slideflow build config.yaml
 
         With custom rate limit::
 
@@ -267,9 +267,9 @@ def build_command(
         - Optimized for API rate limits and resource constraints
 
     Note:
-        - Failed presentations in batch mode cause the entire operation to fail
+        - Failed artifacts in batch mode cause the entire operation to fail
         - Progress is displayed with visual indicators and completion status
-        - Generated presentation URLs are displayed upon successful completion
+        - Generated artifact URLs are displayed upon successful completion
     """
 
     print_build_header(str(config_file))
@@ -332,11 +332,11 @@ def build_command(
             )
             return []
 
-        print_build_progress(2, 6, "Initializing presentation builder...")
+        print_build_progress(2, 6, "Initializing artifact builder...")
         _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_STEP_S)
 
         print_build_progress(
-            3, 6, f"Processing {total_presentations} presentation(s) concurrently..."
+            3, 6, f"Processing {total_presentations} artifact(s) concurrently..."
         )
         _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_INITIAL_S)
 
@@ -352,17 +352,17 @@ def build_command(
         else:
             max_workers = min(
                 total_presentations, Timing.BUILD_MAX_WORKERS_DEFAULT
-            )  # Max concurrent presentations by default
+            )  # Max concurrent artifacts by default
 
         results = []
         completed_count = 0
 
         print(
-            f"\n🚀 Generating {total_presentations} presentation(s) with {max_workers} concurrent workers...\n"
+            f"\n🚀 Generating {total_presentations} artifact(s) with {max_workers} concurrent workers...\n"
         )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all presentation tasks
+            # Submit all artifact tasks
             future_to_params = {
                 executor.submit(
                     build_single_presentation,
@@ -377,7 +377,7 @@ def build_command(
                 for i, params in enumerate(param_configs, 1)
             }
 
-            # Process completed presentations
+            # Process completed artifacts
             for future in as_completed(future_to_params):
                 index, params = future_to_params[future]
                 try:
@@ -422,22 +422,22 @@ def build_command(
                         print_build_progress(
                             5,
                             6,
-                            f"Completed {completed_count}/{total_presentations} presentations...",
+                            f"Completed {completed_count}/{total_presentations} artifacts...",
                         )
 
                 except Exception as e:
                     with print_lock:
-                        print(f"❌ Presentation {index} failed: {e}")
+                        print(f"❌ Artifact {index} failed: {e}")
                     raise
 
-        print_build_progress(6, 6, "All presentations deployed!")
+        print_build_progress(6, 6, "All artifacts deployed!")
         _sleep_for_progress(Timing.BUILD_PROGRESS_DELAY_STEP_S)
 
         # Sort results by original order and print summary
         results.sort(
             key=lambda x: x["presentation_name"]
         )  # Sort by name for consistent output
-        print(f"\n🎉 Successfully generated {len(results)} presentation(s):")
+        print(f"\n🎉 Successfully generated {len(results)} artifact(s):")
         for res in results:
             print(f"  • {res['presentation_name']}: {res['url']}")
 

@@ -1,10 +1,10 @@
 # Creating Data-Driven Charts
 
-Charts are a core feature of SlideFlow, allowing you to visualize your data directly on your slides. You can create everything from simple bar charts to complex, multi-trace visualizations using Plotly.
+Charts are a core feature of SlideFlow, allowing you to visualize your data directly in rendered Slides decks and Docs sections. You can create everything from simple bar charts to complex, multi-trace visualizations using Plotly.
 
 ## Core Concepts
 
-All charts are defined within the `charts` list of a slide in your `config.yml`. Each chart has a `type` and a `config` block.
+All charts are defined within the `charts` list of a `presentation.slides[]` item in your `config.yml`. For Google Slides, positioning fields place the chart on the target slide. For Google Docs, charts are inserted inline at the matched section marker. Each chart has a `type` and a `config` block.
 
 ```yaml
 - type: "chart_type"
@@ -47,7 +47,7 @@ references like `$revenue[0]` or `$revenue[-1]`.
 
 ### 2. Template Chart (`template`)
 
-This chart type allows you to use a reusable YAML template to define your chart. This is a great way to maintain a consistent style across your presentations. See the [Templating](templating.md) guide for more details.
+This chart type allows you to use a reusable YAML template to define your chart. This is a good way to maintain a consistent style across repeated reporting outputs. See the [Templating](templating.md) guide for more details.
 
 **Example:**
 
@@ -91,7 +91,7 @@ For cases where you need complete control over the chart generation logic, you c
 
 ## Positioning and Sizing
 
-SlideFlow provides a flexible system for positioning and sizing your charts on the slide.
+SlideFlow provides a flexible system for positioning and sizing charts on Google Slides. Google Docs charts are inserted inline and ignore slide-positioning fields.
 
 -   `x`, `y`, `width`, `height`: These properties control the position and size of the chart. They can be numbers or string expressions (e.g., `"400 + 50"`).
 -   `dimensions_format`: This specifies the units for the `x`, `y`, `width`, and `height` properties. It can be `pt` (points), `emu` (English Metric Units), or `relative` (a ratio of the page size).

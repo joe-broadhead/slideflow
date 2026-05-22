@@ -15,9 +15,9 @@ source .venv/bin/activate
 uv lock --check
 uv pip check
 uvx --from black==26.3.1 black --check slideflow tests scripts
-python -m ruff check slideflow tests scripts
-python -m mypy slideflow
-python -m pytest -q
+uv run python -m ruff check slideflow tests scripts
+uv run python -m mypy slideflow
+uv run pytest -q
 ```
 
 CI runs this baseline across Python 3.12 and 3.13.
@@ -25,8 +25,8 @@ CI runs this baseline across Python 3.12 and 3.13.
 Optional marker suites:
 
 ```bash
-python -m pytest -q -m integration
-python -m pytest -q -m e2e
+uv run pytest -q -m integration
+uv run pytest -q -m e2e
 ```
 
 Docs validation:

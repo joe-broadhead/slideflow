@@ -194,7 +194,7 @@ Build JSON includes:
 export SLIDEFLOW_RUN_LIVE=1
 export GOOGLE_SHEETS_CREDENTIALS=/abs/path/service-account.json
 export SLIDEFLOW_LIVE_SHEETS_FOLDER_ID=<drive-folder-id>
-pytest -q tests/live_tests -m live_google_sheets
+uv run pytest -q tests/live_tests -m live_google_sheets
 ```
 
 Related references:

@@ -7,8 +7,8 @@ functionality.
 
 Available Commands:
     validate: Validate YAML configuration files and registry modules
-    build: Generate presentations from configuration files
-    sheets: Validate workbook configurations for sheet outputs
+    build: Generate deck/document artifacts from configuration files
+    sheets: Validate and build workbook outputs
     templates: Discover template names and parameter contracts
 
 Each command is implemented as a separate module with comprehensive error

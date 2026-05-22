@@ -57,7 +57,7 @@ def print_slideflow_banner() -> None:
         #   ___) | | | (_| |  __/  _| | (_) \ V  V /
         #  |____/|_|_|\__,_|\___|_| |_|\___/ \_/\_/
         #           Generate
-        #       Beautiful slides.
+        #      Data-driven reports.
         #         Direct from your data.
 
     Note:
@@ -73,7 +73,7 @@ def print_slideflow_banner() -> None:
  |____/|_|_|\__,_|\___|_| |_|\___/ \_/\_/   
 [/bold blue][bold magenta]
          Generate
-     Beautiful slides.
+    Data-driven reports.
        Direct from your data.[/bold magenta]
 """)
 
@@ -126,12 +126,12 @@ def print_config_summary(presentation_config: Any) -> None:
     """Display detailed summary of validated configuration.
 
     Analyzes the presentation configuration and displays a comprehensive
-    summary table showing slides, data sources, replacements, and charts.
+    summary table showing targets, data sources, replacements, and charts.
     Provides visual confirmation of what will be built.
 
     Args:
         presentation_config: Validated PresentationConfig object containing
-            the complete presentation structure and metadata.
+            the complete artifact structure and metadata.
 
     Example:
         >>> print_config_summary(config)
@@ -150,8 +150,8 @@ def print_config_summary(presentation_config: Any) -> None:
     table.add_column("Value", style="bold magenta", justify="right")
     table.add_column("Status", style="green", justify="center")
 
-    table.add_row("📄 Presentation", presentation.name, "🟢 READY")
-    table.add_row("📊 Slides", str(slides_count), "🟢 LOADED")
+    table.add_row("📄 Artifact", presentation.name, "🟢 READY")
+    table.add_row("📊 Slides/Sections", str(slides_count), "🟢 LOADED")
 
     data_source_types = set()
     data_sources_count = 0
@@ -275,10 +275,10 @@ def print_build_success(presentation_url: Optional[str] = None) -> None:
     """Display build completion success message.
 
     Shows a celebratory message indicating successful completion of the
-    build process. Optionally displays the presentation URL if provided.
+    build process. Optionally displays the artifact URL if provided.
 
     Args:
-        presentation_url: Optional URL to the generated presentation.
+        presentation_url: Optional URL to the generated artifact.
             If provided, displays the URL prominently for easy access.
 
     Example:
@@ -290,14 +290,14 @@ def print_build_success(presentation_url: Optional[str] = None) -> None:
     """
 
     if presentation_url:
-        console.print("\n[bold blue]📡 Presentation URL:[/bold blue]")
+        console.print("\n[bold blue]📡 Artifact URL:[/bold blue]")
         console.print(f"[bold magenta]\n{presentation_url}[/bold magenta]")
 
     console.print(
         "\n[magenta]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/magenta]"
     )
     console.print(
-        "[bold blue]🚀 Build Complete[/bold blue] [magenta]✨ Ready for presentation ✨\n[/magenta]"
+        "[bold blue]🚀 Build Complete[/bold blue] [magenta]✨ Ready for delivery ✨\n[/magenta]"
     )
 
 

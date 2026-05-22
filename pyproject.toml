@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slideflow-presentations"
 version = "0.0.6"
-description = "Automated Google Slides presentation builder with charts and data replacements."
+description = "Automated Google Slides, Docs, and Sheets builder with charts, data replacements, and workbook automation."
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
     { name = "Joe Broadhead" },

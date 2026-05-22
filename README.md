@@ -31,19 +31,19 @@
 
 ## ✨ Why SlideFlow?
 
-SlideFlow was built to solve a simple problem: automating the tedious process of creating data-heavy presentations. If you find yourself repeatedly copying and pasting charts and metrics into slide decks, SlideFlow is for you.
+SlideFlow was built to solve a simple problem: automating the tedious process of creating data-heavy reporting artifacts. If you find yourself repeatedly copying and pasting charts, metrics, and narrative updates into decks, docs, or sheets, SlideFlow is for you.
 
 -   🎨 **Beautiful, Consistent Visuals:** Leverage the power of Plotly for stunning, replicable charts. Use YAML templates to create a library of reusable chart designs.
 -   📊 **Connect Directly to Your Data:** Pull data from CSV files, JSON, Databricks, DuckDB, or your dbt models. No more manual data exports.
 -   ⚡ **Automate Your Reporting:** Stop the manual work. Reduce errors and save time. Your decks/docs/sheets are always up-to-date with your latest data.
--   🚀 **Scale Instantly:** Need to create a presentation for every customer, region, or product? Generate hundreds of personalized presentations at once from a single template.
+-   🚀 **Scale Instantly:** Need to create an output for every customer, region, or product? Generate hundreds of personalized deck/doc variants at once from a single template.
 -   🤖 **Production Automation Ready:** Run scheduled builds in GitHub Actions with the reusable SlideFlow workflow and machine-readable JSON outputs.
 
 ---
 
 ## 🔑 Key Features
 
--   **Declarative YAML Configuration:** Define your entire presentation in a simple, human/agent readable YAML file.
+-   **Declarative YAML Configuration:** Define your entire reporting artifact in a simple, human/agent readable YAML file.
 -   **Multiple Data Source Connectors:**
     -   `csv`: For local CSV files.
     -   `json`: For local JSON files.
@@ -52,7 +52,7 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
     -   `databricks_dbt`: Legacy dbt connector format (still supported for compatibility).
 -   **Dynamic Content Replacements:**
     -   **Text:** Replace simple placeholders like `{{TOTAL_REVENUE}}` with dynamic values.
-    -   **Tables:** Populate entire tables in your slides from a DataFrame.
+    -   **Tables:** Populate entire tables in your slides or document sections from a DataFrame.
     -   **AI-Generated Text:** Use OpenAI, Databricks Serving Endpoints, or Gemini to generate summaries, insights, or any other text, right from your data.
 -   **Powerful Charting Engine:**
     -   **Plotly Graph Objects:** Create any chart you can imagine with the full power of Plotly.
@@ -61,12 +61,12 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 -   **Extensible and Customizable:**
     -   Use **Function Registries** to extend SlideFlow with your own Python functions for data transformations, formatting, and more.
 -   **Powerful CLI:**
-    -   `slideflow build`: Generate one or many presentations.
+    -   `slideflow build`: Generate one or many deck/document artifacts.
     -   `slideflow validate`: Validate your configuration before you build.
     -   `slideflow doctor`: Run preflight diagnostics before validate/build.
     -   `slideflow sheets validate|build|doctor`: Validate/build/diagnose workbook pipelines.
     -   `slideflow templates`: Inspect available template names and parameter contracts.
-    -   Generate multiple presentations from a single template using a CSV parameter file.
+    -   Generate multiple deck/doc variants from a single template using a CSV parameter file.
 -   **Multiple Output Providers:**
     -   `google_slides`: Build slide decks from template slides.
     -   `google_docs`: Build marker-anchored documents for newsletter/report workflows.
@@ -119,7 +119,7 @@ To create your first output, you\'ll need:
     - Google Docs template with section markers like `{{SECTION:intro}}`, or
     - Google Sheets target (`spreadsheet_id`) or destination folder for workbook creation.
 2.  **Your Data:** Have your data ready in a CSV file, or have your Databricks credentials configured.
-3.  **A YAML Configuration File:** This is where you\'ll define your presentation. See the [Configuration](#-configuration) section for more details.
+3.  **A YAML Configuration File:** This is where you\'ll define your output artifact. See the [Configuration](#-configuration) section for more details.
 4.  **Google Cloud Credentials:** You'll need a Google Cloud service account with access to the required Google APIs (Slides/Docs/Sheets + Drive as needed). Provide credentials with one of:
 
     -   Set the `credentials` field in your `config.yml` to the path of your JSON credentials file.
@@ -145,7 +145,7 @@ SlideFlow comes with a simple CLI.
     -   optional provider contract checks (`--provider-contract-check`)
     -   optional machine-readable output (`--output-json`)
 -   `slideflow build CONFIG_FILE [OPTIONS]`
-    -   generate one or many presentations
+    -   generate one or many deck/document artifacts
     -   supports batch params (`--params-path`), dry-run, threads, and RPS controls
     -   optional machine-readable output (`--output-json`)
 -   `slideflow doctor [OPTIONS]`

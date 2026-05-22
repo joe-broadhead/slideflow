@@ -6,6 +6,7 @@ Run this first to catch environment/runtime issues before longer builds:
 
 ```bash
 slideflow doctor --config-file config.yml --registry registry.py --strict --output-json doctor-result.json
+slideflow sheets doctor workbook.yml --strict --output-json sheets-doctor-result.json
 ```
 
 ## Validation fails
@@ -26,8 +27,8 @@ Common causes:
 
 Common causes:
 
-- missing Google credentials (`provider.config.credentials`, `GOOGLE_DOCS_CREDENTIALS`, or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
-- invalid template ID or target IDs (`slide.id` for `google_slides`, section marker ids for `google_docs`)
+- missing Google credentials (`provider.config.credentials`, `GOOGLE_DOCS_CREDENTIALS`, `GOOGLE_SHEETS_CREDENTIALS`, or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
+- invalid template ID or target IDs (`slide.id` for `google_slides`, section marker ids for `google_docs`, tab names/cells for `google_sheets`)
 - unreadable CSV/JSON input path
 - query/auth issues for Databricks connectors
 

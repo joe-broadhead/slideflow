@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-05-25
+
 ### Added
 
 - Google Docs provider support (`provider.type: google_docs`) with section-marker
@@ -42,6 +44,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Live Google Docs and Google Sheets test suites + manual workflows.
 - Databricks AI provider (`provider: databricks`) for `ai_text` replacements
   via Databricks Serving Endpoints (OpenAI-compatible chat completions).
+- Databricks AI build token fallback support for environments that provide
+  standard Databricks credentials through alternate variables.
 - Security/quality automation additions:
   - `CodeQL` workflow
   - `dependabot.yml` for pip + GitHub Actions updates
@@ -86,6 +90,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - legacy/dead chart upload paths removed in favor of active provider abstractions
   - chart rate limiting decoupled from provider-specific imports
   - runtime logging standardized across key modules
+- `slideflow-yaml-authoring` skill assets and references were refactored for
+  stronger multi-provider YAML authoring coverage.
 - CI/runtime quality hardening:
   - branch coverage enabled (`--cov-branch`) with fail-under staged to `82`
   - `pytest` strict markers enabled
@@ -95,8 +101,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - GitHub Actions runtime versions were refreshed:
   - `actions/checkout` `v4 -> v6`
   - `actions/setup-python` `v5 -> v6`
-  - `actions/upload-pages-artifact` `v3 -> v4`
+  - `actions/upload-artifact` `v4 -> v7`
+  - `actions/upload-pages-artifact` `v3 -> v5`
+  - `actions/configure-pages` `v5 -> v6`
+  - `actions/deploy-pages` `v4 -> v5`
   - `astral-sh/setup-uv` `v5 -> v7`
+  - `github/codeql-action` `v3 -> v4`
+  - `softprops/action-gh-release` `v2 -> v3`
 - Docs were expanded/updated for:
   - Google Docs and Google Sheets providers
   - shared-drive/service-account operational patterns
@@ -127,6 +138,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   mismatch warnings occur during import, reducing noisy local test output.
 - NumPy/Pandas ABI compatibility checker now exercises `numpy.random` paths and
   prints `uv`-native remediation commands.
+- CodeQL citation host-matching findings were cleared with stricter URL/host
+  handling and targeted scanner regression coverage.
+
+### Security
+
+- Resolved open dependency security advisories by refreshing locked versions for:
+  - `cryptography`
+  - `dbt-common`
+  - `GitPython`
+  - `idna`
+  - `pyasn1`
+  - `pymdown-extensions`
+  - `pytest`
+  - `requests`
+  - `urllib3`
+- Refreshed additional locked/runtime dependencies including `deepdiff`,
+  `pygments`, and GitHub Actions dependencies as part of the release hardening
+  sweep.
 
 ## [0.0.6] - 2026-02-26
 

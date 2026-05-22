@@ -42,7 +42,7 @@ from slideflow.utilities.logging import setup_logging
 
 app = typer.Typer(
     name="slideflow",
-    help="🚀 Slideflow CLI - Generate beautiful presentations from your data",
+    help="🚀 Slideflow CLI - Generate data-driven decks, docs, and sheets",
     rich_markup_mode="rich",
     no_args_is_help=False,
 )
