@@ -48,9 +48,8 @@ PyPI package identity:
 
 1. Ensure tests pass locally.
 2. Update docs + changelog in the same release prep PR:
-
-- update user-facing docs for new behavior/flags/workflows
-- update `CHANGELOG.md` with release notes and known issues
+   - update user-facing docs for new behavior/flags/workflows
+   - update `CHANGELOG.md` with release notes and known issues
 
 3. Ensure docs build cleanly:
 
@@ -61,18 +60,17 @@ uv lock --check
 uv pip check
 uv run python scripts/ci/check_numpy_binary_compatibility.py
 uvx --from black==26.3.1 black --check slideflow tests scripts
-python -m ruff check slideflow tests scripts
-python -m mypy slideflow
+uv run python -m ruff check slideflow tests scripts
+uv run python -m mypy slideflow
 uv run pytest -q
 uv run mkdocs build --strict
 ```
 
 4. Verify dependency constraints are still within policy:
-
-- runtime dependencies have explicit upper bounds
-- dbt adapters remain compatible with the supported `dbt-core` range
-- security-sensitive dependency minimums are preserved
-- `uv.lock` is current for the release branch
+   - runtime dependencies have explicit upper bounds
+   - dbt adapters remain compatible with the supported `dbt-core` range
+   - security-sensitive dependency minimums are preserved
+   - `uv.lock` is current for the release branch
 
 5. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
 6. Create release branch `release/vX.Y.Z`.

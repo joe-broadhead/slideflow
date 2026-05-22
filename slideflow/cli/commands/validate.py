@@ -711,7 +711,7 @@ def validate_command(
     Performs comprehensive validation of Slideflow configuration files
     including YAML syntax, function registry resolution, and semantic
     validation using Pydantic models. This command helps identify
-    configuration issues before attempting to build presentations.
+    configuration issues before attempting to build artifacts.
 
     The validation process includes:
         1. YAML file existence and readability checks
@@ -740,7 +740,7 @@ def validate_command(
     Examples:
         Basic validation::
 
-            slideflow validate presentation.yaml
+            slideflow validate config.yaml
 
         With custom registry::
 

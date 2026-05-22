@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide gives you a copy-paste runnable sample first, then shows how to switch to real Google Slides deployment.
+This guide gives you a copy-paste runnable sample first, then shows how to switch to real Google Slides, Google Docs, or Google Sheets builds.
 
 ## 1. Run the smoke sample (no credentials required)
 
@@ -63,7 +63,29 @@ Expected outcome:
 - Replacements run inside matched section-marker blocks
 - Charts are inserted inline in those same sections
 
-## 4. Batch mode (multi-deck)
+## 4. Switch to a real Google Sheets build
+
+Use a config with `provider.type: google_sheets` and a top-level `workbook:` block, then set:
+
+- `provider.config.spreadsheet_id` to reuse an existing spreadsheet, or `provider.config.drive_folder_id` to create a new workbook in a Drive folder
+- `provider.config.credentials` (or `GOOGLE_SHEETS_CREDENTIALS` / `GOOGLE_SLIDEFLOW_CREDENTIALS`)
+- tab names, write modes, and data sources under `workbook.tabs[]`
+
+Then run:
+
+```bash
+slideflow sheets validate path/to/workbook.yml
+slideflow sheets doctor path/to/workbook.yml --strict
+slideflow sheets build path/to/workbook.yml
+```
+
+Expected outcome:
+
+- Replace-mode tabs are cleared and rewritten from the configured start cell
+- Append-mode tabs use run-key metadata to avoid duplicate writes
+- Optional tab-local AI summaries are written to same-sheet or summary-tab placements
+
+## 5. Batch mode (multi-deck or multi-doc)
 
 Create `variants.csv`:
 
@@ -87,7 +109,7 @@ Rules:
 - Empty CSV rows are rejected at runtime
 - Use `--dry-run` to validate all variants without building
 
-## 5. Control concurrency and rate limits
+## 6. Control concurrency and rate limits
 
 ```bash
 slideflow build docs/quickstart/config.yml \
@@ -97,24 +119,26 @@ slideflow build docs/quickstart/config.yml \
 ```
 
 Use conservative `--threads` and `--rps` when Google API quotas are tight.
+For workbook pipelines, the same controls are available through `slideflow sheets build`.
 
-## 6. Troubleshoot fast
+## 7. Troubleshoot fast
 
 If anything fails:
 
 - `slideflow validate ...` first
 - verify template and slide IDs
+- verify workbook tab names and target cells for Sheets builds
 - verify credentials source
 - verify connector credentials for your runtime target
 - check [Troubleshooting](troubleshooting.md)
 
-## 7. CI-parity local gate (recommended before PR)
+## 8. CI-parity local gate (recommended before PR)
 
 ```bash
 source .venv/bin/activate
 uvx --from black==26.3.1 black --check slideflow tests scripts
-python -m ruff check slideflow tests scripts
-python -m mypy slideflow
-pytest -q
-bash scripts/ci/run_quickstart_smoke.sh
+uv run python -m ruff check slideflow tests scripts
+uv run python -m mypy slideflow
+uv run pytest -q
+uv run bash scripts/ci/run_quickstart_smoke.sh
 ```

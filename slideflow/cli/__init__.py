@@ -1,15 +1,15 @@
 """Command-line interface for Slideflow.
 
 This module provides the main entry point for the Slideflow CLI application,
-which offers commands for building and validating presentations from YAML
+which offers commands for building and validating reporting artifacts from YAML
 configurations. The CLI is built using Typer and provides a user-friendly
 interface with rich formatting, progress tracking, and comprehensive error
 reporting.
 
 The CLI includes:
-    - build: Generate presentations from YAML configurations
+    - build: Generate deck/document artifacts from YAML configurations
+    - sheets: Validate and build workbook outputs
     - validate: Validate configurations without building
-    - sheets validate: Validate workbook configurations for sheet outputs
     - Comprehensive help system and error reporting
     - Rich terminal output with colors and formatting
     - Progress tracking for long-running operations

@@ -78,8 +78,8 @@ uv lock --check
 uv pip check
 uv run python scripts/ci/check_numpy_binary_compatibility.py
 uvx --from black==26.3.1 black --check slideflow tests scripts
-python -m ruff check slideflow tests scripts
-python -m mypy slideflow
+uv run python -m ruff check slideflow tests scripts
+uv run python -m mypy slideflow
 uv run pytest -q
 uv run pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-fail-under=82
 uv run pytest -q -m integration
@@ -90,7 +90,7 @@ uv run mkdocs build --strict
 To run the same smoke validation CI uses:
 
 ```bash
-bash scripts/ci/run_quickstart_smoke.sh
+uv run bash scripts/ci/run_quickstart_smoke.sh
 ```
 
 ## Coverage policy

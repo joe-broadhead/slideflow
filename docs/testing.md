@@ -53,25 +53,25 @@ source .venv/bin/activate
 uv lock --check
 uv pip check
 uvx --from black==26.3.1 black --check slideflow tests scripts
-python -m ruff check slideflow tests scripts
-python -m mypy slideflow
-pytest -q
-pytest -q --cov=slideflow --cov-branch --cov-report=term --cov-report=xml
+uv run python -m ruff check slideflow tests scripts
+uv run python -m mypy slideflow
+uv run pytest -q
+uv run pytest -q --cov=slideflow --cov-branch --cov-report=term --cov-report=xml
 ```
 
 Run only integration or e2e groups:
 
 ```bash
-pytest -q -m integration
-pytest -q -m e2e
+uv run pytest -q -m integration
+uv run pytest -q -m e2e
 ```
 
 Mirror CI marker split locally:
 
 ```bash
-pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=82
-pytest -q -m integration
-pytest -q -m e2e
+uv run pytest -q -m "not integration and not e2e" --cov=slideflow --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=82
+uv run pytest -q -m integration
+uv run pytest -q -m e2e
 ```
 
 Run live template + chart rendering tests locally:
@@ -91,7 +91,7 @@ export SLIDEFLOW_LIVE_SHARE_ROLE=reader
 # optional retention toggle; defaults to 1 when sharing is enabled:
 export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
 
-pytest -q tests/live_tests -m live_google
+uv run pytest -q tests/live_tests -m live_google
 ```
 
 When `SLIDEFLOW_LIVE_SHARE_EMAIL` is set, the rendered presentation is shared using the
@@ -115,7 +115,7 @@ export SLIDEFLOW_LIVE_SHARE_ROLE=reader
 # optional retention toggle; defaults to 1 when sharing is enabled:
 export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
 
-pytest -q tests/live_tests -m live_google_docs
+uv run pytest -q tests/live_tests -m live_google_docs
 ```
 
 Run live Google Sheets tests locally:
@@ -133,7 +133,7 @@ export SLIDEFLOW_LIVE_SHARE_ROLE=reader
 # optional retention toggle; defaults to 1 when sharing is enabled:
 export SLIDEFLOW_LIVE_KEEP_ARTIFACTS=1
 
-pytest -q tests/live_tests -m live_google_sheets
+uv run pytest -q tests/live_tests -m live_google_sheets
 ```
 
 ## CI quality gates

@@ -8,7 +8,7 @@ slideflow [GLOBAL_OPTIONS] COMMAND [ARGS] [OPTIONS]
 
 Commands:
 
-- `build`: validate + generate one or many presentations
+- `build`: validate + generate one or many deck/document artifacts
 - `validate`: validate configuration and registries without rendering
 - `doctor`: run preflight diagnostics for runtime dependencies
 - `sheets`: validate/build/doctor commands for workbook pipelines
@@ -72,7 +72,7 @@ Options:
 | `-r`, `--registry` | One or more Python registry files |
 | `-f`, `--params-path` | CSV file for batch generation |
 | `--dry-run` | Validate all variants without rendering |
-| `-t`, `--threads` | Number of concurrent presentation workers |
+| `-t`, `--threads` | Number of concurrent artifact workers |
 | `--rps` | Override provider requests/second |
 | `--output-json` | Write machine-readable build summary JSON |
 
