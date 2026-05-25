@@ -3097,7 +3097,7 @@ wheels = [
 
 [[package]]
 name = "slideflow-presentations"
-version = "0.0.6"
+version = "0.0.7"
 source = { editable = "." }
 dependencies = [
     { name = "google-api-python-client" },
