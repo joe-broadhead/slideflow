@@ -38,7 +38,7 @@ bigquery = ["google-cloud-bigquery>=3.0,<4.0", "dbt-bigquery>=1.10,<1.12"]
 duckdb = ["duckdb>=1.0,<2.0", "dbt-duckdb>=1.9,<1.12"]
 docs = [
     "mkdocs>=1.6",
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.7.6",
     "mkdocs-minify-plugin>=0.8",
     "pymdown-extensions>=10.21.3",
 ]
