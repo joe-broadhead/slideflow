@@ -480,7 +480,7 @@ wheels = [
 
 [[package]]
 name = "dbt-bigquery"
-version = "1.11.0"
+version = "1.11.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dbt-adapters" },
@@ -494,9 +494,9 @@ dependencies = [
     { name = "google-cloud-storage" },
     { name = "nbformat" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/72/8b6496b6ac8f67d5d7edd8387f18d61f5c38782b9c39f3222052d38088c6/dbt_bigquery-1.11.0.tar.gz", hash = "sha256:b1672b15a7c0828216f95fbbbc74875ad62f1d866d48a060b5f6a7efbab58785", size = 162256, upload-time = "2025-12-22T21:54:53.595Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/15/8becb292fe176a730c4b92dee22a17048379cc3cbbd06b8d02fde96c5469/dbt_bigquery-1.11.1.tar.gz", hash = "sha256:e0a4b67b6670cf1a23d53cc6701d3d1192ab49ba72b0f4784b16330fdd9b3898", size = 164123, upload-time = "2026-03-03T20:43:34.834Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/e5/d9ed66673ed12ca595a33683f1af6cd8949aabd52c0afde06fc88bc2ed55/dbt_bigquery-1.11.0-py3-none-any.whl", hash = "sha256:465579336c74ceafdb8b95f7493ea11c10ec391cecf4b9109cea7efb557202f2", size = 101745, upload-time = "2025-12-22T21:54:52.059Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/e5/2f22192541ed1d1dd01f6df7574fc5d7520d60c5db8fb9db67234fca9ab3/dbt_bigquery-1.11.1-py3-none-any.whl", hash = "sha256:4f53155366b4bcf1a38bbf9247589e3e18812ed2468e56c14676c649782eae5d", size = 103321, upload-time = "2026-03-03T20:43:33.485Z" },
 ]
 
 [[package]]
@@ -3012,7 +3012,7 @@ duckdb = [
 [package.metadata]
 requires-dist = [
     { name = "databricks-sql-connector", marker = "extra == 'databricks'", specifier = ">=4.0,<5.0" },
-    { name = "dbt-bigquery", marker = "extra == 'bigquery'", specifier = ">=1.10,<1.12" },
+    { name = "dbt-bigquery", marker = "extra == 'bigquery'", specifier = ">=1.11.1,<1.12" },
     { name = "dbt-core", marker = "extra == 'dbt'", specifier = ">=1.10,<1.12" },
     { name = "dbt-databricks", marker = "extra == 'dbt'", specifier = ">=1.10,<1.12" },
     { name = "dbt-duckdb", marker = "extra == 'duckdb'", specifier = ">=1.9,<1.12" },
