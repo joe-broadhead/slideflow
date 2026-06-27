@@ -77,17 +77,18 @@ when `--registry` or `registry:` config paths are provided.
 
 The repository includes a dedicated `Audit` workflow that runs:
 
-- dependency audit (`pip-audit`)
+- dependency audit (`pip-audit`) from a locked environment that includes the
+  supported optional connector extras
 - static security scan (`bandit`)
 
 Both reports are uploaded as artifacts for triage.
 
 Audit enforcement policy:
 
-- Audit findings are advisory for all events (pull requests, pushes, schedules).
-- Findings are surfaced as warnings and uploaded artifacts for triage follow-up.
-- Audit workflow is intentionally non-blocking until baseline findings are
-  reduced and a blocking threshold policy is adopted.
+- Dependency vulnerabilities are blocking for pull requests, pushes, schedules,
+  and manual runs.
+- Static Bandit findings remain advisory while existing low-signal findings are
+  triaged and converted into explicit suppressions or code changes.
 
 Action pinning policy:
 

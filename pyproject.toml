@@ -48,6 +48,7 @@ dev = [
     "hypothesis",
     "ruff",
     "mypy",
+    "pip-audit",
     "pre-commit",
     "pandas-stubs",
     "types-PyYAML",

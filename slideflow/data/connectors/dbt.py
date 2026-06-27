@@ -78,15 +78,21 @@ from slideflow.utilities.logging import get_logger, log_data_operation, log_perf
 
 logger = get_logger(__name__)
 
+_dbt_runner_cls: Any = None
 try:
-    from dbt.cli.main import dbtRunner as _dbt_runner_cls
-except ImportError:  # pragma: no cover - exercised in optional-dependency tests
-    _dbt_runner_cls = None
+    from dbt.cli.main import dbtRunner as _imported_dbt_runner_cls
 
-try:
-    from git import Repo as _git_repo_cls
+    _dbt_runner_cls = _imported_dbt_runner_cls
 except ImportError:  # pragma: no cover - exercised in optional-dependency tests
-    _git_repo_cls = None
+    pass
+
+_git_repo_cls: Any = None
+try:
+    from git import Repo as _imported_git_repo_cls
+
+    _git_repo_cls = _imported_git_repo_cls
+except ImportError:  # pragma: no cover - exercised in optional-dependency tests
+    pass
 
 # Keep module-level symbols for test monkeypatch compatibility.
 dbtRunner = _dbt_runner_cls

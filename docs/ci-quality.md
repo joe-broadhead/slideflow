@@ -25,7 +25,8 @@
   - publishes to PyPI first
   - creates tag + GitHub release only after publish succeeds
 - `Audit` (`.github/workflows/audit.yml`)
-  - runs `pip-audit`
+  - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, and `duckdb` extras
+  - runs blocking `pip-audit` from that locked environment
   - runs `bandit`
   - uploads audit reports as artifacts
 - `Live Google Slides` (`.github/workflows/live-google-slides.yml`)
@@ -72,10 +73,11 @@
 ## Required local checks before PR
 
 ```bash
-uv sync --extra docs --extra dev --extra ai --locked
+uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check
+uv run pip-audit
 uv run python scripts/ci/check_numpy_binary_compatibility.py
 uvx --from black==26.3.1 black --check slideflow tests scripts
 uv run python -m ruff check slideflow tests scripts
