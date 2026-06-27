@@ -3,6 +3,7 @@
 ## Workflows
 
 - `CI` (`.github/workflows/ci.yml`)
+  - runs blocking GitHub workflow linting with `actionlint`
   - enforces lock freshness with `uv lock --check`
   - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
   - runs `uv pip check`
@@ -14,7 +15,8 @@
   - builds wheel/sdist artifacts and verifies distribution identity (`slideflow-presentations`)
   - installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
 - `Docs` (`.github/workflows/docs.yml`)
-  - runs `mkdocs build --strict`
+  - installs locked docs dependencies with `uv sync --extra docs --locked`
+  - runs `uv run mkdocs build --strict`
   - deploys to GitHub Pages on `master`/`main`
 - `Release` (`.github/workflows/release.yml`)
   - runs on `release/vX.Y.Z`
@@ -78,6 +80,7 @@ source .venv/bin/activate
 uv lock --check
 uv pip check
 uv run pip-audit
+actionlint
 uv run python scripts/ci/check_numpy_binary_compatibility.py
 uvx --from black==26.3.1 black --check slideflow tests scripts
 uv run python -m ruff check slideflow tests scripts

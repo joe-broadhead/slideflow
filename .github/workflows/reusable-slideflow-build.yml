@@ -389,13 +389,17 @@ jobs:
             extracted_urls=""
           fi
           if [[ "${{ inputs.artifact-kind }}" == "sheets" ]]; then
-            echo "presentation_urls=" >> "$GITHUB_OUTPUT"
-            echo "workbook_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
-            echo "artifact_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
+            {
+              echo "presentation_urls="
+              echo "workbook_urls=$extracted_urls"
+              echo "artifact_urls=$extracted_urls"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "presentation_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
-            echo "workbook_urls=" >> "$GITHUB_OUTPUT"
-            echo "artifact_urls=$extracted_urls" >> "$GITHUB_OUTPUT"
+            {
+              echo "presentation_urls=$extracted_urls"
+              echo "workbook_urls="
+              echo "artifact_urls=$extracted_urls"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract JSON outputs
@@ -411,13 +415,15 @@ jobs:
           emit_json_output() {
             local key="$1"
             local file="$2"
-            echo "${key}<<EOF" >> "$GITHUB_OUTPUT"
-            if [[ -s "$file" ]]; then
-              cat "$file" >> "$GITHUB_OUTPUT"
-            else
-              echo "{}" >> "$GITHUB_OUTPUT"
-            fi
-            echo "EOF" >> "$GITHUB_OUTPUT"
+            {
+              echo "${key}<<EOF"
+              if [[ -s "$file" ]]; then
+                cat "$file"
+              else
+                echo "{}"
+              fi
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           }
 
           emit_json_output "doctor_result_json" "$DOCTOR_JSON_FILE"
