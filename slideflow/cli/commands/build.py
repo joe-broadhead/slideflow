@@ -386,6 +386,12 @@ def build_command(
                     result_dict = returned_params.copy()
                     result_dict["url"] = result.presentation_url
                     result_dict["presentation_name"] = name
+                    result_dict["chart_image_cleanup_failed_count"] = getattr(
+                        result, "chart_image_cleanup_failed_count", 0
+                    )
+                    result_dict["chart_image_cleanup_failed_ids"] = getattr(
+                        result, "chart_image_cleanup_failed_ids", []
+                    )
                     result_dict["ownership_transfer_attempted"] = getattr(
                         result, "ownership_transfer_attempted", False
                     )
@@ -454,6 +460,14 @@ def build_command(
         citations_truncated_any = any(
             bool(res.get("citations_truncated", False)) for res in results
         )
+        chart_image_cleanup_failed_count = sum(
+            int(res.get("chart_image_cleanup_failed_count", 0)) for res in results
+        )
+        chart_image_cleanup_failed_ids = [
+            file_id
+            for res in results
+            for file_id in res.get("chart_image_cleanup_failed_ids", [])
+        ]
         write_output_json(
             output_json,
             {
@@ -470,6 +484,8 @@ def build_command(
                 "citations_total_sources": citations_total_sources,
                 "citations_emitted_sources": citations_emitted_sources,
                 "citations_truncated": citations_truncated_any,
+                "chart_image_cleanup_failed_count": chart_image_cleanup_failed_count,
+                "chart_image_cleanup_failed_ids": chart_image_cleanup_failed_ids,
                 "results": results,
             },
         )

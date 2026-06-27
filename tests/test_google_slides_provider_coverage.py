@@ -109,6 +109,12 @@ def test_google_slides_config_validates_transfer_ownership_target():
     assert config.transfer_ownership_to == "owner@example.com"
 
 
+def test_google_slides_config_defaults_chart_images_to_restricted():
+    config = google_provider_module.GoogleSlidesProviderConfig()
+
+    assert config.chart_image_sharing_mode == "restricted"
+
+
 @pytest.mark.parametrize(
     ("dimension", "expected"),
     [
@@ -390,7 +396,9 @@ def test_copy_template_success_and_error():
         provider._copy_template("template-2", "Deck 2")
 
 
-def test_upload_image_to_drive_success_and_error(monkeypatch):
+def test_upload_image_to_drive_public_mode_grants_permission_and_warns(
+    monkeypatch, caplog
+):
     provider = _provider_without_init()
     provider.config = SimpleNamespace(
         drive_folder_id=None, chart_image_sharing_mode="public"
@@ -417,10 +425,12 @@ def test_upload_image_to_drive_success_and_error(monkeypatch):
         return {"id": "file-123"} if request[0] == "files-create" else {}
 
     provider._execute_request = _exec
-    public_url, file_id = provider._upload_image_to_drive(b"png-bytes", "chart.png")
+    with caplog.at_level("WARNING"):
+        public_url, file_id = provider._upload_image_to_drive(b"png-bytes", "chart.png")
     assert public_url == "https://drive.google.com/uc?id=file-123"
     assert file_id == "file-123"
     assert len([call for call in calls if call[0] == "perm-create"]) == 1
+    assert "Chart image sharing mode is public" in caplog.text
     assert logs[-1][0][2] is True
 
     provider._execute_request = lambda _request: (_ for _ in ()).throw(
@@ -430,11 +440,9 @@ def test_upload_image_to_drive_success_and_error(monkeypatch):
         provider._upload_image_to_drive(b"png-bytes", "chart.png")
 
 
-def test_upload_image_to_drive_restricted_mode_skips_public_permission(monkeypatch):
+def test_upload_image_to_drive_default_mode_skips_public_permission(monkeypatch):
     provider = _provider_without_init()
-    provider.config = SimpleNamespace(
-        drive_folder_id=None, chart_image_sharing_mode="restricted"
-    )
+    provider.config = google_provider_module.GoogleSlidesProviderConfig()
     provider._get_or_create_destination_folder = lambda: "folder-1"
     provider.drive_service = SimpleNamespace(
         files=lambda: SimpleNamespace(create=lambda **kwargs: ("files-create", kwargs)),
@@ -454,7 +462,9 @@ def test_upload_image_to_drive_restricted_mode_skips_public_permission(monkeypat
 
     def _exec(request):
         calls.append(request)
-        return {"id": "file-123"} if request[0] == "files-create" else {}
+        if request[0] == "files-create":
+            return {"id": "file-123"}
+        return {}
 
     provider._execute_request = _exec
 
@@ -463,6 +473,107 @@ def test_upload_image_to_drive_restricted_mode_skips_public_permission(monkeypat
     assert file_id == "file-123"
     assert [call for call in calls if call[0] == "perm-create"] == []
     assert sleep_calls == []
+
+
+def test_insert_chart_restricted_mode_grants_and_revokes_temporary_permission(
+    monkeypatch,
+):
+    provider = _provider_without_init()
+    provider.config = google_provider_module.GoogleSlidesProviderConfig()
+    image_url = "https://drive.google.com/uc?id=file-123"
+    provider._uploaded_chart_image_ids_by_url = {image_url: "file-123"}
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **kwargs: ("perm-create", kwargs),
+            delete=lambda **kwargs: ("perm-delete", kwargs),
+        )
+    )
+
+    sleep_calls: List[float] = []
+    monkeypatch.setattr(
+        google_provider_module.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+    monkeypatch.setattr(
+        google_provider_module.Timing,
+        "GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S",
+        0.5,
+    )
+
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        if request[0] == "perm-create":
+            return {"id": "perm-1"}
+        return {}
+
+    provider._execute_request = _exec
+    provider._batch_update = (
+        lambda presentation_id, requests: calls.append(
+            ("batch-update", presentation_id, requests)
+        )
+        or {}
+    )
+
+    provider.insert_chart_to_slide("pres-1", "slide-1", image_url, 1, 2, 3, 4)
+
+    assert calls[0][0] == "perm-create"
+    assert calls[0][1]["body"] == {
+        "role": "reader",
+        "type": "anyone",
+        "allowFileDiscovery": False,
+    }
+    assert calls[0][1]["fields"] == "id"
+    assert calls[1][0] == "batch-update"
+    assert calls[1][2][0]["createImage"]["url"] == image_url
+    assert calls[2][0] == "perm-delete"
+    assert calls[2][1]["permissionId"] == "perm-1"
+    assert sleep_calls == [0.5]
+
+
+def test_insert_chart_records_temporary_permission_revoke_failure_without_raising():
+    provider = _provider_without_init()
+    provider.config = google_provider_module.GoogleSlidesProviderConfig(
+        strict_cleanup=True
+    )
+    image_url = "https://drive.google.com/uc?id=file-123"
+    provider._uploaded_chart_image_ids_by_url = {image_url: "file-123"}
+    provider._chart_image_cleanup_failed_ids = []
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **kwargs: ("perm-create", kwargs),
+            delete=lambda **kwargs: ("perm-delete", kwargs),
+        )
+    )
+
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        if request[0] == "perm-create":
+            return {"id": "perm-1"}
+        if request[0] == "perm-delete":
+            raise RuntimeError("revoke failed")
+        return {}
+
+    provider._execute_request = _exec
+    provider._batch_update = (
+        lambda presentation_id, requests: calls.append(
+            ("batch-update", presentation_id, requests)
+        )
+        or {}
+    )
+
+    provider.insert_chart_to_slide("pres-1", "slide-1", image_url, 1, 2, 3, 4)
+
+    assert [call[0] for call in calls] == [
+        "perm-create",
+        "batch-update",
+        "perm-delete",
+    ]
+    assert provider.consume_chart_image_cleanup_failures() == ["file-123"]
 
 
 def test_batch_update_error_logs_and_raises(monkeypatch):
@@ -496,12 +607,14 @@ def test_delete_chart_image_handles_permission_and_other_errors():
     provider._execute_request = lambda _request: (_ for _ in ()).throw(
         _http_error("forbidden", status=403)
     )
-    provider.delete_chart_image("file-1")
+    with pytest.raises(google_provider_module.HttpError):
+        provider.delete_chart_image("file-1")
 
     provider._execute_request = lambda _request: (_ for _ in ()).throw(
         _http_error("server", status=500)
     )
-    provider.delete_chart_image("file-2")
+    with pytest.raises(google_provider_module.HttpError):
+        provider.delete_chart_image("file-2")
 
 
 def test_render_citations_inserts_sources_into_speaker_notes():

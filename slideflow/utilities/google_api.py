@@ -84,7 +84,7 @@ def upload_png_to_drive(
     on_restricted_file: Optional[Callable[[str], None]] = None,
     sleep_fn: Callable[[float], None] = time.sleep,
 ) -> Tuple[str, str]:
-    """Upload PNG bytes to Drive and return (public_url, file_id)."""
+    """Upload PNG bytes to Drive and return (image_url, file_id)."""
     file_metadata: Dict[str, Any] = {"name": filename}
     if destination_folder_id:
         file_metadata["parents"] = [destination_folder_id]
@@ -105,6 +105,8 @@ def upload_png_to_drive(
     )
     file_id = uploaded_file.get("id")
 
+    image_url = f"https://drive.google.com/uc?id={file_id}"
+
     if sharing_mode == "public":
         execute_request(
             drive_service.permissions().create(
@@ -115,7 +117,8 @@ def upload_png_to_drive(
         )
         if permission_delay_seconds > 0:
             sleep_fn(permission_delay_seconds)
-    elif on_restricted_file is not None:
-        on_restricted_file(file_id)
+    elif sharing_mode == "restricted":
+        if on_restricted_file is not None:
+            on_restricted_file(file_id)
 
-    return f"https://drive.google.com/uc?id={file_id}", file_id
+    return image_url, file_id

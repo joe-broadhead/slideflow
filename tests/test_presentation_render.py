@@ -119,6 +119,8 @@ def test_render_passes_empty_dataframe_to_static_chart():
 
     assert isinstance(chart.generated_with, pd.DataFrame)
     assert result.charts_generated == 1
+    assert result.chart_image_cleanup_failed_count == 0
+    assert result.chart_image_cleanup_failed_ids == []
     assert provider.finalize_calls == ["presentation-1"]
 
 
@@ -145,12 +147,14 @@ def test_render_logs_cleanup_summary_on_failure(caplog):
     presentation, _chart = _build_presentation(provider)
 
     with caplog.at_level(logging.WARNING):
-        presentation.render()
+        result = presentation.render()
 
     assert (
         "Chart image cleanup completed with 1 failure(s): deleted 0/1." in caplog.text
     )
     assert "Failed IDs: ['file-1']" in caplog.text
+    assert result.chart_image_cleanup_failed_count == 1
+    assert result.chart_image_cleanup_failed_ids == ["file-1"]
 
 
 def test_render_uses_provider_page_dimensions_for_relative_chart():
@@ -518,6 +522,26 @@ def test_finalize_and_share_presentation_runs_provider_hooks():
 
 def test_cleanup_uploaded_chart_images_strict_mode_raises_when_cleanup_fails():
     provider = FakeProvider(strict_cleanup=True, fail_cleanup=True)
+    presentation, _chart = _build_presentation(provider)
+    context = presentation._create_render_context(start_time=time.time())
+    context.uploaded_file_ids = ["file-1"]
+
+    with pytest.raises(RenderingError, match="Strict cleanup enabled"):
+        presentation._cleanup_uploaded_chart_images(context)
+
+
+def test_cleanup_uploaded_chart_images_strict_mode_raises_for_provider_failures():
+    class ProviderCleanupFailure(FakeProvider):
+        def __init__(self):
+            super().__init__(strict_cleanup=True, fail_cleanup=False)
+            self._failures = ["file-1"]
+
+        def consume_chart_image_cleanup_failures(self):
+            failures = list(self._failures)
+            self._failures = []
+            return failures
+
+    provider = ProviderCleanupFailure()
     presentation, _chart = _build_presentation(provider)
     context = presentation._create_render_context(start_time=time.time())
     context.uploaded_file_ids = ["file-1"]

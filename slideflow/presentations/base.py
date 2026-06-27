@@ -149,6 +149,20 @@ class PresentationResult(BaseModel):
     replacements_made: Annotated[
         int, Field(..., description="Number of text replacements made")
     ]
+    chart_image_cleanup_failed_count: Annotated[
+        int,
+        Field(
+            default=0,
+            description="Number of uploaded chart images that could not be cleaned up",
+        ),
+    ]
+    chart_image_cleanup_failed_ids: Annotated[
+        List[str],
+        Field(
+            default_factory=list,
+            description="Uploaded chart image file IDs that could not be cleaned up",
+        ),
+    ]
     render_time: Annotated[
         float, Field(..., description="Time taken to render presentation in seconds")
     ]
@@ -944,6 +958,8 @@ class Presentation(BaseModel):
             ),
             charts_generated=context.total_charts,
             replacements_made=context.total_replacements,
+            chart_image_cleanup_failed_count=len(context.failed_cleanup_ids),
+            chart_image_cleanup_failed_ids=list(context.failed_cleanup_ids),
             render_time=render_time,
             created_at=datetime.now(),
             ownership_transfer_attempted=context.ownership_transfer_attempted,
@@ -978,6 +994,14 @@ class Presentation(BaseModel):
                         cleanup_error,
                     )
 
+            provider_cleanup_failures = getattr(
+                self.provider, "consume_chart_image_cleanup_failures", None
+            )
+            if callable(provider_cleanup_failures):
+                for file_id in provider_cleanup_failures():
+                    if file_id not in context.failed_cleanup_ids:
+                        context.failed_cleanup_ids.append(file_id)
+
             deleted_cleanup_count = len(context.uploaded_file_ids) - len(
                 context.failed_cleanup_ids
             )
@@ -1010,6 +1034,7 @@ class Presentation(BaseModel):
     def render(self) -> PresentationResult:
         """Render the complete presentation with all content and styling."""
         context: Optional[_RenderContext] = None
+        cleanup_attempted = False
         try:
             context = self._create_render_context(start_time=time.time())
             self._prefetch_data_sources()
@@ -1018,13 +1043,15 @@ class Presentation(BaseModel):
             citation_summary = self._summarize_and_render_citations(context)
             self._finalize_and_share_presentation(context)
             self._apply_ownership_transfer(context)
+            cleanup_attempted = True
+            self._cleanup_uploaded_chart_images(context)
             return self._build_presentation_result(context, citation_summary)
         except Exception as error:
             if context is not None:
                 context.original_error = error
             raise
         finally:
-            if context is not None:
+            if context is not None and not cleanup_attempted:
                 self._cleanup_uploaded_chart_images(context)
 
     def get_slide(self, slide_id: str) -> Optional[Slide]:

@@ -36,7 +36,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `provider.config.transfer_ownership_to`
   - `provider.config.transfer_ownership_strict`
 - Chart image sharing-mode controls for Google Slides/Docs:
-  - `provider.config.chart_image_sharing_mode` (`public` | `restricted`)
+  - `provider.config.chart_image_sharing_mode` (`restricted` by default, explicit `public` opt-in)
+  - cleanup failure counts and file IDs in build results/output JSON
 - Shared Google API utility layer for provider internals:
   - shared credential construction
   - shared rate-limited request execution helper

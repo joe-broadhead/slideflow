@@ -40,6 +40,12 @@ def _http_error(
     return error
 
 
+def test_google_docs_config_defaults_chart_images_to_restricted():
+    config = google_docs_module.GoogleDocsProviderConfig()
+
+    assert config.chart_image_sharing_mode == "restricted"
+
+
 def _document_from_paragraph_run_groups(
     *paragraph_run_groups: Tuple[str, ...],
 ) -> Dict[str, Any]:
@@ -719,10 +725,13 @@ def test_upload_share_and_delete_paths():
     provider._execute_request = lambda _request: (_ for _ in ()).throw(
         _http_error("forbidden", status=403)
     )
-    provider.delete_chart_image("file-2")
+    with pytest.raises(google_docs_module.HttpError):
+        provider.delete_chart_image("file-2")
 
 
-def test_upload_chart_image_waits_for_drive_acl_propagation(monkeypatch):
+def test_upload_chart_image_public_mode_waits_for_drive_acl_propagation_and_warns(
+    monkeypatch, caplog
+):
     provider = _provider_without_init()
     provider.config = SimpleNamespace(
         drive_folder_id="folder-1",
@@ -756,19 +765,18 @@ def test_upload_chart_image_waits_for_drive_acl_propagation(monkeypatch):
 
     provider._execute_request = _exec
 
-    url, file_id = provider.upload_chart_image("doc-1", b"bytes", "chart.png")
+    with caplog.at_level("WARNING"):
+        url, file_id = provider.upload_chart_image("doc-1", b"bytes", "chart.png")
     assert url == "https://drive.google.com/uc?id=file-1"
     assert file_id == "file-1"
+    assert [call for call in calls if call[0] == "perm-create"]
     assert sleep_calls == [1.5]
+    assert "Chart image sharing mode is public" in caplog.text
 
 
-def test_upload_chart_image_restricted_mode_skips_public_permission(monkeypatch):
+def test_upload_chart_image_default_mode_skips_public_permission(monkeypatch):
     provider = _provider_without_init()
-    provider.config = SimpleNamespace(
-        drive_folder_id="folder-1",
-        strict_cleanup=False,
-        chart_image_sharing_mode="restricted",
-    )
+    provider.config = google_docs_module.GoogleDocsProviderConfig()
     provider.drive_service = SimpleNamespace(
         files=lambda: SimpleNamespace(create=lambda **kwargs: ("files-create", kwargs)),
         permissions=lambda: SimpleNamespace(
@@ -803,9 +811,126 @@ def test_upload_chart_image_restricted_mode_skips_public_permission(monkeypatch)
     assert sleep_calls == []
 
 
-def test_delete_chart_image_raises_when_strict_cleanup_enabled():
+def test_insert_chart_restricted_mode_grants_and_revokes_temporary_permission(
+    monkeypatch,
+):
     provider = _provider_without_init()
-    provider.config = SimpleNamespace(strict_cleanup=True)
+    provider.config = google_docs_module.GoogleDocsProviderConfig()
+    image_url = "https://drive.google.com/uc?id=file-1"
+    provider._uploaded_chart_image_ids_by_url = {image_url: "file-1"}
+    provider._section_insert_indices = {}
+    provider._resolve_section_anchor = lambda _document_id, _section_id: (
+        google_docs_module.GoogleDocsProvider._SectionAnchor(
+            marker_id="intro",
+            marker_start=1,
+            marker_end=10,
+            section_start=11,
+            section_end=20,
+        ),
+        {},
+    )
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs)
+        )
+    )
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **kwargs: ("perm-create", kwargs),
+            delete=lambda **kwargs: ("perm-delete", kwargs),
+        )
+    )
+
+    sleep_calls: List[float] = []
+    monkeypatch.setattr(
+        google_docs_module, "time", SimpleNamespace(sleep=sleep_calls.append)
+    )
+    monkeypatch.setattr(
+        google_docs_module.Timing,
+        "GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S",
+        0.5,
+    )
+
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        if request[0] == "perm-create":
+            return {"id": "perm-1"}
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.insert_chart_to_slide("doc-1", "intro", image_url, 0, 0, 300, 200)
+
+    assert calls[0][0] == "perm-create"
+    assert calls[0][1]["body"] == {
+        "role": "reader",
+        "type": "anyone",
+        "allowFileDiscovery": False,
+    }
+    assert calls[0][1]["fields"] == "id"
+    assert calls[1][0] == "batch-update"
+    assert calls[1][1]["body"]["requests"][0]["insertInlineImage"]["uri"] == image_url
+    assert calls[2][0] == "perm-delete"
+    assert calls[2][1]["permissionId"] == "perm-1"
+    assert sleep_calls == [0.5]
+
+
+def test_insert_chart_records_temporary_permission_revoke_failure_without_raising():
+    provider = _provider_without_init()
+    provider.config = google_docs_module.GoogleDocsProviderConfig(strict_cleanup=True)
+    image_url = "https://drive.google.com/uc?id=file-1"
+    provider._uploaded_chart_image_ids_by_url = {image_url: "file-1"}
+    provider._chart_image_cleanup_failed_ids = []
+    provider._section_insert_indices = {}
+    provider._resolve_section_anchor = lambda _document_id, _section_id: (
+        google_docs_module.GoogleDocsProvider._SectionAnchor(
+            marker_id="intro",
+            marker_start=1,
+            marker_end=10,
+            section_start=11,
+            section_end=20,
+        ),
+        {},
+    )
+    provider.docs_service = SimpleNamespace(
+        documents=lambda: SimpleNamespace(
+            batchUpdate=lambda **kwargs: ("batch-update", kwargs)
+        )
+    )
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **kwargs: ("perm-create", kwargs),
+            delete=lambda **kwargs: ("perm-delete", kwargs),
+        )
+    )
+
+    calls: List[Any] = []
+
+    def _exec(request):
+        calls.append(request)
+        if request[0] == "perm-create":
+            return {"id": "perm-1"}
+        if request[0] == "perm-delete":
+            raise RuntimeError("revoke failed")
+        return {}
+
+    provider._execute_request = _exec
+
+    provider.insert_chart_to_slide("doc-1", "intro", image_url, 0, 0, 300, 200)
+
+    assert [call[0] for call in calls] == [
+        "perm-create",
+        "batch-update",
+        "perm-delete",
+    ]
+    assert provider.consume_chart_image_cleanup_failures() == ["file-1"]
+
+
+def test_delete_chart_image_raises_when_cleanup_fails():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(strict_cleanup=False)
     provider.drive_service = SimpleNamespace(
         files=lambda: SimpleNamespace(update=lambda **kwargs: ("files-update", kwargs))
     )

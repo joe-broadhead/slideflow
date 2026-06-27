@@ -52,13 +52,13 @@ provider:
     section_marker_prefix: "{{SECTION:"
     section_marker_suffix: "}}"
     remove_section_markers: false
-    default_chart_width_pt: 300
+    default_chart_width_pt: 480
     share_with:
       - "team@example.com"
     share_role: "reader"
     transfer_ownership_to: "owner@example.com"
     transfer_ownership_strict: false
-    chart_image_sharing_mode: "public" # public | restricted
+    chart_image_sharing_mode: "restricted" # restricted | public
     requests_per_second: 1.0
     strict_cleanup: false
 ```
@@ -73,8 +73,8 @@ Field behavior:
 - `transfer_ownership_to`: optional ownership handoff target after successful render/share.
 - `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
 - `chart_image_sharing_mode`: uploaded chart-image ACL mode:
-  - `public` (default): grants `anyone:reader` before insertion.
-  - `restricted`: skips public ACL grant (tighter access; insertion compatibility depends on your Drive permissions model).
+  - `restricted` (default): keeps uploaded Drive files private at rest, grants temporary non-discoverable access for chart insertion, then revokes it.
+  - `public`: keeps `anyone:reader` access after insertion and logs a warning because generated chart images may contain sensitive data.
 - `requests_per_second`: API pacing control.
 - `strict_cleanup`: fail run if chart-image cleanup fails.
 
@@ -152,7 +152,7 @@ presentation:
 - Start with conservative concurrency/rate settings and tune gradually.
 - Keep markers stable after config wiring.
 - Validate with `--provider-contract-check` in CI for template safety.
-- Cleanup logs include deleted/failed chart-image totals and failed file IDs when applicable.
+- Cleanup logs and build-result fields include deleted/failed chart-image totals and failed file IDs when applicable.
 
 Related references:
 

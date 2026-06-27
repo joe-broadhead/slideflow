@@ -625,6 +625,8 @@ def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
             "Demo Deck",
             types.SimpleNamespace(
                 presentation_url="https://example.com/deck",
+                chart_image_cleanup_failed_count=1,
+                chart_image_cleanup_failed_ids=["file-1"],
                 citations_enabled=True,
                 citations_total_sources=3,
                 citations_emitted_sources=2,
@@ -666,6 +668,10 @@ def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
     assert payload["citations_total_sources"] == 3
     assert payload["citations_emitted_sources"] == 2
     assert payload["citations_truncated"] is False
+    assert payload["chart_image_cleanup_failed_count"] == 1
+    assert payload["chart_image_cleanup_failed_ids"] == ["file-1"]
+    assert payload["results"][0]["chart_image_cleanup_failed_count"] == 1
+    assert payload["results"][0]["chart_image_cleanup_failed_ids"] == ["file-1"]
     assert payload["results"][0]["citations_enabled"] is True
     assert payload["results"][0]["citations_by_scope"] == {
         "slide-1": ["src-1", "src-2"]

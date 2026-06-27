@@ -171,10 +171,10 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         description="If true, fail rendering when uploaded chart images cannot be cleaned up.",
     )
     chart_image_sharing_mode: Literal["public", "restricted"] = Field(
-        "public",
+        "restricted",
         description=(
-            "Chart image sharing mode. 'public' grants anyone:reader (default); "
-            "'restricted' skips public sharing for tighter access control."
+            "Chart image sharing mode. 'restricted' skips public sharing (default); "
+            "'public' grants anyone:reader and should be used only when explicitly needed."
         ),
     )
     transfer_ownership_to: Optional[str] = Field(
@@ -258,6 +258,8 @@ class GoogleSlidesProvider(PresentationProvider):
         """
         super().__init__(config)
         self.config: GoogleSlidesProviderConfig = config
+        self._uploaded_chart_image_ids_by_url: Dict[str, str] = {}
+        self._chart_image_cleanup_failed_ids: List[str] = []
 
         # Initialize Google API services
         loaded_credentials = handle_google_credentials(config.credentials)
@@ -389,6 +391,7 @@ class GoogleSlidesProvider(PresentationProvider):
             Tuple of (image_url, file_id)
         """
         url, file_id = self._upload_image_to_drive(image_data, filename)
+        self._remember_uploaded_chart_image(url, file_id)
         return (url, file_id)
 
     def insert_chart_to_slide(
@@ -410,29 +413,33 @@ class GoogleSlidesProvider(PresentationProvider):
             x, y: Position coordinates
             width, height: Chart dimensions
         """
-        requests = [
-            {
-                "createImage": {
-                    "url": image_url,
-                    "elementProperties": {
-                        "pageObjectId": slide_id,
-                        "size": {
-                            "width": {"magnitude": width, "unit": "PT"},
-                            "height": {"magnitude": height, "unit": "PT"},
+        temporary_permission = self._grant_temporary_chart_image_access(image_url)
+        try:
+            requests = [
+                {
+                    "createImage": {
+                        "url": image_url,
+                        "elementProperties": {
+                            "pageObjectId": slide_id,
+                            "size": {
+                                "width": {"magnitude": width, "unit": "PT"},
+                                "height": {"magnitude": height, "unit": "PT"},
+                            },
+                            "transform": {
+                                "scaleX": 1,
+                                "scaleY": 1,
+                                "translateX": x,
+                                "translateY": y,
+                                "unit": "PT",
+                            },
                         },
-                        "transform": {
-                            "scaleX": 1,
-                            "scaleY": 1,
-                            "translateX": x,
-                            "translateY": y,
-                            "unit": "PT",
-                        },
-                    },
+                    }
                 }
-            }
-        ]
+            ]
 
-        self._batch_update(presentation_id, requests)
+            self._batch_update(presentation_id, requests)
+        finally:
+            self._revoke_temporary_chart_image_access(temporary_permission)
 
     def replace_text_in_slide(
         self, presentation_id: str, slide_id: str, placeholder: str, replacement: str
@@ -918,7 +925,14 @@ class GoogleSlidesProvider(PresentationProvider):
                 self.config.drive_folder_id or self._get_or_create_destination_folder()
             )
 
-            sharing_mode = getattr(self.config, "chart_image_sharing_mode", "public")
+            sharing_mode = getattr(
+                self.config, "chart_image_sharing_mode", "restricted"
+            )
+            if sharing_mode == "public":
+                logger.warning(
+                    "Chart image sharing mode is public; uploaded chart images will "
+                    "be granted anyone:reader and may expose sensitive data."
+                )
             public_url, file_id = upload_png_to_drive(
                 drive_service=self.drive_service,
                 execute_request=self._execute_request,
@@ -931,7 +945,8 @@ class GoogleSlidesProvider(PresentationProvider):
                 sleep_fn=time.sleep,
                 on_restricted_file=(
                     lambda resolved_file_id: logger.info(
-                        "Chart image sharing mode is restricted; skipping public Drive permission "
+                        "Chart image sharing mode is restricted; uploaded Drive file "
+                        "will stay private except for temporary insertion access "
                         "(file_id=%s).",
                         resolved_file_id,
                     )
@@ -960,6 +975,76 @@ class GoogleSlidesProvider(PresentationProvider):
                 filename=filename,
             )
             raise
+
+    def _remember_uploaded_chart_image(self, image_url: str, file_id: str) -> None:
+        if not hasattr(self, "_uploaded_chart_image_ids_by_url"):
+            self._uploaded_chart_image_ids_by_url = {}
+        self._uploaded_chart_image_ids_by_url[image_url] = file_id
+
+    def _grant_temporary_chart_image_access(
+        self, image_url: str
+    ) -> Optional[Tuple[str, str]]:
+        if (
+            getattr(self.config, "chart_image_sharing_mode", "restricted")
+            != "restricted"
+        ):
+            return None
+
+        file_id = getattr(self, "_uploaded_chart_image_ids_by_url", {}).get(image_url)
+        if not file_id:
+            return None
+
+        permission = self._execute_request(
+            self.drive_service.permissions().create(
+                fileId=file_id,
+                body={
+                    "role": "reader",
+                    "type": "anyone",
+                    "allowFileDiscovery": False,
+                },
+                fields="id",
+                supportsAllDrives=True,
+            )
+        )
+        permission_id = permission.get("id")
+        if not permission_id:
+            raise RuntimeError(
+                f"Google Drive did not return a permission ID for temporary chart image access: {file_id}"
+            )
+        if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
+            time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
+        return file_id, str(permission_id)
+
+    def _revoke_temporary_chart_image_access(
+        self, temporary_permission: Optional[Tuple[str, str]]
+    ) -> None:
+        if temporary_permission is None:
+            return
+
+        file_id, permission_id = temporary_permission
+        try:
+            self._execute_request(
+                self.drive_service.permissions().delete(
+                    fileId=file_id,
+                    permissionId=permission_id,
+                    supportsAllDrives=True,
+                )
+            )
+        except Exception as error:
+            logger.error(
+                "Failed to revoke temporary public chart image access for %s: %s",
+                file_id,
+                error,
+            )
+            if not hasattr(self, "_chart_image_cleanup_failed_ids"):
+                self._chart_image_cleanup_failed_ids = []
+            if file_id not in self._chart_image_cleanup_failed_ids:
+                self._chart_image_cleanup_failed_ids.append(file_id)
+
+    def consume_chart_image_cleanup_failures(self) -> List[str]:
+        failures = list(getattr(self, "_chart_image_cleanup_failed_ids", []))
+        self._chart_image_cleanup_failed_ids = []
+        return failures
 
     def _batch_update(
         self, presentation_id: str, requests: List[Dict[str, Any]]
@@ -1029,4 +1114,4 @@ class GoogleSlidesProvider(PresentationProvider):
                 logger.error(
                     "Error trashing file %s: %s", file_id, error, exc_info=True
                 )
-            # Do not re-raise, we want to continue cleanup
+            raise
