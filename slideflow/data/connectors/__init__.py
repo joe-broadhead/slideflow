@@ -48,6 +48,7 @@ Available Configurations:
     - JSONSourceConfig: Configuration for JSON files
     - DatabricksSourceConfig: Configuration for Databricks connections
     - DuckDBSourceConfig: Configuration for DuckDB connections
+    - RedshiftSourceConfig: Configuration for Redshift connections
     - DBTDatabricksSourceConfig: Configuration for DBT models
 """
 
@@ -69,6 +70,7 @@ from slideflow.data.connectors.dbt import (
     DBTDatabricksSourceConfig,
     DBTDuckDBConnector,
     DBTProjectConfig,
+    DBTRedshiftConnector,
     DBTSourceConfig,
     DBTWarehouseConfig,
 )
@@ -78,6 +80,11 @@ from slideflow.data.connectors.duckdb import (
     DuckDBSQLExecutor,
 )
 from slideflow.data.connectors.json import JSONConnector, JSONSourceConfig
+from slideflow.data.connectors.redshift import (
+    RedshiftConnector,
+    RedshiftSourceConfig,
+    RedshiftSQLExecutor,
+)
 
 __all__ = [
     "DataConnector",
@@ -95,9 +102,13 @@ __all__ = [
     "DuckDBConnector",
     "DuckDBSQLExecutor",
     "DuckDBSourceConfig",
+    "RedshiftConnector",
+    "RedshiftSQLExecutor",
+    "RedshiftSourceConfig",
     "DBTBigQueryConnector",
     "DBTDatabricksConnector",
     "DBTDuckDBConnector",
+    "DBTRedshiftConnector",
     "DBTDatabricksSourceConfig",
     "DBTProjectConfig",
     "DBTWarehouseConfig",

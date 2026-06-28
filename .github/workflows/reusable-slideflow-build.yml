@@ -40,7 +40,7 @@ on:
       slideflow-install-extras:
         description: "Optional comma-separated extras to install with slideflow-package-spec"
         required: false
-        default: "dbt,databricks,bigquery,duckdb"
+        default: "dbt,databricks,bigquery,duckdb,redshift"
         type: string
       extra-pip-packages:
         description: "Optional newline-separated pip packages"
@@ -130,6 +130,66 @@ on:
       GOOGLE_APPLICATION_CREDENTIALS_JSON:
         description: "Optional Google service-account JSON to write as ADC credentials file"
         required: false
+      REDSHIFT_HOST:
+        description: "Optional Redshift host for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_PORT:
+        description: "Optional Redshift port for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_DATABASE:
+        description: "Optional Redshift database for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_USER:
+        description: "Optional Redshift user for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_PASSWORD:
+        description: "Optional Redshift password for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_IAM:
+        description: "Optional Redshift IAM auth flag for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_DB_USER:
+        description: "Optional Redshift db_user for IAM auth"
+        required: false
+      REDSHIFT_CLUSTER_IDENTIFIER:
+        description: "Optional Redshift cluster identifier for IAM auth"
+        required: false
+      REDSHIFT_REGION:
+        description: "Optional Redshift AWS region for IAM/serverless auth"
+        required: false
+      REDSHIFT_PROFILE:
+        description: "Optional AWS profile name for Redshift IAM auth"
+        required: false
+      REDSHIFT_ACCESS_KEY_ID:
+        description: "Optional AWS access key id for Redshift IAM auth"
+        required: false
+      REDSHIFT_SECRET_ACCESS_KEY:
+        description: "Optional AWS secret access key for Redshift IAM auth"
+        required: false
+      REDSHIFT_SESSION_TOKEN:
+        description: "Optional AWS session token for Redshift IAM auth"
+        required: false
+      REDSHIFT_SERVERLESS_ACCT_ID:
+        description: "Optional Redshift Serverless account id"
+        required: false
+      REDSHIFT_SERVERLESS_WORK_GROUP:
+        description: "Optional Redshift Serverless workgroup"
+        required: false
+      AWS_ACCESS_KEY_ID:
+        description: "Optional AWS access key id fallback for Redshift IAM auth"
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        description: "Optional AWS secret access key fallback for Redshift IAM auth"
+        required: false
+      AWS_SESSION_TOKEN:
+        description: "Optional AWS session token fallback for Redshift IAM auth"
+        required: false
+      AWS_PROFILE:
+        description: "Optional AWS profile fallback for Redshift IAM auth"
+        required: false
+      AWS_REGION:
+        description: "Optional AWS region fallback for Redshift IAM auth"
+        required: false
     outputs:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
@@ -167,6 +227,26 @@ jobs:
       DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL || secrets.DBT_ACCESS_TOKEN || secrets.DBT_GIT_TOKEN }}
       BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      REDSHIFT_HOST: ${{ secrets.REDSHIFT_HOST }}
+      REDSHIFT_PORT: ${{ secrets.REDSHIFT_PORT }}
+      REDSHIFT_DATABASE: ${{ secrets.REDSHIFT_DATABASE }}
+      REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
+      REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
+      REDSHIFT_IAM: ${{ secrets.REDSHIFT_IAM }}
+      REDSHIFT_DB_USER: ${{ secrets.REDSHIFT_DB_USER }}
+      REDSHIFT_CLUSTER_IDENTIFIER: ${{ secrets.REDSHIFT_CLUSTER_IDENTIFIER }}
+      REDSHIFT_REGION: ${{ secrets.REDSHIFT_REGION }}
+      REDSHIFT_PROFILE: ${{ secrets.REDSHIFT_PROFILE }}
+      REDSHIFT_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_ACCESS_KEY_ID }}
+      REDSHIFT_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_SECRET_ACCESS_KEY }}
+      REDSHIFT_SESSION_TOKEN: ${{ secrets.REDSHIFT_SESSION_TOKEN }}
+      REDSHIFT_SERVERLESS_ACCT_ID: ${{ secrets.REDSHIFT_SERVERLESS_ACCT_ID }}
+      REDSHIFT_SERVERLESS_WORK_GROUP: ${{ secrets.REDSHIFT_SERVERLESS_WORK_GROUP }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || secrets.REDSHIFT_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || secrets.REDSHIFT_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN || secrets.REDSHIFT_SESSION_TOKEN }}
+      AWS_PROFILE: ${{ secrets.AWS_PROFILE || secrets.REDSHIFT_PROFILE }}
+      AWS_REGION: ${{ secrets.AWS_REGION || secrets.REDSHIFT_REGION }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
       workbook_urls: ${{ steps.extract_urls.outputs.workbook_urls }}

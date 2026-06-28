@@ -20,6 +20,7 @@ from slideflow.data.connectors import (
     DBTSourceConfig,
     DuckDBSourceConfig,
     JSONSourceConfig,
+    RedshiftSourceConfig,
 )
 from slideflow.presentations.charts import (
     ChartUnion,
@@ -77,6 +78,18 @@ def test_cli_commands_remain_available():
                 "query": "SELECT 1",
             },
             DuckDBSourceConfig,
+        ),
+        (
+            {
+                "type": "redshift",
+                "name": "source_redshift",
+                "query": "SELECT 1",
+                "host": "redshift.example.com",
+                "database": "analytics",
+                "user": "report_user",
+                "password": "secret",
+            },
+            RedshiftSourceConfig,
         ),
         (
             {

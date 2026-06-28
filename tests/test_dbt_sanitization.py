@@ -1082,6 +1082,15 @@ def test_databricks_connector_forwards_manifest_disambiguation_selectors(monkeyp
             dbt_module.DBTDuckDBConnector,
             {"database": "/tmp/warehouse.duckdb"},
         ),
+        (
+            dbt_module.DBTRedshiftConnector,
+            {
+                "host": "redshift.example.com",
+                "database": "analytics",
+                "user": "report_user",
+                "password": "secret",
+            },
+        ),
     ],
 )
 def test_dbt_warehouse_connectors_share_missing_compiled_model_guard(
@@ -1104,6 +1113,9 @@ def test_dbt_warehouse_connectors_share_missing_compiled_model_guard(
     )
     monkeypatch.setattr(
         dbt_module, "DuckDBSQLExecutor", lambda **_kwargs: _ExecutorStub()
+    )
+    monkeypatch.setattr(
+        dbt_module, "RedshiftSQLExecutor", lambda **_kwargs: _ExecutorStub()
     )
     monkeypatch.setattr(
         dbt_module.DBTDatabricksConnector,

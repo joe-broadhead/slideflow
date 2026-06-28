@@ -43,6 +43,7 @@ jobs:
             --extra dbt \
             --extra bigquery \
             --extra duckdb \
+            --extra redshift \
             --locked
 
       - name: Run pip-audit

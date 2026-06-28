@@ -86,6 +86,7 @@ registry: []
 - `json`
 - `databricks`
 - `duckdb`
+- `redshift`
 - `dbt` (preferred for new dbt development)
 - `databricks_dbt` (legacy-compatible)
 
@@ -105,6 +106,25 @@ data_source:
       time_period: weekly
   warehouse:
     type: databricks
+```
+
+Preferred Redshift warehouse variant:
+
+```yaml
+data_source:
+  type: dbt
+  name: dbt_model_redshift
+  model_alias: slide__example_model
+  dbt:
+    package_url: https://$DBT_GIT_TOKEN@github.com/org/repo.git
+    project_dir: /tmp/dbt_project
+    branch: main
+    target: prod
+  warehouse:
+    type: redshift
+    database: analytics
+    host: example-cluster.abc123.us-east-1.redshift.amazonaws.com
+    user: reporting_user
 ```
 
 ## Token semantics

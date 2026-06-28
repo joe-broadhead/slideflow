@@ -44,6 +44,7 @@ Supported Data Source Types:
     - "json": JSON file data sources
     - "databricks": Databricks SQL warehouse connections
     - "duckdb": DuckDB SQL connections
+    - "redshift": Amazon Redshift SQL connections
     - "databricks_dbt": Legacy DBT models in Databricks
     - "dbt": Composable DBT source with explicit warehouse block
 """
@@ -57,6 +58,7 @@ from slideflow.data.connectors.databricks import DatabricksSourceConfig
 from slideflow.data.connectors.dbt import DBTDatabricksSourceConfig, DBTSourceConfig
 from slideflow.data.connectors.duckdb import DuckDBSourceConfig
 from slideflow.data.connectors.json import JSONSourceConfig
+from slideflow.data.connectors.redshift import RedshiftSourceConfig
 
 DataSourceConfig = Annotated[
     Union[
@@ -64,6 +66,7 @@ DataSourceConfig = Annotated[
         JSONSourceConfig,
         DatabricksSourceConfig,
         DuckDBSourceConfig,
+        RedshiftSourceConfig,
         DBTDatabricksSourceConfig,
         DBTSourceConfig,
     ],
@@ -80,6 +83,7 @@ The union includes all currently supported data source types:
 - JSONSourceConfig: For JSON file data sources  
 - DatabricksSourceConfig: For Databricks SQL warehouse connections
 - DuckDBSourceConfig: For DuckDB SQL sources
+- RedshiftSourceConfig: For Amazon Redshift SQL sources
 - DBTDatabricksSourceConfig: For DBT models in Databricks
 - DBTSourceConfig: For composable DBT + warehouse configurations
 

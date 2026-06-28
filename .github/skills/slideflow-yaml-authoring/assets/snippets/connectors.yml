@@ -15,6 +15,14 @@ databricks_sql:
   name: "warehouse_query"
   query: "SELECT * FROM mart.sales LIMIT 100"
 
+redshift_sql:
+  type: "redshift"
+  name: "redshift_query"
+  host: "example-cluster.abc123.us-east-1.redshift.amazonaws.com"
+  database: "analytics"
+  user: "reporting_user"
+  query: "SELECT * FROM mart.sales LIMIT 100"
+
 dbt_preferred:
   type: "dbt"
   name: "dbt_model"
@@ -29,6 +37,21 @@ dbt_preferred:
   warehouse:
     type: "databricks"
 
+dbt_redshift:
+  type: "dbt"
+  name: "dbt_model_redshift"
+  model_alias: "slide__revenue_model"
+  dbt:
+    package_url: "https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git"
+    project_dir: "/tmp/dbt_project"
+    branch: "main"
+    target: "prod"
+  warehouse:
+    type: "redshift"
+    host: "example-cluster.abc123.us-east-1.redshift.amazonaws.com"
+    database: "analytics"
+    user: "reporting_user"
+
 databricks_dbt_legacy:
   type: "databricks_dbt"
   name: "dbt_model_legacy"
@@ -37,4 +60,3 @@ databricks_dbt_legacy:
   project_dir: "/tmp/dbt_project"
   branch: "main"
   target: "prod"
-

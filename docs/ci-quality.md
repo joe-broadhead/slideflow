@@ -31,7 +31,7 @@
   - publishes to PyPI first
   - creates tag + GitHub release only after publish succeeds
 - `Audit` (`.github/workflows/audit.yml`)
-  - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, and `duckdb` extras
+  - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, `duckdb`, and `redshift` extras
   - runs blocking `pip-audit` from that locked environment
   - runs `bandit`
   - uploads audit reports as artifacts
@@ -79,7 +79,7 @@
 ## Required local checks before PR
 
 ```bash
-uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --locked
+uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --extra redshift --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check

@@ -400,6 +400,24 @@ file_search_path: # optional; list or comma-separated string
 query: "SELECT * FROM sales_summary"
 ```
 
+### Redshift SQL
+
+```yaml
+type: "redshift"
+name: "warehouse_query"
+host: "example-cluster.abc123.us-east-1.redshift.amazonaws.com"
+port: 5439 # optional; defaults to 5439
+database: "analytics"
+user: "reporting_user"
+ssl: true # optional; defaults to true
+query: "SELECT * FROM mart.sales LIMIT 100"
+```
+
+Credentials can be supplied through config for controlled local runs, but
+production configs should prefer `REDSHIFT_*`/`AWS_*` environment variables.
+For IAM auth, set `iam: true` plus `cluster_identifier` or
+`serverless_acct_id`/`serverless_work_group`, and provide `region`.
+
 ### dbt on Databricks (composable, preferred)
 
 ```yaml
@@ -432,7 +450,7 @@ Optional alias disambiguation fields for `dbt`:
 
 Composable warehouse options:
 
-- `warehouse.type`: `databricks`, `bigquery`, or `duckdb`
+- `warehouse.type`: `databricks`, `bigquery`, `duckdb`, or `redshift`
 - `warehouse.project_id`: BigQuery project id override
 - `warehouse.location`: optional warehouse location/region
 - `warehouse.credentials_path`: optional path to BigQuery service-account JSON
@@ -440,6 +458,15 @@ Composable warehouse options:
 - `warehouse.database`: required for DuckDB warehouse (file path or `:memory:`)
 - `warehouse.read_only`: optional DuckDB read-only mode (default `true`)
 - `warehouse.file_search_path`: optional DuckDB file search path (list or comma-separated string)
+- `warehouse.host`, `warehouse.port`, `warehouse.database`, `warehouse.user`,
+  `warehouse.password`: Redshift password-auth connection settings
+- `warehouse.iam`, `warehouse.db_user`, `warehouse.cluster_identifier`,
+  `warehouse.region`, `warehouse.profile`: Redshift IAM settings
+- `warehouse.serverless_acct_id`, `warehouse.serverless_work_group`: Redshift
+  Serverless IAM settings
+- `warehouse.ssl`, `warehouse.sslmode`, `warehouse.timeout`,
+  `warehouse.application_name`, `warehouse.connection_options`: Redshift
+  connection tuning
 
 BigQuery variant example:
 
@@ -477,6 +504,25 @@ warehouse:
   file_search_path:
     - "/tmp/dbt_project"
     - "/tmp/data"
+```
+
+Redshift variant example:
+
+```yaml
+type: "dbt"
+name: "dbt_model_redshift"
+model_alias: "revenue_model"
+dbt:
+  package_url: "https://$GIT_TOKEN@github.com/org/repo.git"
+  project_dir: "/tmp/dbt_project"
+  branch: "main"
+  target: "prod"
+warehouse:
+  type: "redshift"
+  host: "example-cluster.abc123.us-east-1.redshift.amazonaws.com"
+  database: "analytics"
+  user: "reporting_user"
+  ssl: true
 ```
 
 ### Legacy dbt on Databricks (`databricks_dbt`)

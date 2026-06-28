@@ -34,7 +34,7 @@
 SlideFlow was built to solve a simple problem: automating the tedious process of creating data-heavy reporting artifacts. If you find yourself repeatedly copying and pasting charts, metrics, and narrative updates into decks, docs, or sheets, SlideFlow is for you.
 
 -   🎨 **Beautiful, Consistent Visuals:** Leverage the power of Plotly for stunning, replicable charts. Use YAML templates to create a library of reusable chart designs.
--   📊 **Connect Directly to Your Data:** Pull data from CSV files, JSON, Databricks, DuckDB, or your dbt models. No more manual data exports.
+-   📊 **Connect Directly to Your Data:** Pull data from CSV files, JSON, Databricks, DuckDB, Redshift, or your dbt models. No more manual data exports.
 -   ⚡ **Automate Your Reporting:** Stop the manual work. Reduce errors and save time. Your decks/docs/sheets are always up-to-date with your latest data.
 -   🚀 **Scale Instantly:** Need to create an output for every customer, region, or product? Generate hundreds of personalized deck/doc variants at once from a single template.
 -   🤖 **Production Automation Ready:** Run scheduled builds in GitHub Actions with the reusable SlideFlow workflow and machine-readable JSON outputs.
@@ -48,6 +48,8 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
     -   `csv`: For local CSV files.
     -   `json`: For local JSON files.
     -   `databricks`: For running SQL queries directly against Databricks.
+    -   `duckdb`: For running SQL queries against local DuckDB files or in-memory data.
+    -   `redshift`: For running SQL queries directly against Amazon Redshift.
     -   `dbt`: Composable dbt source config with explicit `dbt` + `warehouse` blocks.
     -   `databricks_dbt`: Legacy dbt connector format (still supported for compatibility).
 -   **Dynamic Content Replacements:**
@@ -106,6 +108,7 @@ pip install "slideflow-presentations[dbt]"
 # Optional warehouse extras for dbt warehouse.type variants
 pip install "slideflow-presentations[bigquery]"
 pip install "slideflow-presentations[duckdb]"
+pip install "slideflow-presentations[redshift]"
 ```
 
 ---

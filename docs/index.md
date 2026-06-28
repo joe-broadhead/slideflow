@@ -8,7 +8,7 @@ SlideFlow generates Google Slides decks, Google Docs documents, and Google Sheet
 - Declarative workbook builds via `slideflow sheets build`
 - Fast preflight validation via `slideflow validate`
 - Workbook preflight/validation via `slideflow sheets doctor|validate`
-- Data connectors for CSV, JSON, Databricks SQL, DuckDB SQL, and dbt warehouses
+- Data connectors for CSV, JSON, Databricks SQL, DuckDB SQL, Redshift SQL, and dbt warehouses
 - Dynamic replacements (`text`, `table`, `ai_text`)
 - Charts via Plotly graph objects, reusable templates, or custom Python functions
 - Batch deck generation with `--params-path` for high-volume reporting

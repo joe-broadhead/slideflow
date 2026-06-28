@@ -36,6 +36,7 @@ databricks = ["databricks-sql-connector>=4.0,<5.0"]
 dbt = ["dbt-core>=1.10,<1.12", "dbt-databricks>=1.10,<1.13", "gitpython>=3.1.41,<4.0"]
 bigquery = ["google-cloud-bigquery>=3.41.0,<4.0", "dbt-bigquery>=1.11.1,<1.12"]
 duckdb = ["duckdb>=1.5.3,<2.0", "dbt-duckdb>=1.9,<1.12"]
+redshift = ["redshift-connector>=2.1.8,<2.2", "dbt-redshift>=1.10,<1.12"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.7.6",
