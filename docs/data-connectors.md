@@ -1,11 +1,12 @@
 # Data Connectors
 
-SlideFlow supports six connector types for chart/replacement data sources:
+SlideFlow supports seven connector types for chart/replacement data sources:
 
 - `csv`
 - `json`
 - `databricks`
 - `duckdb`
+- `redshift`
 - `dbt` (composable, preferred)
 - `databricks_dbt` (legacy, still supported)
 
@@ -31,6 +32,7 @@ pip install "slideflow-presentations[dbt]"
 # Optional dbt warehouse backends
 pip install "slideflow-presentations[bigquery]"
 pip install "slideflow-presentations[duckdb]"
+pip install "slideflow-presentations[redshift]"
 ```
 
 ## Connector Matrix
@@ -41,7 +43,8 @@ pip install "slideflow-presentations[duckdb]"
 | `json` | local API exports/events | no | none |
 | `databricks` | direct warehouse SQL | yes | `DATABRICKS_HOST`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_ACCESS_TOKEN` |
 | `duckdb` | direct local/in-memory SQL | no | none |
-| `dbt` | dbt model SQL executed on Databricks, BigQuery, or DuckDB (composable config) | yes/no (depends on warehouse and dbt repo) | Databricks env vars, BigQuery project/auth env vars, or none for local DuckDB (+ Git token env if needed) |
+| `redshift` | direct Redshift SQL | yes | `REDSHIFT_HOST`, `REDSHIFT_DATABASE`, `REDSHIFT_USER`, `REDSHIFT_PASSWORD` or IAM env/config |
+| `dbt` | dbt model SQL executed on Databricks, BigQuery, DuckDB, or Redshift (composable config) | yes/no (depends on warehouse and dbt repo) | warehouse-specific env vars (+ Git token env if needed) |
 | `databricks_dbt` | dbt model SQL executed on Databricks | yes | same Databricks env vars (+ Git token env if needed) |
 
 ## CSV
@@ -146,6 +149,73 @@ Notes:
 - `file_search_path` can be a list or a comma-separated string.
 - If `file_search_path` is omitted, DuckDB uses its default file search behavior.
 
+## Redshift SQL
+
+```yaml
+data_source:
+  type: "redshift"
+  name: "warehouse_query"
+  host: "example-cluster.abc123.us-east-1.redshift.amazonaws.com"
+  port: 5439 # optional; defaults to 5439
+  database: "analytics"
+  user: "reporting_user"
+  ssl: true # optional; defaults to true
+  query: |
+    SELECT month, revenue, target
+    FROM mart.revenue_summary
+```
+
+Non-IAM environment fallback:
+
+```bash
+export REDSHIFT_HOST="<cluster-host>"
+export REDSHIFT_PORT="5439"
+export REDSHIFT_DATABASE="<database>"
+export REDSHIFT_USER="<user>"
+export REDSHIFT_PASSWORD="<password>"
+```
+
+IAM auth can be configured in YAML or environment. For provisioned clusters:
+
+```yaml
+data_source:
+  type: "redshift"
+  name: "redshift_iam_query"
+  database: "analytics"
+  iam: true
+  cluster_identifier: "prod-analytics"
+  region: "us-east-1"
+  db_user: "reporting_user"
+  query: "SELECT * FROM mart.revenue_summary"
+```
+
+For Redshift Serverless IAM auth, use `serverless_acct_id` and
+`serverless_work_group`; SlideFlow derives `is_serverless: true` when either
+field is present.
+
+Useful Redshift env fallbacks:
+
+- `REDSHIFT_IAM`
+- `REDSHIFT_DB_USER`
+- `REDSHIFT_CLUSTER_IDENTIFIER`
+- `REDSHIFT_REGION` or `AWS_REGION`
+- `REDSHIFT_PROFILE` or `AWS_PROFILE`
+- `REDSHIFT_ACCESS_KEY_ID` or `AWS_ACCESS_KEY_ID`
+- `REDSHIFT_SECRET_ACCESS_KEY` or `AWS_SECRET_ACCESS_KEY`
+- `REDSHIFT_SESSION_TOKEN` or `AWS_SESSION_TOKEN`
+- `REDSHIFT_SERVERLESS_ACCT_ID`
+- `REDSHIFT_SERVERLESS_WORK_GROUP`
+
+Notes:
+
+- Install Redshift runtime deps:
+  `pip install "slideflow-presentations[redshift]"`.
+- SSL is enabled by default.
+- Keep passwords and AWS secrets in environment variables or a secret manager,
+  not in committed YAML.
+- SlideFlow sets `application_name` to `Slideflow` by default for warehouse
+  query attribution.
+
 ## dbt on Databricks (`dbt`, preferred)
 
 This connector compiles a dbt project, resolves a model's compiled SQL, then executes it on Databricks.
@@ -234,6 +304,33 @@ BigQuery runtime options:
 - SlideFlow initializes the BigQuery client with `client_info.user_agent` set to
   `Slideflow` for request attribution in Google-side telemetry.
 
+## dbt on Redshift (`dbt`)
+
+This connector shape compiles a dbt project, resolves a model's compiled SQL,
+then executes it on Redshift.
+
+```yaml
+data_source:
+  type: "dbt"
+  name: "dbt_model_redshift"
+  model_alias: "monthly_revenue_by_region"
+  dbt:
+    package_url: "https://$GIT_TOKEN@github.com/org/analytics-dbt.git"
+    project_dir: "/tmp/dbt_project_workspace"
+    branch: "main"
+    target: "prod"
+  warehouse:
+    type: "redshift"
+    host: "example-cluster.abc123.us-east-1.redshift.amazonaws.com"
+    database: "analytics"
+    user: "reporting_user"
+    ssl: true
+```
+
+Redshift warehouse options mirror the direct `redshift` connector. Omit
+credential fields from YAML to use the `REDSHIFT_*` or `AWS_*` environment
+fallbacks listed above.
+
 ## dbt on DuckDB (`dbt`)
 
 This connector shape compiles a dbt project, resolves a model's compiled SQL,
@@ -304,7 +401,7 @@ Cache/compile tuning env vars:
 ## Recommended Workflow
 
 1. Start with local `csv`/`json` while designing charts and replacements.
-2. Move to `duckdb` or `databricks` once schema and logic are stable.
+2. Move to `duckdb`, `databricks`, or `redshift` once schema and logic are stable.
 3. Move to `dbt` when business logic should live in dbt models (`databricks_dbt` remains supported as legacy syntax).
 4. Run `slideflow validate` before `slideflow build` in CI/CD.
 
@@ -312,6 +409,8 @@ Cache/compile tuning env vars:
 
 - File connector errors: check file existence and relative path assumptions.
 - Databricks auth errors: verify all three Databricks env vars.
+- Redshift auth/config errors: verify database, host/cluster/serverless endpoint,
+  and either password auth or IAM region/identity settings.
 - dbt model not found: check `model_alias`, `branch`, and `target`.
 - dbt alias ambiguity: add `model_unique_id`, `model_package_name`, or `model_selector_name`.
 - dbt Git clone fails: verify token variable in `package_url` and repo access.

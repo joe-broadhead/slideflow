@@ -126,7 +126,7 @@ jobs:
       - name: Install optional connector dependencies (locked)
         run: |
           uv lock --check
-          uv sync --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --locked
+          uv sync --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --extra redshift --locked
 
       - name: Validate dependency resolution
         run: |
@@ -140,6 +140,8 @@ jobs:
           import git  # noqa: F401
           import google.cloud.bigquery  # noqa: F401
           import duckdb  # noqa: F401
+          import redshift_connector  # noqa: F401
+          import dbt.adapters.redshift  # noqa: F401
           print("Optional connector extras importability check passed.")
           PY
 
@@ -148,6 +150,7 @@ jobs:
           uv run python -m pytest -q \
             tests/test_bigquery_connector.py \
             tests/test_duckdb_connector.py \
+            tests/test_redshift_connector.py \
             tests/test_connectors_and_providers_unit.py \
             tests/test_dbt_sanitization.py
 

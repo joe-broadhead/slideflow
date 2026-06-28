@@ -22,6 +22,7 @@ Typical extras:
 - `pip install "slideflow-presentations[dbt]"` for `type: dbt` / `type: databricks_dbt`
 - `pip install "slideflow-presentations[bigquery]"` for BigQuery execution backends
 - `pip install "slideflow-presentations[duckdb]"` for DuckDB execution backends
+- `pip install "slideflow-presentations[redshift]"` for Redshift execution backends
 
 For chart image rendering, provide a Chrome/Chromium binary available to Kaleido.
 Headless environments still need a browser runtime present.
@@ -58,6 +59,10 @@ jobs:
       DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL }} # optional; falls back to DBT_ACCESS_TOKEN, then DBT_GIT_TOKEN
       BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }} # optional; for dbt warehouse.type=bigquery
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }} # optional; writes ADC file in reusable workflow
+      REDSHIFT_HOST: ${{ secrets.REDSHIFT_HOST }} # optional; for type=redshift/dbt warehouse.type=redshift
+      REDSHIFT_DATABASE: ${{ secrets.REDSHIFT_DATABASE }}
+      REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
+      REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
     with:
       config-file: config/weekly_exec_report.yml
       artifact-kind: presentation
@@ -87,7 +92,7 @@ Security notes:
 - Prefer pinning reusable workflow refs to a commit SHA.
 - Treat inherited or explicitly-mapped secrets as privileged; only call trusted workflows.
 - Keep secrets out of YAML files.
-- The reusable workflow installs `slideflow-install-extras` by default (`dbt,databricks,bigquery,duckdb`). Override this input if you need a narrower runtime footprint.
+- The reusable workflow installs `slideflow-install-extras` by default (`dbt,databricks,bigquery,duckdb,redshift`). Override this input if you need a narrower runtime footprint.
 
 Supported reusable-workflow secret mappings:
 
@@ -100,6 +105,11 @@ Supported reusable-workflow secret mappings:
 - `DBT_ENV_SECRET_GIT_CREDENTIAL` (optional; if omitted, reusable workflow falls back to `DBT_ACCESS_TOKEN`, then `DBT_GIT_TOKEN`)
 - `BIGQUERY_PROJECT` (optional; project id fallback for `warehouse.type: bigquery`)
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON` (optional; service-account JSON used to create `GOOGLE_APPLICATION_CREDENTIALS` file)
+- `REDSHIFT_HOST`, `REDSHIFT_PORT`, `REDSHIFT_DATABASE`, `REDSHIFT_USER`, `REDSHIFT_PASSWORD` (optional; password-auth Redshift fallbacks)
+- `REDSHIFT_IAM`, `REDSHIFT_DB_USER`, `REDSHIFT_CLUSTER_IDENTIFIER`, `REDSHIFT_REGION`, `REDSHIFT_PROFILE` (optional; Redshift IAM fallbacks)
+- `REDSHIFT_ACCESS_KEY_ID`, `REDSHIFT_SECRET_ACCESS_KEY`, `REDSHIFT_SESSION_TOKEN` (optional; Redshift-specific AWS credential fallbacks)
+- `REDSHIFT_SERVERLESS_ACCT_ID`, `REDSHIFT_SERVERLESS_WORK_GROUP` (optional; Redshift Serverless IAM fallbacks)
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION` (optional; AWS fallbacks for Redshift IAM)
 
 For `google_docs` provider runs with the reusable workflow, use `GOOGLE_SLIDEFLOW_CREDENTIALS`
 as the credentials secret mapping (or set `provider.config.credentials` directly in config).
@@ -184,6 +194,15 @@ If using `dbt` with `warehouse.type: bigquery`, also ensure:
 - BigQuery runtime dependencies are installed (`pip install "slideflow-presentations[bigquery]"`), and
 - project/auth settings are available via config and/or env (`BIGQUERY_PROJECT`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`).
 
+If using `redshift` or `dbt` with `warehouse.type: redshift`, also ensure:
+
+- Redshift runtime dependencies are installed (`pip install "slideflow-presentations[redshift]"`), and
+- password auth settings (`REDSHIFT_HOST`, `REDSHIFT_DATABASE`,
+  `REDSHIFT_USER`, `REDSHIFT_PASSWORD`) or IAM/serverless settings
+  (`REDSHIFT_IAM`, `REDSHIFT_CLUSTER_IDENTIFIER` or
+  `REDSHIFT_SERVERLESS_*`, `REDSHIFT_REGION`/`AWS_REGION`, and AWS identity
+  env vars/profile) are available.
+
 Private dbt repo example:
 
 ```yaml
@@ -207,6 +226,19 @@ data_source:
     type: bigquery
     project_id: my-gcp-project
     location: US
+
+# Redshift variant
+data_source:
+  type: dbt
+  model_alias: monthly_revenue_by_region
+  dbt:
+    package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+    project_dir: /tmp/dbt_project
+  warehouse:
+    type: redshift
+    host: example-cluster.abc123.us-east-1.redshift.amazonaws.com
+    database: analytics
+    user: reporting_user
 ```
 
 ## Cloud Run

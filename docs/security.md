@@ -127,6 +127,17 @@ Databricks connectors require:
 - `DATABRICKS_HTTP_PATH`
 - `DATABRICKS_ACCESS_TOKEN`
 
+## Redshift auth
+
+Redshift connectors support password auth and IAM/serverless auth. Prefer
+environment variables or secret-manager injection for all credentials:
+
+- password auth: `REDSHIFT_HOST`, `REDSHIFT_DATABASE`, `REDSHIFT_USER`,
+  `REDSHIFT_PASSWORD`
+- IAM auth: `REDSHIFT_IAM`, `REDSHIFT_CLUSTER_IDENTIFIER` or
+  `REDSHIFT_SERVERLESS_ACCT_ID`/`REDSHIFT_SERVERLESS_WORK_GROUP`,
+  `REDSHIFT_REGION`/`AWS_REGION`, and AWS identity env vars/profile
+
 ## dbt Git access
 
 For dbt package URLs with embedded token variable:

@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Redshift SQL data connector and composable `dbt` Redshift warehouse support,
+  including password auth, IAM/serverless env fallbacks, optional `redshift`
+  packaging extra, reusable workflow secret mappings, and CI optional-connector
+  coverage.
+
 ### Changed
 
 - Google Slides, Docs, and Sheets providers now support service-account JSON,

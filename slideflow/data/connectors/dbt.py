@@ -73,6 +73,7 @@ from slideflow.constants import Defaults
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
 from slideflow.data.connectors.bigquery import BigQuerySQLExecutor
 from slideflow.data.connectors.duckdb import DuckDBSQLExecutor
+from slideflow.data.connectors.redshift import RedshiftSQLExecutor
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import get_logger, log_data_operation, log_performance
 
@@ -1286,6 +1287,57 @@ class DBTDuckDBConnector(_DBTWarehouseConnectorBase):
         )
 
 
+class DBTRedshiftConnector(_DBTWarehouseConnectorBase):
+    """Connector that combines DBT model compilation with Redshift execution."""
+
+    host: Optional[str] = None
+    port: Optional[int] = None
+    database: Optional[str] = None
+    user: Optional[str] = None
+    password: Optional[str] = None
+    iam: Optional[bool] = None
+    db_user: Optional[str] = None
+    cluster_identifier: Optional[str] = None
+    region: Optional[str] = None
+    profile: Optional[str] = None
+    access_key_id: Optional[str] = None
+    secret_access_key: Optional[str] = None
+    session_token: Optional[str] = None
+    is_serverless: Optional[bool] = None
+    serverless_acct_id: Optional[str] = None
+    serverless_work_group: Optional[str] = None
+    ssl: Optional[bool] = None
+    sslmode: Optional[str] = None
+    timeout: Optional[int] = None
+    application_name: Optional[str] = None
+    connection_options: Optional[dict[str, Any]] = None
+
+    def _create_sql_executor(self) -> SQLExecutor:
+        return RedshiftSQLExecutor(
+            host=self.host,
+            port=self.port,
+            database=self.database,
+            user=self.user,
+            password=self.password,
+            iam=self.iam,
+            db_user=self.db_user,
+            cluster_identifier=self.cluster_identifier,
+            region=self.region,
+            profile=self.profile,
+            access_key_id=self.access_key_id,
+            secret_access_key=self.secret_access_key,
+            session_token=self.session_token,
+            is_serverless=self.is_serverless,
+            serverless_acct_id=self.serverless_acct_id,
+            serverless_work_group=self.serverless_work_group,
+            ssl=self.ssl,
+            sslmode=self.sslmode,
+            timeout=self.timeout,
+            application_name=self.application_name,
+            connection_options=self.connection_options,
+        )
+
+
 def _build_dbt_citation_entries(
     *,
     source_name: str,
@@ -1515,7 +1567,7 @@ class DBTProjectConfig(BaseModel):
 class DBTWarehouseConfig(BaseModel):
     """Warehouse execution backend for composable DBT sources."""
 
-    type: Literal["databricks", "bigquery", "duckdb"] = Field(
+    type: Literal["databricks", "bigquery", "duckdb", "redshift"] = Field(
         "databricks", description="Warehouse backend type"
     )
     project_id: Optional[str] = Field(
@@ -1564,6 +1616,60 @@ class DBTWarehouseConfig(BaseModel):
             "when warehouse.type is 'duckdb'."
         ),
     )
+    host: Optional[str] = Field(
+        None, description="Redshift host. Used when warehouse.type is 'redshift'."
+    )
+    port: Optional[int] = Field(
+        None,
+        ge=1,
+        le=65535,
+        description="Redshift port. Defaults to 5439 when omitted.",
+    )
+    user: Optional[str] = Field(
+        None, description="Redshift database user for non-IAM auth."
+    )
+    password: Optional[str] = Field(
+        None, description="Redshift database password for non-IAM auth."
+    )
+    iam: Optional[bool] = Field(None, description="Use Redshift IAM authentication.")
+    db_user: Optional[str] = Field(None, description="Redshift IAM db_user override.")
+    cluster_identifier: Optional[str] = Field(
+        None, description="Redshift cluster identifier for IAM auth."
+    )
+    region: Optional[str] = Field(None, description="AWS region for Redshift IAM.")
+    profile: Optional[str] = Field(None, description="AWS profile for Redshift IAM.")
+    access_key_id: Optional[str] = Field(
+        None, description="AWS access key id for Redshift IAM."
+    )
+    secret_access_key: Optional[str] = Field(
+        None, description="AWS secret access key for Redshift IAM."
+    )
+    session_token: Optional[str] = Field(
+        None, description="AWS session token for Redshift IAM."
+    )
+    is_serverless: Optional[bool] = Field(
+        None, description="Use Redshift Serverless endpoint resolution."
+    )
+    serverless_acct_id: Optional[str] = Field(
+        None, description="Redshift Serverless account id."
+    )
+    serverless_work_group: Optional[str] = Field(
+        None, description="Redshift Serverless workgroup."
+    )
+    ssl: Optional[bool] = Field(
+        None, description="Enable Redshift SSL; defaults to true when omitted."
+    )
+    sslmode: Optional[str] = Field(None, description="Redshift SSL mode.")
+    timeout: Optional[int] = Field(
+        None, gt=0, description="Redshift connection timeout seconds."
+    )
+    application_name: Optional[str] = Field(
+        None, description="Redshift application_name; defaults to Slideflow."
+    )
+    connection_options: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Advanced redshift_connector.connect options.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1597,8 +1703,8 @@ class DBTSourceConfig(BaseSourceConfig):
     dbt: DBTProjectConfig = Field(..., description="DBT project settings")
     warehouse: DBTWarehouseConfig = Field(..., description="Warehouse backend settings")
 
-    # BaseSourceConfig expects a connector_class; composable routing still
-    # resolves to DBTDatabricksConnector today.
+    # BaseSourceConfig expects a connector_class; get_connector handles
+    # warehouse-specific routing for composable dbt sources.
     connector_class: ClassVar[Type[DataConnector]] = DBTDatabricksConnector
 
     model_config = ConfigDict(extra="forbid")
@@ -1656,6 +1762,42 @@ class DBTSourceConfig(BaseSourceConfig):
                 database=self.warehouse.database or ":memory:",
                 read_only=self.warehouse.read_only,
                 file_search_path=self.warehouse.file_search_path,
+            )
+        if self.warehouse.type == "redshift":
+            return DBTRedshiftConnector(
+                model_alias=self.model_alias,
+                model_unique_id=self.model_unique_id,
+                model_package_name=self.model_package_name,
+                model_selector_name=self.model_selector_name,
+                package_url=self.dbt.package_url,
+                project_dir=self.dbt.project_dir,
+                profile_name=self.dbt.profile_name,
+                branch=self.dbt.branch,
+                target=self.dbt.target,
+                vars=self.dbt.vars,
+                compile=self.dbt.compile,
+                profiles_dir=self.dbt.profiles_dir,
+                host=self.warehouse.host,
+                port=self.warehouse.port,
+                database=self.warehouse.database,
+                user=self.warehouse.user,
+                password=self.warehouse.password,
+                iam=self.warehouse.iam,
+                db_user=self.warehouse.db_user,
+                cluster_identifier=self.warehouse.cluster_identifier,
+                region=self.warehouse.region,
+                profile=self.warehouse.profile,
+                access_key_id=self.warehouse.access_key_id,
+                secret_access_key=self.warehouse.secret_access_key,
+                session_token=self.warehouse.session_token,
+                is_serverless=self.warehouse.is_serverless,
+                serverless_acct_id=self.warehouse.serverless_acct_id,
+                serverless_work_group=self.warehouse.serverless_work_group,
+                ssl=self.warehouse.ssl,
+                sslmode=self.warehouse.sslmode,
+                timeout=self.warehouse.timeout,
+                application_name=self.warehouse.application_name,
+                connection_options=self.warehouse.connection_options,
             )
         raise DataSourceError(f"Unsupported DBT warehouse type '{self.warehouse.type}'")
 

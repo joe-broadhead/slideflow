@@ -30,7 +30,7 @@ Common causes:
 - missing Google credentials (`provider.config.credentials`, `GOOGLE_DOCS_CREDENTIALS`, `GOOGLE_SHEETS_CREDENTIALS`, or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
 - invalid template ID or target IDs (`slide.id` for `google_slides`, section marker ids for `google_docs`, tab names/cells for `google_sheets`)
 - unreadable CSV/JSON input path
-- query/auth issues for Databricks connectors
+- query/auth issues for Databricks or Redshift connectors
 
 For Google identity and Shared Drive setup, see
 [Google Service Accounts & Shared Drives](google-service-accounts-shared-drives.md).
@@ -72,6 +72,8 @@ Common causes:
 
 - missing Databricks auth env vars
 - missing BigQuery project/auth settings when using `warehouse.type: bigquery`
+- missing Redshift database/host/password auth settings, or missing IAM
+  region/cluster/serverless identity settings when using `warehouse.type: redshift`
 - invalid `package_url` or missing token env var used in URL
 - profile/target mismatch during dbt compile
 
@@ -111,6 +113,13 @@ And provide BigQuery auth via one of:
 - `warehouse.credentials_path`,
 - `warehouse.credentials_json`, or
 - Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`, workload identity, etc).
+
+For Redshift DBT execution, ensure `warehouse.database` or
+`REDSHIFT_DATABASE` is set. Password auth also needs `warehouse.host` or
+`REDSHIFT_HOST`, plus `warehouse.user`/`REDSHIFT_USER` and
+`warehouse.password`/`REDSHIFT_PASSWORD`. IAM auth needs `warehouse.iam: true`,
+`warehouse.region` or `REDSHIFT_REGION`/`AWS_REGION`, and either a cluster
+identifier or Redshift Serverless account/workgroup settings.
 
 ## NumPy binary-compatibility warnings
 

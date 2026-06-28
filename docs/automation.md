@@ -37,6 +37,10 @@ jobs:
       DBT_ENV_SECRET_GIT_CREDENTIAL: ${{ secrets.DBT_ENV_SECRET_GIT_CREDENTIAL }} # optional; falls back to DBT_ACCESS_TOKEN, then DBT_GIT_TOKEN
       BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }} # optional; for warehouse.type=bigquery
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }} # optional; writes ADC credentials file
+      REDSHIFT_HOST: ${{ secrets.REDSHIFT_HOST }} # optional; for type=redshift/dbt warehouse.type=redshift
+      REDSHIFT_DATABASE: ${{ secrets.REDSHIFT_DATABASE }}
+      REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
+      REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
     with:
       config-file: config/weekly_exec_report.yml
       artifact-kind: presentation
@@ -63,7 +67,7 @@ jobs:
 - `working-directory` (optional): Command working directory. Default `.`.
 - `python-version` (optional): Python version. Default `3.12`.
 - `slideflow-package-spec` (optional): Package to install. Default `slideflow-presentations`.
-- `slideflow-install-extras` (optional): Comma-separated extras to install with `slideflow-package-spec`. Default `dbt,databricks,bigquery,duckdb`.
+- `slideflow-install-extras` (optional): Comma-separated extras to install with `slideflow-package-spec`. Default `dbt,databricks,bigquery,duckdb,redshift`.
 - `extra-pip-packages` (optional): Newline-separated additional packages.
 - `run-pip-check` (optional): Run `pip check`. Default `true`.
 - `run-doctor` (optional): Run preflight doctor before validate/build (`slideflow doctor` for `presentation`, `slideflow sheets doctor` for `sheets`). Default `true`.
@@ -124,6 +128,11 @@ jobs:
 - `DBT_ENV_SECRET_GIT_CREDENTIAL` (optional; if omitted, reusable workflow falls back to `DBT_ACCESS_TOKEN`, then `DBT_GIT_TOKEN`)
 - `BIGQUERY_PROJECT` (optional; project-id fallback for `warehouse.type: bigquery`)
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON` (optional; creates `GOOGLE_APPLICATION_CREDENTIALS` file during workflow run)
+- `REDSHIFT_HOST`, `REDSHIFT_PORT`, `REDSHIFT_DATABASE`, `REDSHIFT_USER`, `REDSHIFT_PASSWORD` (optional; password-auth Redshift fallbacks)
+- `REDSHIFT_IAM`, `REDSHIFT_DB_USER`, `REDSHIFT_CLUSTER_IDENTIFIER`, `REDSHIFT_REGION`, `REDSHIFT_PROFILE` (optional; Redshift IAM fallbacks)
+- `REDSHIFT_ACCESS_KEY_ID`, `REDSHIFT_SECRET_ACCESS_KEY`, `REDSHIFT_SESSION_TOKEN` (optional; Redshift-specific AWS credential fallbacks)
+- `REDSHIFT_SERVERLESS_ACCT_ID`, `REDSHIFT_SERVERLESS_WORK_GROUP` (optional; Redshift Serverless IAM fallbacks)
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION` (optional; AWS fallbacks for Redshift IAM)
 - Callers can either pass those secrets explicitly or use `secrets: inherit` if the same names exist in the caller repository/org.
 - Your Slideflow config can continue to reference environment variables as usual.
 - For `google_slides` and `google_docs` builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
@@ -169,6 +178,22 @@ data_source:
     type: bigquery
     project_id: my-gcp-project
     location: US
+```
+
+Redshift variant:
+
+```yaml
+data_source:
+  type: dbt
+  model_alias: revenue_monthly
+  dbt:
+    package_url: https://$DBT_GIT_TOKEN@github.com/org/private-dbt-project.git
+    project_dir: /tmp/dbt_project
+  warehouse:
+    type: redshift
+    host: example-cluster.abc123.us-east-1.redshift.amazonaws.com
+    database: analytics
+    user: reporting_user
 ```
 
 If your dbt dependencies use `env_var('DBT_ENV_SECRET_GIT_CREDENTIAL')`, pass `DBT_ENV_SECRET_GIT_CREDENTIAL` as an optional secret (or rely on fallback to `DBT_ACCESS_TOKEN` / `DBT_GIT_TOKEN`).

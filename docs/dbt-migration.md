@@ -7,6 +7,8 @@ composable `type: dbt` configs, while keeping compatibility safe.
 
 - `type: databricks_dbt` remains supported.
 - `type: dbt` is the preferred shape for new development.
+- The composable `dbt` shape supports Databricks, BigQuery, DuckDB, and
+  Redshift warehouse execution.
 - Migration is optional and non-breaking.
 
 ## Side-by-Side Configs
@@ -116,6 +118,14 @@ BigQuery execution (`warehouse.type: bigquery`):
   - `warehouse.credentials_json`
   - Application Default Credentials (for example `GOOGLE_APPLICATION_CREDENTIALS`)
 
+Redshift execution (`warehouse.type: redshift`):
+
+- password auth from config or `REDSHIFT_HOST`, `REDSHIFT_DATABASE`,
+  `REDSHIFT_USER`, and `REDSHIFT_PASSWORD`
+- IAM auth from `warehouse.iam: true`, `warehouse.region` or
+  `REDSHIFT_REGION`/`AWS_REGION`, plus cluster/serverless settings and AWS
+  identity env vars/profile
+
 ## Common Migration Errors
 
 - `Ambiguous dbt model alias ...`
@@ -124,6 +134,9 @@ BigQuery execution (`warehouse.type: bigquery`):
   - Set `dbt.profiles_dir` or ensure `profiles.yml` exists in dbt project root.
 - `Missing BigQuery project id ...`
   - Set `warehouse.project_id` or BigQuery project env vars.
+- `Missing Redshift ...`
+  - Set `warehouse.database`, then either host/user/password auth settings or
+    IAM region and cluster/serverless settings.
 
 ## See Also
 
