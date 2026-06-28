@@ -15,7 +15,38 @@ Credential value can be:
 - Path to service-account JSON
 - Raw JSON payload
 
-Recommended: use environment variables in CI and avoid storing secrets in repo files.
+Recommended: use environment variables in CI and avoid storing secrets in repo
+files. If you use raw JSON, inject it through a secret manager or GitHub
+Secrets-backed environment variable; do not paste it into checked-in YAML.
+
+## Credential hygiene policy
+
+Do:
+
+- Store Google service-account JSON, OAuth client secrets, refresh tokens,
+  Databricks tokens, OpenAI/Gemini keys, dbt Git tokens, and BigQuery credential
+  JSON in GitHub Secrets, a platform secret manager, or an untracked local file.
+- Prefer `provider.config.credentials` as a path to an untracked local file for
+  local work, and prefer provider environment variables in CI.
+- Keep generated build JSON, doctor output, and live-test artifacts out of
+  public issue comments unless they have been reviewed for sensitive IDs.
+- Rotate credentials periodically and after any suspected exposure.
+
+Do not:
+
+- Commit `.env` files, `client_secret*.json`, service-account JSON,
+  refresh-token exports, private keys, or raw credential JSON in YAML.
+- Put long-lived credentials in examples, docs, screenshots, or generated
+  artifacts.
+- Share generated chart images publicly unless `chart_image_sharing_mode:
+  public` is an explicit, reviewed exception.
+
+Local and CI checks:
+
+```bash
+uv run python scripts/ci/check_secret_hygiene.py
+uv run pre-commit run detect-secrets --all-files
+```
 
 ## Required scopes
 
@@ -105,6 +136,22 @@ The repository includes a dedicated `Audit` workflow that runs:
 
 Both reports are uploaded as artifacts for triage.
 
+The main `CI` and `Release` workflows also run pre-commit, which includes:
+
+- `scripts/ci/check_secret_hygiene.py` for SlideFlow-specific credential file
+  names and token shapes
+- `detect-secrets` for private keys, high-entropy strings, and provider tokens
+
+Repository controls:
+
+- GitHub secret scanning: enabled
+- GitHub secret scanning push protection: enabled
+- GitHub secret scanning non-provider patterns: disabled
+- GitHub secret scanning validity checks: disabled
+
+Keep `check_secret_hygiene.py` and `detect-secrets` as local/CI controls for
+credential classes not covered by repository-level secret scanning.
+
 Audit enforcement policy:
 
 - Dependency vulnerabilities are blocking for pull requests, pushes, schedules,
@@ -154,10 +201,23 @@ Use OIDC trusted publishing instead of API tokens.
 3. Add required reviewers for release protection if needed.
 4. Keep `id-token: write` enabled in release workflow permissions.
 
+## Secret incident handling
+
+1. Revoke or rotate the exposed credential at the provider first.
+2. Remove the secret from the working tree and from generated artifacts.
+3. If the secret reached Git history, coordinate history purging and force-push
+   only after maintainers approve the repository impact.
+4. Open a private advisory or security issue with affected provider, scope,
+   exposure window, rotation evidence, and follow-up owner.
+5. Re-run local checks, pre-commit, and GitHub secret-scanning alerts; keep the
+   issue open until alerts are closed or explicitly dismissed with rationale.
+
 ## Hardening checklist
 
 - [ ] Secrets only via environment or secret manager
 - [ ] No credentials committed to Git
+- [ ] GitHub secret scanning and push protection enabled
+- [ ] `scripts/ci/check_secret_hygiene.py` and `detect-secrets` passing
 - [ ] Pre-commit hooks installed and passing (`uv run pre-commit run --all-files`)
 - [ ] `slideflow validate` enforced in CI before build/release
 - [ ] Audit workflow reviewed weekly

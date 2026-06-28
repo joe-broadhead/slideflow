@@ -31,7 +31,7 @@ source .venv/bin/activate
 
 SlideFlow accepts credentials via:
 
-1. `provider.config.credentials` in YAML
+1. `provider.config.credentials` in YAML as a path to an untracked file
 2. `GOOGLE_DOCS_CREDENTIALS` environment variable (for `google_docs`)
 3. `GOOGLE_SHEETS_CREDENTIALS` environment variable (for `google_sheets`)
 4. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable (shared fallback)
@@ -39,7 +39,7 @@ SlideFlow accepts credentials via:
 Environment credential values support either:
 
 - Path to service-account JSON file
-- Raw JSON string content
+- Raw JSON string content injected by a secret manager or GitHub Secrets
 
 Example:
 
@@ -51,6 +51,8 @@ export GOOGLE_SHEETS_CREDENTIALS=/absolute/path/service-account.json
 
 For production service-account and Shared Drive setup, follow the end-to-end
 guide: [Google Service Accounts & Shared Drives](google-service-accounts-shared-drives.md).
+Do not commit raw service-account JSON, OAuth client secrets, refresh tokens, or
+`.env` files.
 
 ## Create a template deck
 
@@ -73,7 +75,7 @@ You will need:
 provider:
   type: "google_slides"
   config:
-    credentials: "/path/to/credentials.json"
+    credentials: null # set GOOGLE_SLIDEFLOW_CREDENTIALS or use an untracked path
     template_id: "your_template_presentation_id"
 
 presentation:

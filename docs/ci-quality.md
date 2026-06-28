@@ -7,6 +7,8 @@
   - enforces lock freshness with `uv lock --check`
   - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
   - runs `uv pip check`
+  - runs pre-commit on Python 3.12, including `detect-secrets` and
+    `scripts/ci/check_secret_hygiene.py`
   - runs NumPy/Pandas ABI compatibility check (`scripts/ci/check_numpy_binary_compatibility.py`)
   - runs pinned `black --check` via `uvx --from black==26.3.1`, plus `ruff check` and `mypy`
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
@@ -79,6 +81,7 @@ uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --ext
 source .venv/bin/activate
 uv lock --check
 uv pip check
+uv run python scripts/ci/check_secret_hygiene.py
 uv run pip-audit
 actionlint
 uv run python scripts/ci/check_numpy_binary_compatibility.py

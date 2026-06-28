@@ -11,8 +11,10 @@ It can create a blank deck or copy a template, insert chart images, run text/tab
 2. Create a service account.
 3. Share the template deck (and destination Drive folder) with that service account email.
 4. Supply credentials via either:
-   - `provider.config.credentials` in YAML (file path or raw JSON), or
+   - `provider.config.credentials` in YAML as a path to an untracked file, or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable.
+
+Do not commit raw service-account JSON or `.env` files.
 
 For production Shared Drive setup and command-by-command service-account
 bootstrap, see [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
@@ -38,7 +40,7 @@ Use that object ID in `presentation.slides[].id`.
 provider:
   type: "google_slides"
   config:
-    credentials: "/path/to/service-account.json"
+    credentials: null # set GOOGLE_SLIDEFLOW_CREDENTIALS or use an untracked path
     template_id: "<template_presentation_id>"
     presentation_folder_id: "<folder_for_output_decks>"
     drive_folder_id: "<folder_for_chart_images>"

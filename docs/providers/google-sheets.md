@@ -14,9 +14,11 @@ schema with tab-level write definitions and optional AI summary rules.
 3. Share destination Drive folders (and existing target sheet, if reusing one)
    with that service account.
 4. Provide credentials via:
-   - `provider.config.credentials`, or
+   - `provider.config.credentials` as a path to an untracked file, or
    - `GOOGLE_SHEETS_CREDENTIALS`, or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback).
+
+Do not commit raw service-account JSON or `.env` files.
 
 ## Provider Config
 
@@ -24,7 +26,7 @@ schema with tab-level write definitions and optional AI summary rules.
 provider:
   type: "google_sheets"
   config:
-    credentials: "/path/to/service-account.json"
+    credentials: null # set GOOGLE_SHEETS_CREDENTIALS or use an untracked path
     spreadsheet_id: "<existing_sheet_id>"      # optional; reuse instead of create
     drive_folder_id: "<drive_folder_id>"       # optional; move created sheet
     share_with:

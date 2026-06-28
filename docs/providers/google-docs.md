@@ -16,9 +16,11 @@ It reuses `presentation.slides[]` from the core schema:
 2. Create a service account.
 3. Share the template document (and destination Drive folders) with that service account.
 4. Provide credentials via:
-   - `provider.config.credentials` in YAML, or
+   - `provider.config.credentials` in YAML as a path to an untracked file, or
    - `GOOGLE_DOCS_CREDENTIALS`, or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback).
+
+Do not commit raw service-account JSON or `.env` files.
 
 For production Shared Drive setup and service-account bootstrap commands, see
 [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
@@ -45,7 +47,7 @@ Rules:
 provider:
   type: "google_docs"
   config:
-    credentials: "/path/to/service-account.json"
+    credentials: null # set GOOGLE_DOCS_CREDENTIALS or use an untracked path
     template_id: "<google_docs_template_id>"
     document_folder_id: "<folder_for_output_docs>"
     drive_folder_id: "<folder_for_chart_images>"
