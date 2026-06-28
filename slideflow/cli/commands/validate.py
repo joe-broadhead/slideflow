@@ -282,6 +282,50 @@ def _resolve_template_ids_for_contract_check(
     )
 
 
+def _read_powerpoint_template_paths_from_params(params_path: Path) -> List[Path]:
+    """Read unique PowerPoint template paths from params CSV."""
+    template_paths: Set[Path] = set()
+
+    with params_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if "template_path" not in (reader.fieldnames or []):
+            raise ValueError(
+                f"Missing 'template_path' column in params file: {params_path}"
+            )
+        for row in reader:
+            template_path = (row.get("template_path") or "").strip()
+            if template_path:
+                template_paths.add(Path(template_path).expanduser())
+
+    if not template_paths:
+        raise ValueError(
+            f"No template_path values found in params file: {params_path}. "
+            "Provide at least one template_path row."
+        )
+
+    return sorted(template_paths, key=lambda path: str(path))
+
+
+def _resolve_powerpoint_template_paths_for_contract_check(
+    presentation_config: PresentationConfig, params_path: Optional[Path]
+) -> List[Path]:
+    """Resolve PowerPoint template paths from params CSV or provider config."""
+    if params_path is not None:
+        return _read_powerpoint_template_paths_from_params(params_path)
+
+    provider_config = getattr(presentation_config.provider, "config", {})
+    if isinstance(provider_config, dict):
+        template_path = provider_config.get("template_path")
+        if isinstance(template_path, (str, Path)) and str(template_path).strip():
+            return [Path(template_path).expanduser()]
+
+    raise ValueError(
+        "No PowerPoint template paths available for provider contract check. "
+        "Provide --params-path with a 'template_path' column or set "
+        "provider.config.template_path."
+    )
+
+
 def _extract_slide_text_map(presentation_payload: Dict[str, Any]) -> Dict[str, str]:
     """Extract concatenated text content for each slide object ID."""
     slide_text_map: Dict[str, str] = {}
@@ -561,6 +605,140 @@ def _extract_google_docs_sections(
     return {"sections": sections, "duplicate_markers": duplicate_markers}
 
 
+def _iter_pptx_text_frames(shapes: Any) -> Any:
+    """Yield text frames from PowerPoint shapes, including table cells/groups."""
+    for shape in shapes:
+        if getattr(shape, "has_text_frame", False):
+            yield shape.text_frame
+
+        if getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                for cell in row.cells:
+                    yield cell.text_frame
+
+        child_shapes = getattr(shape, "shapes", None)
+        if child_shapes is not None:
+            yield from _iter_pptx_text_frames(child_shapes)
+
+
+def _extract_pptx_slide_text(slide: Any) -> str:
+    chunks: List[str] = []
+    for text_frame in _iter_pptx_text_frames(slide.shapes):
+        for paragraph in text_frame.paragraphs:
+            chunks.append(paragraph.text)
+    return "\n".join(chunks)
+
+
+def _resolve_pptx_contract_slide_text(
+    slides: List[Any], slide_id: str, slide_id_mode: str
+) -> Optional[str]:
+    """Resolve a configured PowerPoint slide ID to extracted slide text."""
+    if slide_id_mode in {"auto", "index"}:
+        try:
+            one_based_index = int(str(slide_id).strip())
+        except ValueError:
+            one_based_index = -1
+        if 1 <= one_based_index <= len(slides):
+            return _extract_pptx_slide_text(slides[one_based_index - 1])
+        if slide_id_mode == "index":
+            return None
+
+    if slide_id_mode in {"auto", "native"}:
+        for slide in slides:
+            if str(getattr(slide, "slide_id", "")) == str(slide_id):
+                return _extract_pptx_slide_text(slide)
+
+    return None
+
+
+def _run_powerpoint_provider_contract_check(
+    presentation_config: PresentationConfig,
+    params_path: Optional[Path],
+) -> Dict[str, Any]:
+    """Validate configured slide IDs/placeholders against local PPTX templates."""
+    try:
+        from pptx import Presentation as PptxPresentation
+    except ImportError as error:
+        raise ValueError(
+            "PowerPoint provider contract checks require python-pptx. "
+            "Install with slideflow-presentations[powerpoint]."
+        ) from error
+
+    template_paths = _resolve_powerpoint_template_paths_for_contract_check(
+        presentation_config, params_path
+    )
+    expected_contract = _collect_expected_contract(presentation_config)
+    provider_config = getattr(presentation_config.provider, "config", {})
+    slide_id_mode = (
+        provider_config.get("slide_id_mode", "auto")
+        if isinstance(provider_config, dict)
+        else "auto"
+    )
+    if slide_id_mode not in {"auto", "index", "native"}:
+        slide_id_mode = "auto"
+
+    issues: List[Dict[str, Any]] = []
+    checked_templates = 0
+
+    for template_path in template_paths:
+        template_ref = str(template_path)
+        try:
+            presentation = PptxPresentation(str(template_path))
+            slides = list(presentation.slides)
+            checked_templates += 1
+        except Exception as error:
+            issues.append(
+                {
+                    "type": "template_fetch_failed",
+                    "template_id": template_ref,
+                    "slide_id": None,
+                    "placeholder": None,
+                    "detail": _first_error_line(error),
+                }
+            )
+            continue
+
+        for slide_id, placeholders in expected_contract.items():
+            slide_text = _resolve_pptx_contract_slide_text(
+                slides=slides,
+                slide_id=slide_id,
+                slide_id_mode=str(slide_id_mode),
+            )
+            if slide_text is None:
+                issues.append(
+                    {
+                        "type": "missing_slide",
+                        "template_id": template_ref,
+                        "slide_id": slide_id,
+                        "placeholder": None,
+                        "detail": "Slide id is not present in PowerPoint template",
+                    }
+                )
+                continue
+
+            for placeholder in sorted(placeholders):
+                if placeholder not in slide_text:
+                    issues.append(
+                        {
+                            "type": "missing_placeholder",
+                            "template_id": template_ref,
+                            "slide_id": slide_id,
+                            "placeholder": placeholder,
+                            "detail": "Placeholder not found on slide text",
+                        }
+                    )
+
+    return {
+        "enabled": True,
+        "provider_type": presentation_config.provider.type,
+        "auth_mode": "local",
+        "checked_templates": checked_templates,
+        "template_ids": [str(path) for path in template_paths],
+        "checked_slides": sorted(expected_contract.keys()),
+        "issues": issues,
+    }
+
+
 def _run_google_docs_provider_contract_check(
     presentation_config: PresentationConfig,
     contract_client: Any,
@@ -702,14 +880,20 @@ def validate_command(
         typer.Option(
             "--params-path",
             "-f",
-            help="Optional CSV file used for provider contract checks (expects template_id column)",
+            help=(
+                "Optional CSV file used for provider contract checks "
+                "(template_id for Google providers, template_path for PowerPoint)"
+            ),
         ),
     ] = None,
     provider_contract_check: Annotated[
         bool,
         typer.Option(
             "--provider-contract-check",
-            help="Run provider-aware contract checks (Google Slides or Google Docs templates)",
+            help=(
+                "Run provider-aware contract checks "
+                "(Google Slides, Google Docs, or PowerPoint templates)"
+            ),
         ),
     ] = False,
     provider_contract_full_auth_fallback: Annotated[
@@ -748,8 +932,9 @@ def validate_command(
         params_path: Optional CSV path for provider contract checks. Must include
             a `template_id` column when used.
         provider_contract_check: When true, runs provider-aware contract checks
-            for Google Slides (slide IDs/placeholders) and Google Docs
-            (section markers/placeholders).
+            for Google Slides (slide IDs/placeholders), Google Docs
+            (section markers/placeholders), and PowerPoint (slide
+            indexes/native IDs/placeholders).
         provider_contract_full_auth_fallback: When true, allows contract checks
             to instantiate the full provider if least-privilege read-only auth
             initialization fails.
@@ -832,28 +1017,35 @@ def validate_command(
 
         if provider_contract_check:
             provider_type = presentation_config.provider.type
-            if provider_type not in ("google_slides", "google_docs"):
+            if provider_type not in ("google_slides", "google_docs", "powerpoint"):
                 raise ValueError(
                     "Provider contract check is currently only supported for "
-                    "provider types 'google_slides' and 'google_docs'."
+                    "provider types 'google_slides', 'google_docs', and 'powerpoint'."
                 )
 
-            contract_client = _create_google_contract_check_client(
-                presentation_config,
-                allow_full_auth_fallback=provider_contract_full_auth_fallback,
-            )
+            if provider_type == "powerpoint":
+                provider_contract_summary = _run_powerpoint_provider_contract_check(
+                    presentation_config=presentation_config,
+                    params_path=params_path,
+                )
+            else:
+                contract_client = _create_google_contract_check_client(
+                    presentation_config,
+                    allow_full_auth_fallback=provider_contract_full_auth_fallback,
+                )
             if provider_type == "google_slides":
                 provider_contract_summary = _run_google_provider_contract_check(
                     presentation_config=presentation_config,
                     contract_client=contract_client,
                     params_path=params_path,
                 )
-            else:
+            elif provider_type == "google_docs":
                 provider_contract_summary = _run_google_docs_provider_contract_check(
                     presentation_config=presentation_config,
                     contract_client=contract_client,
                     params_path=params_path,
                 )
+            assert provider_contract_summary is not None
             if provider_contract_summary["issues"]:
                 raise ProviderContractValidationError(
                     "Provider contract validation failed. "

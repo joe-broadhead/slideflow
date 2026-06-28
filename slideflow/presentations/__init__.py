@@ -157,6 +157,7 @@ from slideflow.presentations.positioning import (
 )
 from slideflow.presentations.providers.google_docs import GoogleDocsProvider
 from slideflow.presentations.providers.google_slides import GoogleSlidesProvider
+from slideflow.presentations.providers.powerpoint import PowerPointProvider
 
 __all__ = [
     # Base classes
@@ -181,6 +182,7 @@ __all__ = [
     "PresentationBuilder",
     "GoogleSlidesProvider",
     "GoogleDocsProvider",
+    "PowerPointProvider",
     # Positioning utilities
     "compute_chart_dimensions",
     "safe_eval_expression",

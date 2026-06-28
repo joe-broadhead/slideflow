@@ -107,6 +107,7 @@ nav:
       - Google Sheets Provider: providers/google-sheets.md
       - Google Docs Provider: providers/google-docs.md
       - Google Slides Provider: providers/google-slides.md
+      - PowerPoint Provider: providers/powerpoint.md
       - Data Connectors: data-connectors.md
       - DBT Migration: dbt-migration.md
       - Data Transforms: data-transforms.md

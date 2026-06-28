@@ -5,7 +5,7 @@
 - `CI` (`.github/workflows/ci.yml`)
   - runs blocking GitHub workflow linting with `actionlint`
   - enforces lock freshness with `uv lock --check`
-  - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
+  - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --extra powerpoint --locked`)
   - runs `uv pip check`
   - runs pre-commit on Python 3.12, including `detect-secrets` and
     `scripts/ci/check_secret_hygiene.py`
@@ -31,7 +31,7 @@
   - publishes to PyPI first
   - creates tag + GitHub release only after publish succeeds
 - `Audit` (`.github/workflows/audit.yml`)
-  - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, `duckdb`, and `redshift` extras
+  - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, `duckdb`, `redshift`, and `powerpoint` extras
   - runs blocking `pip-audit` from that locked environment
   - runs `bandit`
   - uploads audit reports as artifacts
@@ -79,7 +79,7 @@
 ## Required local checks before PR
 
 ```bash
-uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --extra redshift --locked
+uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --extra redshift --extra powerpoint --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check

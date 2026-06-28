@@ -57,7 +57,7 @@ jobs:
       - name: Install project and test dependencies (locked)
         run: |
           uv lock --check
-          uv sync --extra dev --extra ai --locked
+          uv sync --extra dev --extra ai --extra powerpoint --locked
 
       - name: Validate dependency resolution
         run: |
@@ -126,7 +126,7 @@ jobs:
       - name: Install optional connector dependencies (locked)
         run: |
           uv lock --check
-          uv sync --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --extra redshift --locked
+          uv sync --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --extra redshift --extra powerpoint --locked
 
       - name: Validate dependency resolution
         run: |
@@ -140,6 +140,7 @@ jobs:
           import git  # noqa: F401
           import google.cloud.bigquery  # noqa: F401
           import duckdb  # noqa: F401
+          import pptx  # noqa: F401
           import redshift_connector  # noqa: F401
           import dbt.adapters.redshift  # noqa: F401
           print("Optional connector extras importability check passed.")
@@ -207,6 +208,8 @@ jobs:
             --extra dbt \
             --extra bigquery \
             --extra duckdb \
+            --extra redshift \
+            --extra powerpoint \
             --locked
 
       - name: Run pip-audit

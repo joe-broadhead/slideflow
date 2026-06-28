@@ -971,6 +971,150 @@ def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypa
     ]
 
 
+def test_validate_powerpoint_provider_contract_check_success(tmp_path, monkeypatch):
+    pptx_module = pytest.importorskip("pptx")
+    stub_build_validate_cli_output(monkeypatch)
+
+    template_path = tmp_path / "template.pptx"
+    prs = pptx_module.Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    slide.shapes.add_textbox(100000, 100000, 3000000, 500000).text = "Hello {{NAME}}"
+    prs.save(template_path)
+
+    slide_spec = types.SimpleNamespace(
+        id="1",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{NAME}}"})],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(
+                type="powerpoint",
+                config={
+                    "template_path": str(template_path),
+                    "output_dir": str(tmp_path),
+                },
+            ),
+            presentation=types.SimpleNamespace(name="Demo", slides=[slide_spec]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "validate-powerpoint-contract.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: powerpoint\n"
+        "  config:\n"
+        f"    template_path: {template_path}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    validate_command_module.validate_command(
+        config_file=config_file,
+        registry_paths=None,
+        output_json=output_file,
+        params_path=None,
+        provider_contract_check=True,
+    )
+
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "success"
+    assert payload["provider_contract"]["auth_mode"] == "local"
+    assert payload["provider_contract"]["template_ids"] == [str(template_path)]
+
+
+def test_validate_powerpoint_provider_contract_check_failure(tmp_path, monkeypatch):
+    pptx_module = pytest.importorskip("pptx")
+    stub_build_validate_cli_output(monkeypatch)
+
+    template_path = tmp_path / "template.pptx"
+    prs = pptx_module.Presentation()
+    prs.slides.add_slide(prs.slide_layouts[6])
+    prs.save(template_path)
+
+    slide_spec = types.SimpleNamespace(
+        id="1",
+        replacements=[types.SimpleNamespace(config={"placeholder": "{{NAME}}"})],
+        charts=[],
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(
+                type="powerpoint",
+                config={
+                    "template_path": str(template_path),
+                    "output_dir": str(tmp_path),
+                },
+            ),
+            presentation=types.SimpleNamespace(name="Demo", slides=[slide_spec]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module.PresentationBuilder,
+        "_build_slide",
+        staticmethod(lambda _spec: None),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "validate-powerpoint-contract-failed.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: powerpoint\n"
+        "  config:\n"
+        f"    template_path: {template_path}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    with pytest.raises(validate_command_module.typer.Exit) as exc_info:
+        validate_command_module.validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+            params_path=None,
+            provider_contract_check=True,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert payload["provider_contract"]["issues"][0]["type"] == "missing_placeholder"
+
+
 def test_validate_provider_contract_check_writes_failure_json(tmp_path, monkeypatch):
     stub_build_validate_cli_output(monkeypatch)
     _force_readonly_auth_failure(monkeypatch)
@@ -1132,7 +1276,7 @@ def test_validate_provider_contract_check_requires_google_provider(
     payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert payload["status"] == "error"
     assert (
-        "provider types 'google_slides' and 'google_docs'"
+        "provider types 'google_slides', 'google_docs', and 'powerpoint'"
         in payload["error"]["message"]
     )
 

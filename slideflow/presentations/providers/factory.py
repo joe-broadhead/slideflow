@@ -47,6 +47,10 @@ from slideflow.presentations.providers.google_slides import (
     GoogleSlidesProvider,
     GoogleSlidesProviderConfig,
 )
+from slideflow.presentations.providers.powerpoint import (
+    PowerPointProvider,
+    PowerPointProviderConfig,
+)
 from slideflow.utilities.exceptions import ConfigurationError
 
 provider_registry = create_class_registry(
@@ -58,6 +62,8 @@ provider_registry.register_class("google_slides", GoogleSlidesProvider)
 config_registry.register_class("google_slides", GoogleSlidesProviderConfig)
 provider_registry.register_class("google_docs", GoogleDocsProvider)
 config_registry.register_class("google_docs", GoogleDocsProviderConfig)
+provider_registry.register_class("powerpoint", PowerPointProvider)
+config_registry.register_class("powerpoint", PowerPointProviderConfig)
 
 
 class ProviderFactory:
