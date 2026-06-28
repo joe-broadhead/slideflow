@@ -18,6 +18,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Presentation builds now resolve chart templates with a build-scoped
   `TemplateEngine`, so concurrent builds with different `template_paths` do not
   mutate shared template state.
+- Security and release docs now spell out how hardening PRs reconcile
+  Dependabot alerts and superseded dependency-update PRs after the patched
+  lockfile reaches the default branch.
 
 ### Fixed
 

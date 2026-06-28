@@ -112,6 +112,28 @@ Audit enforcement policy:
 - Static Bandit findings remain advisory while existing low-signal findings are
   triaged and converted into explicit suppressions or code changes.
 
+Default-branch dependency alert closure:
+
+- Treat the locked all-extras `pip-audit` result as the branch-side proof that a
+  dependency vulnerability is fixed.
+- GitHub Dependabot alerts are considered closed only after the patched
+  `uv.lock` reaches the default branch and GitHub reports the alert fixed.
+- Before merging a security or hardening PR, list the open Dependabot alerts and
+  dependency PRs it supersedes, merges, or intentionally leaves open.
+- After the merge, re-check open Dependabot alerts and close superseded
+  Dependabot PRs with a comment that points at the fixing PR.
+- If any alert remains open after the default-branch merge, keep a follow-up
+  issue with the alert IDs, affected package, manifest, patched version, and
+  remaining action.
+
+Useful checks:
+
+```bash
+uv run pip-audit --progress-spinner off
+gh api '/repos/OWNER/REPO/dependabot/alerts?state=open' --paginate
+gh pr list --author app/dependabot --state open
+```
+
 Action pinning policy:
 
 - GitHub-maintained actions are version-pinned by major (`@vN`) and updated

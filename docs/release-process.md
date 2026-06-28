@@ -114,6 +114,14 @@ uv run mkdocs build --strict
 8. Push and monitor `CI`, `Docs`, and `Release` workflows.
 9. After release completion, merge the release result back to `master` and verify
    `git merge-base --is-ancestor vX.Y.Z master`.
+10. For release or hardening PRs that update vulnerable dependencies, record
+    which Dependabot PRs are superseded or merged, then verify after the
+    default-branch merge that the related Dependabot alerts are fixed.
+
+```bash
+gh api '/repos/OWNER/REPO/dependabot/alerts?state=open' --paginate
+gh pr list --author app/dependabot --state open
+```
 
 ## PyPI trusted publishing setup
 

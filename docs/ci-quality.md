@@ -112,6 +112,12 @@ uv run bash scripts/ci/run_quickstart_smoke.sh
 - Patch/minor updates are grouped to reduce review load.
 - Major updates are reviewed separately and merged deliberately.
 - Auto-merge is disabled by default; every dependency PR must pass full CI and maintainer review.
+- Security dependency fixes can land through either a focused Dependabot PR or a
+  broader hardening PR, but alerts are not treated as closed until the fixed
+  lockfile is on the default branch and GitHub reports no related open alert.
+- When a hardening PR supersedes open Dependabot PRs, capture the affected PR
+  numbers in the hardening PR description and close the superseded PRs after the
+  default-branch alert check passes.
 
 ## Branching policy
 
