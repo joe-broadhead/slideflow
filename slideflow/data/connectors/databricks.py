@@ -49,7 +49,7 @@ from pydantic import ConfigDict, Field
 from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.constants import Defaults, Environment
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line, safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import (
     get_logger,
@@ -59,6 +59,7 @@ from slideflow.utilities.logging import (
 
 logger = get_logger(__name__)
 
+_databricks_sql: Any
 try:
     from databricks import sql as _databricks_sql
 except ImportError:  # pragma: no cover - exercised in optional-dependency tests
@@ -297,7 +298,7 @@ class DatabricksConnector(DataConnector):
                 category = self._categorize_connect_error(error)
                 raise DatabricksConnectorError(
                     category,
-                    f"Failed to connect to Databricks ({safe_error_line(error)})",
+                    f"Failed to connect to Databricks ({redacted_error_line(error)})",
                 ) from error
         return self._connection
 
@@ -375,7 +376,7 @@ class DatabricksConnector(DataConnector):
                 if isinstance(e, DatabricksConnectorError)
                 else DatabricksConnectorError(
                     self._categorize_error(e),
-                    f"Databricks query failed ({safe_error_line(e)})",
+                    f"Databricks query failed ({redacted_error_line(e)})",
                 )
             )
             log_api_operation(

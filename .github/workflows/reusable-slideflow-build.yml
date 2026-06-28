@@ -415,10 +415,121 @@ jobs:
           emit_json_output() {
             local key="$1"
             local file="$2"
+            local summary_file="${RUNNER_TEMP}/${key}-summary.json"
+
+            if ! python - "$file" > "$summary_file" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          REDACTION_HELPER_AVAILABLE = True
+          try:
+              from slideflow.utilities.redaction import redact_value
+          except Exception:
+              REDACTION_HELPER_AVAILABLE = False
+
+              def redact_value(value):
+                  return value
+
+          SAFE_SUMMARY_KEYS = {
+              "append_tabs",
+              "charts",
+              "failed_errors",
+              "failed_warnings",
+              "idempotent_skips",
+              "passed",
+              "provider_type",
+              "replace_tabs",
+              "replacements",
+              "slides",
+              "summaries",
+              "summaries_failed",
+              "summaries_succeeded",
+              "summaries_total",
+              "tabs",
+              "tabs_failed",
+              "tabs_succeeded",
+              "tabs_total",
+              "total",
+          }
+          TOP_LEVEL_KEYS = {
+              "chart_image_cleanup_failed_count",
+              "citations_emitted_sources",
+              "citations_enabled",
+              "citations_total_sources",
+              "citations_truncated",
+              "command",
+              "dry_run",
+              "generated_presentations",
+              "status",
+              "strict",
+              "total_presentations",
+          }
+
+          path = Path(sys.argv[1])
+          if not path.is_file() or path.stat().st_size == 0:
+              payload = {}
+          else:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+
+          summary = {key: payload[key] for key in TOP_LEVEL_KEYS if key in payload}
+
+          source_summary = payload.get("summary")
+          if isinstance(source_summary, dict):
+              summary["summary"] = {
+                  key: source_summary[key]
+                  for key in SAFE_SUMMARY_KEYS
+                  if key in source_summary
+              }
+
+          runtime = payload.get("runtime")
+          if isinstance(runtime, dict):
+              summary["runtime"] = {
+                  key: runtime[key]
+                  for key in ("threads", "requests_per_second")
+                  if key in runtime
+              }
+
+          error = payload.get("error")
+          if isinstance(error, dict):
+              error_summary = {key: error[key] for key in ("code",) if key in error}
+              if REDACTION_HELPER_AVAILABLE and isinstance(error.get("message"), str):
+                  error_summary["message"] = error["message"]
+              elif "message" in error:
+                  error_summary["message"] = (
+                      "Redacted because the Slideflow redaction helper is unavailable."
+                  )
+              summary["error"] = error_summary
+
+          provider_contract = payload.get("provider_contract")
+          if isinstance(provider_contract, dict):
+              provider_contract_summary = {
+                  key: provider_contract[key]
+                  for key in ("status", "slides_checked")
+                  if key in provider_contract
+              }
+              for key in ("missing_slides", "missing_placeholders"):
+                  value = provider_contract.get(key)
+                  if isinstance(value, list):
+                      provider_contract_summary[f"{key}_count"] = len(value)
+              summary["provider_contract"] = provider_contract_summary
+
+          print(
+              json.dumps(
+                  redact_value(summary),
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+          )
+          PY
+            then
+              printf '{}\n' > "$summary_file"
+            fi
+
             {
               echo "${key}<<EOF"
-              if [[ -s "$file" ]]; then
-                cat "$file"
+              if [[ -s "$summary_file" ]]; then
+                cat "$summary_file"
               else
                 echo "{}"
               fi
@@ -438,7 +549,7 @@ jobs:
           path: |
             ${{ runner.temp }}/slideflow-build.log
             ${{ runner.temp }}/slideflow-presentation-urls.txt
-            ${{ runner.temp }}/slideflow-doctor-result.json
-            ${{ runner.temp }}/slideflow-validate-result.json
-            ${{ runner.temp }}/slideflow-build-result.json
+            ${{ runner.temp }}/doctor_result_json-summary.json
+            ${{ runner.temp }}/validate_result_json-summary.json
+            ${{ runner.temp }}/build_result_json-summary.json
           if-no-files-found: ignore

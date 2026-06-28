@@ -54,6 +54,8 @@ from slideflow.presentations import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.presentations.providers.factory import ProviderFactory
 from slideflow.utilities import ConfigLoader
+from slideflow.utilities.error_messages import redacted_error_line
+from slideflow.utilities.redaction import redact_value
 
 
 def _sleep_for_progress(seconds: float) -> None:
@@ -162,7 +164,7 @@ def build_single_presentation(
 
     except Exception as e:
         with print_lock:
-            print(f"❌ [{index}/{total}] Failed: {str(e)}")
+            print(f"❌ [{index}/{total}] Failed: {redacted_error_line(e)}")
         raise
 
 
@@ -381,45 +383,46 @@ def build_command(
             for future in as_completed(future_to_params):
                 index, params = future_to_params[future]
                 try:
-                    name, result, pres_index, returned_params = future.result()
+                    name, result, pres_index, _returned_params = future.result()
 
-                    result_dict = returned_params.copy()
-                    result_dict["url"] = result.presentation_url
-                    result_dict["presentation_name"] = name
-                    result_dict["chart_image_cleanup_failed_count"] = getattr(
-                        result, "chart_image_cleanup_failed_count", 0
-                    )
-                    result_dict["chart_image_cleanup_failed_ids"] = getattr(
-                        result, "chart_image_cleanup_failed_ids", []
-                    )
-                    result_dict["ownership_transfer_attempted"] = getattr(
-                        result, "ownership_transfer_attempted", False
-                    )
-                    result_dict["ownership_transfer_succeeded"] = getattr(
-                        result, "ownership_transfer_succeeded", None
-                    )
-                    result_dict["ownership_transfer_target"] = getattr(
-                        result, "ownership_transfer_target", None
-                    )
-                    result_dict["ownership_transfer_error"] = getattr(
-                        result, "ownership_transfer_error", None
-                    )
-                    result_dict["citations_enabled"] = getattr(
-                        result, "citations_enabled", False
-                    )
-                    result_dict["citations_total_sources"] = getattr(
-                        result, "citations_total_sources", 0
-                    )
-                    result_dict["citations_emitted_sources"] = getattr(
-                        result, "citations_emitted_sources", 0
-                    )
-                    result_dict["citations_truncated"] = getattr(
-                        result, "citations_truncated", False
-                    )
-                    result_dict["citations"] = getattr(result, "citations", [])
-                    result_dict["citations_by_scope"] = getattr(
-                        result, "citations_by_scope", {}
-                    )
+                    result_dict = {
+                        "variant_index": pres_index,
+                        "url": result.presentation_url,
+                        "presentation_name": name,
+                        "chart_image_cleanup_failed_count": getattr(
+                            result, "chart_image_cleanup_failed_count", 0
+                        ),
+                        "chart_image_cleanup_failed_ids": getattr(
+                            result, "chart_image_cleanup_failed_ids", []
+                        ),
+                        "ownership_transfer_attempted": getattr(
+                            result, "ownership_transfer_attempted", False
+                        ),
+                        "ownership_transfer_succeeded": getattr(
+                            result, "ownership_transfer_succeeded", None
+                        ),
+                        "ownership_transfer_target": getattr(
+                            result, "ownership_transfer_target", None
+                        ),
+                        "ownership_transfer_error": getattr(
+                            result, "ownership_transfer_error", None
+                        ),
+                        "citations_enabled": getattr(
+                            result, "citations_enabled", False
+                        ),
+                        "citations_total_sources": getattr(
+                            result, "citations_total_sources", 0
+                        ),
+                        "citations_emitted_sources": getattr(
+                            result, "citations_emitted_sources", 0
+                        ),
+                        "citations_truncated": getattr(
+                            result, "citations_truncated", False
+                        ),
+                        "citations": getattr(result, "citations", []),
+                        "citations_by_scope": getattr(result, "citations_by_scope", {}),
+                    }
+                    result_dict = redact_value(result_dict)
                     results.append(result_dict)
 
                     completed_count += 1
@@ -433,7 +436,7 @@ def build_command(
 
                 except Exception as e:
                     with print_lock:
-                        print(f"❌ Artifact {index} failed: {e}")
+                        print(f"❌ Artifact {index} failed: {redacted_error_line(e)}")
                     raise
 
         print_build_progress(6, 6, "All artifacts deployed!")
@@ -503,7 +506,7 @@ def build_command(
                 "started_at": run_started_at,
                 "completed_at": now_iso8601_utc(),
                 "config_file": str(config_file),
-                "error": {"code": error_code, "message": str(e).split("\n")[0]},
+                "error": {"code": error_code, "message": redacted_error_line(e)},
             },
         )
         print_build_error(str(e), error_code=error_code)

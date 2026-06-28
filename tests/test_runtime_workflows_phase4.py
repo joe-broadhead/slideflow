@@ -172,7 +172,8 @@ def test_build_command_non_dry_run_processes_results_and_sorts(tmp_path, monkeyp
         "https://example.com/a",
         "https://example.com/z",
     ]
-    assert sorted(row["region"] for row in result) == ["eu", "us"]
+    assert "region" not in result[0]
+    assert sorted(row["variant_index"] for row in result) == [1, 2]
     assert all(row["ownership_transfer_attempted"] is False for row in result)
     assert all(row["ownership_transfer_succeeded"] is None for row in result)
 

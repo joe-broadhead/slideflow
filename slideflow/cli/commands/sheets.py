@@ -12,7 +12,7 @@ from slideflow.cli.error_codes import CliErrorCode, resolve_cli_error_code
 from slideflow.cli.json_output import now_iso8601_utc, write_output_json
 from slideflow.cli.theme import print_error, print_success, print_validation_header
 from slideflow.utilities import ConfigLoader
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.workbooks import WorkbookBuilder, WorkbookConfig
 from slideflow.workbooks.providers.factory import WorkbookProviderFactory
 
@@ -27,8 +27,8 @@ def _first_error_line(error: Exception) -> str:
         if details:
             msg = str(details[0].get("msg", "")).strip()
             if msg:
-                return msg
-    return safe_error_line(error)
+                return redacted_error_line(RuntimeError(msg))
+    return redacted_error_line(error)
 
 
 def _check(

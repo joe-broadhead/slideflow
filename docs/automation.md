@@ -84,9 +84,13 @@ jobs:
 - `presentation-urls`: Comma-separated URLs for `presentation` builds.
 - `workbook-urls`: Comma-separated URLs for `sheets` builds.
 - `artifact-urls`: Comma-separated URLs for whichever artifact-kind was built.
-- `doctor-result-json`: JSON summary emitted by doctor command (`slideflow doctor` or `slideflow sheets doctor`).
-- `validate-result-json`: JSON summary emitted by validate command (`slideflow validate` or `slideflow sheets validate`).
-- `build-result-json`: JSON summary emitted by build command (`slideflow build` or `slideflow sheets build`).
+- `doctor-result-json`: redacted, non-sensitive JSON summary emitted by doctor command (`slideflow doctor` or `slideflow sheets doctor`).
+- `validate-result-json`: redacted, non-sensitive JSON summary emitted by validate command (`slideflow validate` or `slideflow sheets validate`).
+- `build-result-json`: redacted, non-sensitive JSON summary emitted by build command (`slideflow build` or `slideflow sheets build`).
+
+Workflow JSON outputs intentionally omit full result rows, raw params, check
+details, workbook/document IDs, and URLs. Use `artifact-urls` for the generated
+artifact links and keep downstream handling scoped to trusted jobs.
 
 Example downstream usage:
 

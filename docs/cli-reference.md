@@ -76,6 +76,11 @@ Options:
 | `--rps` | Override provider requests/second |
 | `--output-json` | Write machine-readable build summary JSON |
 
+Build JSON omits batch params by default. Secret-like keys and values are
+redacted recursively before JSON is written, including token/key/secret fields,
+Google credential fields, authorization headers, bearer/basic tokens, URL
+userinfo, and sensitive URL query parameters.
+
 Build JSON highlights (`--output-json`):
 
 - top-level:
@@ -85,6 +90,9 @@ Build JSON highlights (`--output-json`):
   - `citations_emitted_sources`
   - `citations_truncated`
 - per-result:
+  - `variant_index`
+  - `url`
+  - `presentation_name`
   - `ownership_transfer_attempted`
   - `ownership_transfer_succeeded`
   - `ownership_transfer_target`

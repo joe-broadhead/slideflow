@@ -60,6 +60,12 @@ Set `DBT_GIT_TOKEN` in environment, not in YAML.
 - Do not print raw credential payloads.
 - Keep logs at `INFO` or lower in production.
 - Use `--debug` only for short-lived troubleshooting sessions.
+- CLI error rendering, machine-readable JSON output, and reusable workflow JSON
+  outputs share centralized redaction for common secret fields, authorization
+  headers, bearer/basic tokens, URL userinfo, and sensitive URL query
+  parameters.
+- `slideflow build --output-json` does not emit batch params by default. Workflow
+  JSON outputs publish compact summaries instead of full local result JSON.
 - Built-in networked providers/connectors include a `Slideflow` client
   identifier where SDK/API support exists, improving service-side auditability.
 

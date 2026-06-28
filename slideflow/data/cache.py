@@ -51,7 +51,7 @@ from typing import Any, Callable, Dict, Optional
 import pandas as pd
 
 from slideflow.constants import Defaults, Environment
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
@@ -202,7 +202,7 @@ class DataSourceCache:
                 logger.debug(
                     "Data cache key normalization: model_dump failed (%s); "
                     "falling back to repr().",
-                    safe_error_line(error),
+                    redacted_error_line(error),
                     exc_info=True,
                 )
 

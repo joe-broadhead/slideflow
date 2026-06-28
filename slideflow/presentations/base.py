@@ -69,7 +69,7 @@ from slideflow.presentations.config import CitationConfig
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.logging import get_logger
 
@@ -934,7 +934,7 @@ class Presentation(BaseModel):
             context.ownership_transfer_succeeded = True
         except Exception as transfer_error:  # pragma: no cover - guarded via tests
             context.ownership_transfer_succeeded = False
-            context.ownership_transfer_error = safe_error_line(transfer_error)
+            context.ownership_transfer_error = redacted_error_line(transfer_error)
             logger.error(
                 "Ownership transfer failed for '%s' -> '%s': %s",
                 context.presentation_id,

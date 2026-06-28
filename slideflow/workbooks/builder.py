@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from slideflow.ai.registry import create_provider as create_ai_provider
 from slideflow.utilities.config import ConfigLoader
 from slideflow.utilities.data_transforms import apply_data_transforms
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.logging import get_logger
 from slideflow.workbooks.base import (
     WorkbookBuildResult,
@@ -458,7 +458,7 @@ class WorkbookBuilder:
                 if bounds is not None:
                     indexed_tab_bounds[index] = bounds
             except Exception as error:
-                error_message = safe_error_line(error)
+                error_message = redacted_error_line(error)
                 logger.error(
                     "Workbook tab build failed for tab '%s': %s",
                     tab.name,
@@ -508,7 +508,7 @@ class WorkbookBuilder:
                 target_tab, target_cell, _ = self._summary_context(
                     summary, tab_dataframes
                 )
-                error_message = safe_error_line(error)
+                error_message = redacted_error_line(error)
                 logger.error(
                     "Workbook summary generation failed for summary '%s': %s",
                     summary.name,

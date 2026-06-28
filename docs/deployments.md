@@ -120,9 +120,13 @@ The reusable workflow exposes:
 - `presentation-urls`: comma-separated URLs for `presentation` builds
 - `workbook-urls`: comma-separated URLs for `sheets` builds
 - `artifact-urls`: comma-separated URLs for whichever artifact-kind was built
-- `build-result-json`: JSON summary from `slideflow build --output-json` or `slideflow sheets build --output-json`
-- `validate-result-json`: JSON summary from `slideflow validate --output-json` or `slideflow sheets validate --output-json`
-- `doctor-result-json`: JSON summary from `slideflow doctor --output-json` or `slideflow sheets doctor --output-json`
+- `build-result-json`: redacted, non-sensitive JSON summary from `slideflow build --output-json` or `slideflow sheets build --output-json`
+- `validate-result-json`: redacted, non-sensitive JSON summary from `slideflow validate --output-json` or `slideflow sheets validate --output-json`
+- `doctor-result-json`: redacted, non-sensitive JSON summary from `slideflow doctor --output-json` or `slideflow sheets doctor --output-json`
+
+Reusable workflow JSON outputs are compact summaries. They omit raw params,
+full result rows, check details, workbook/document IDs, and URLs; generated
+links remain available through the dedicated URL outputs.
 
 ```yaml
 jobs:

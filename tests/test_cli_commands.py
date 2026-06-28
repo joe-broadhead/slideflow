@@ -678,6 +678,69 @@ def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
     }
 
 
+def test_build_output_json_omits_params_and_redacts_errors(tmp_path, monkeypatch):
+    stub_build_validate_cli_output(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "build-redacted.json"
+    params_path = tmp_path / "params.csv"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+    params_path.write_text("region,api_token\nus,raw-token\n")
+
+    def _fake_build_single(
+        _config_file,
+        _registry_files,
+        params,
+        index,
+        _total,
+        _print_lock,
+        _rps,
+    ):
+        return (
+            "Demo Deck",
+            types.SimpleNamespace(
+                presentation_url="https://example.com/deck",
+                ownership_transfer_error="Authorization: Bearer provider-token",
+            ),
+            index,
+            params,
+        )
+
+    monkeypatch.setattr(
+        build_command_module, "build_single_presentation", _fake_build_single
+    )
+
+    result = build_command_module.build_command(
+        config_file=config_file,
+        registry_files=None,
+        params_path=params_path,
+        dry_run=False,
+        output_json=output_file,
+        threads=1,
+    )
+
+    output_text = output_file.read_text(encoding="utf-8")
+    payload = json.loads(output_text)
+    result_row = payload["results"][0]
+
+    assert "api_token" not in result_row
+    assert "region" not in result_row
+    assert "raw-token" not in output_text
+    assert "provider-token" not in output_text
+    assert result_row["variant_index"] == 1
+    assert (
+        result[0]["ownership_transfer_error"] == "Authorization: Bearer ***REDACTED***"
+    )
+
+
 def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypatch):
     stub_build_validate_cli_output(monkeypatch)
 
