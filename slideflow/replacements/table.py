@@ -79,6 +79,7 @@ from slideflow.constants import Timing
 from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.replacements.base import BaseReplacement
 from slideflow.replacements.utils import dataframe_to_replacement_object
+from slideflow.utilities.dataframes import copy_dataframe
 
 
 class TableColumnFormatter(BaseModel):
@@ -446,6 +447,9 @@ class TableReplacement(BaseReplacement):
             )
 
         df = self.apply_data_transforms(df)
+
+        if self.formatting.custom_formatters:
+            df = copy_dataframe(df)
 
         for col, fmt in self.formatting.custom_formatters.items():
             if col in df.columns:

@@ -283,7 +283,16 @@ SlideFlow caches connector fetches by config identity, which helps when:
 - multiple charts use the same query/file in one run
 - multiple replacements reuse one source
 
+Cached `DataFrame` values are copied on cache write and copied again on cache
+reads. This keeps table formatting, chart transforms, and custom replacements
+from mutating shared cached data. The tradeoff is extra memory and copy time for
+large frames, so prefer selecting only the columns and rows needed for the
+artifact before handing data to SlideFlow.
+
 Treat connectors as read-only sources during a run for predictable results.
+`clear()` and `disable()` also wake in-flight waiters; a waiter will either
+reload against the current cache state or run uncached when the cache has been
+disabled.
 
 Cache/compile tuning env vars:
 

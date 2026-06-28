@@ -21,6 +21,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Data-source cache reads now return isolated `DataFrame` copies, table
+  formatting avoids mutating shared source frames, and cache `clear()`/`disable()`
+  wake in-flight waiters without allowing stale loads to refill the cache.
 - Release provenance checks now keep version metadata, changelog release headers,
   tag ancestry, and existing PyPI artifacts aligned with the artifact-producing
   commit.

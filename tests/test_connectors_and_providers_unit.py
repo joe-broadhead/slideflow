@@ -171,7 +171,9 @@ def test_base_source_config_fetch_data_deduplicates_concurrent_connector_fetches
         results = list(executor.map(lambda _i: config.fetch_data(), range(8)))
 
     assert CountingConnector.fetch_calls() == 1
-    assert all(result is results[0] for result in results)
+    assert len({id(result) for result in results}) == len(results)
+    for result in results:
+        assert result.to_dict(orient="records") == results[0].to_dict(orient="records")
 
     cache.clear()
 

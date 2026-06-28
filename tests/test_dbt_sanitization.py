@@ -1293,8 +1293,14 @@ def test_legacy_and_composable_dbt_configs_fetch_with_runtime_parity(monkeypatch
     assert legacy_first.to_dict(orient="records") == composable_first.to_dict(
         orient="records"
     )
-    assert legacy_first is legacy_second
-    assert composable_first is composable_second
+    assert legacy_first is not legacy_second
+    assert composable_first is not composable_second
+    assert legacy_first.to_dict(orient="records") == legacy_second.to_dict(
+        orient="records"
+    )
+    assert composable_first.to_dict(orient="records") == composable_second.to_dict(
+        orient="records"
+    )
     assert len(connector_calls) == 2
     assert connector_calls[0] == connector_calls[1]
 
@@ -1329,7 +1335,8 @@ def test_composable_dbt_source_config_fetch_data_routes_and_caches(monkeypatch):
     second = config.fetch_data()
 
     assert call_count == 1
-    assert first is second
+    assert first is not second
+    assert first.to_dict(orient="records") == second.to_dict(orient="records")
 
     cache.clear()
 

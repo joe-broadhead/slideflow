@@ -14,6 +14,18 @@ from slideflow.utilities.auth import handle_google_credentials
 from slideflow.utilities.exceptions import AuthenticationError
 
 
+def _records(df):
+    return df.to_dict(orient="records")
+
+
+def _first_value(df, column="value"):
+    return _records(df)[0][column]
+
+
+def _assert_frame_records_equal(left, right):
+    assert _records(left) == _records(right)
+
+
 def test_data_source_cache_lifecycle_and_singleton_behavior():
     cache = data_cache_module.get_data_cache()
     cache.enable()
@@ -22,10 +34,19 @@ def test_data_source_cache_lifecycle_and_singleton_behavior():
     df = pd.DataFrame({"value": [1]})
     cache.set(df, source_type="csv", file_path="data.csv")
 
-    assert cache.get("csv", file_path="data.csv") is df
+    cached = cache.get("csv", file_path="data.csv")
+    assert cached is not None
+    _assert_frame_records_equal(cached, df)
+    assert cached is not df
     assert cache.size == 1
     assert cache.is_enabled is True
     assert data_cache_module.get_data_cache() is cache
+
+    df["value"] = [2]
+    cached["value"] = [3]
+    fresh_cached = cache.get("csv", file_path="data.csv")
+    assert fresh_cached is not None
+    assert _first_value(fresh_cached) == 1
 
     info = cache.get_cache_info()
     assert info["enabled"] is True
@@ -151,13 +172,21 @@ def test_data_source_cache_enforces_lru_entry_cap(monkeypatch):
         assert cache.size == 2
 
         # Touch a.csv so b.csv becomes least-recently-used.
-        assert cache.get("csv", file_path="a.csv") is df_a
+        cached_a = cache.get("csv", file_path="a.csv")
+        assert cached_a is not None
+        _assert_frame_records_equal(cached_a, df_a)
+        assert cached_a is not df_a
 
         cache.set(df_c, source_type="csv", file_path="c.csv")
         assert cache.size == 2
-        assert cache.get("csv", file_path="a.csv") is df_a
+        cached_a = cache.get("csv", file_path="a.csv")
+        assert cached_a is not None
+        _assert_frame_records_equal(cached_a, df_a)
         assert cache.get("csv", file_path="b.csv") is None
-        assert cache.get("csv", file_path="c.csv") is df_c
+        cached_c = cache.get("csv", file_path="c.csv")
+        assert cached_c is not None
+        _assert_frame_records_equal(cached_c, df_c)
+        assert cached_c is not df_c
     finally:
         cache._max_entries = original_max_entries
         cache.clear()
@@ -209,7 +238,15 @@ def test_data_source_cache_get_or_load_deduplicates_concurrent_loads():
         results = list(executor.map(lambda _i: worker(), range(8)))
 
     assert load_calls == 1
-    assert all(result is expected_df for result in results)
+    assert len({id(result) for result in results}) == len(results)
+    for result in results:
+        _assert_frame_records_equal(result, expected_df)
+
+    for result in results:
+        result["value"] = [-1]
+    cached = cache.get("csv", file_path="shared.csv")
+    assert cached is not None
+    assert _first_value(cached) == 42
 
     cache.clear()
 
@@ -257,7 +294,126 @@ def test_data_source_cache_get_or_load_unblocks_waiters_on_base_exception():
     assert any(isinstance(item, LoaderExit) for item in outcomes)
     data_results = [item for item in outcomes if isinstance(item, pd.DataFrame)]
     assert len(data_results) == 1
-    assert data_results[0] is expected_df
+    _assert_frame_records_equal(data_results[0], expected_df)
+    assert load_calls == 2
+
+    cache.clear()
+
+
+def test_data_source_cache_disable_unblocks_waiters(monkeypatch):
+    cache = data_cache_module.get_data_cache()
+    cache.enable()
+    cache.clear()
+
+    real_event = threading.Event
+    loader_started = real_event()
+    release_loader = real_event()
+    waiter_waiting = real_event()
+    counter_lock = threading.Lock()
+    load_calls = 0
+
+    class TrackingEvent:
+        def __init__(self):
+            self._event = real_event()
+
+        def set(self):
+            self._event.set()
+
+        def wait(self, timeout=None):
+            waiter_waiting.set()
+            return self._event.wait(timeout)
+
+    monkeypatch.setattr(cache, "_new_inflight_event", lambda: TrackingEvent())
+
+    def loader():
+        nonlocal load_calls
+        with counter_lock:
+            load_calls += 1
+            current = load_calls
+        if current == 1:
+            loader_started.set()
+            assert release_loader.wait(2), "owner loader was not released"
+        return pd.DataFrame({"value": [current]})
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        owner = executor.submit(cache.get_or_load, "csv", loader, file_path="slow.csv")
+        assert loader_started.wait(2), "owner loader did not start"
+
+        waiter = executor.submit(cache.get_or_load, "csv", loader, file_path="slow.csv")
+        assert waiter_waiting.wait(2), "waiter did not block on in-flight load"
+
+        cache.disable()
+
+        waiter_result = waiter.result(timeout=2)
+        assert _first_value(waiter_result) == 2
+        assert owner.done() is False
+
+        release_loader.set()
+        owner_result = owner.result(timeout=2)
+        assert _first_value(owner_result) == 1
+
+    assert load_calls == 2
+    assert cache.size == 0
+    cache.enable()
+    cache.clear()
+
+
+def test_data_source_cache_clear_unblocks_waiters_and_prevents_stale_fill(
+    monkeypatch,
+):
+    cache = data_cache_module.get_data_cache()
+    cache.enable()
+    cache.clear()
+
+    real_event = threading.Event
+    loader_started = real_event()
+    release_loader = real_event()
+    waiter_waiting = real_event()
+    counter_lock = threading.Lock()
+    load_calls = 0
+
+    class TrackingEvent:
+        def __init__(self):
+            self._event = real_event()
+
+        def set(self):
+            self._event.set()
+
+        def wait(self, timeout=None):
+            waiter_waiting.set()
+            return self._event.wait(timeout)
+
+    monkeypatch.setattr(cache, "_new_inflight_event", lambda: TrackingEvent())
+
+    def loader():
+        nonlocal load_calls
+        with counter_lock:
+            load_calls += 1
+            current = load_calls
+        if current == 1:
+            loader_started.set()
+            assert release_loader.wait(2), "owner loader was not released"
+        return pd.DataFrame({"value": [current]})
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        owner = executor.submit(cache.get_or_load, "csv", loader, file_path="slow.csv")
+        assert loader_started.wait(2), "owner loader did not start"
+
+        waiter = executor.submit(cache.get_or_load, "csv", loader, file_path="slow.csv")
+        assert waiter_waiting.wait(2), "waiter did not block on in-flight load"
+
+        cache.clear()
+
+        waiter_result = waiter.result(timeout=2)
+        assert _first_value(waiter_result) == 2
+
+        release_loader.set()
+        owner_result = owner.result(timeout=2)
+        assert _first_value(owner_result) == 1
+
+    cached = cache.get("csv", file_path="slow.csv")
+    assert cached is not None
+    assert _first_value(cached) == 2
     assert load_calls == 2
 
     cache.clear()

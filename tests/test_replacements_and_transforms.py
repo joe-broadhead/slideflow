@@ -162,6 +162,51 @@ def test_table_replacement_dynamic_mode_applies_transforms_and_formatters(monkey
     ]
 
 
+def test_table_formatting_does_not_mutate_shared_source_frame(monkeypatch):
+    _install_pandas_stub_compat(monkeypatch)
+
+    shared_df = pd.DataFrame({"label": ["Revenue"], "amount": [1.25]})
+
+    class SharedSource:
+        def fetch_data(self):
+            return shared_df
+
+    source = SharedSource()
+    table = TableReplacement.model_construct(
+        type="table",
+        prefix="T_",
+        data_source=source,
+        formatting=TableFormattingOptions(
+            custom_formatters={
+                "amount": TableColumnFormatter(
+                    format_fn=lambda value: f"{value:.1%}",
+                    format_fn_args={},
+                )
+            }
+        ),
+        replacements=None,
+        data_transforms=[],
+    )
+    text = TextReplacement.model_construct(
+        type="text",
+        placeholder="{{AMOUNT}}",
+        replacement=None,
+        data_source=source,
+        value_fn=lambda frame: str(frame.to_dict(orient="records")[0]["amount"]),
+        value_fn_args={},
+        data_transforms=[],
+    )
+
+    assert table.get_replacement() == {
+        "{{T_1,1}}": "Revenue",
+        "{{T_1,2}}": "125.0%",
+    }
+    amount = shared_df.to_dict(orient="records")[0]["amount"]
+    assert amount == 1.25
+    assert isinstance(amount, float)
+    assert text.get_replacement() == "1.25"
+
+
 def test_ai_text_replacement_provider_resolution_and_prompt_context(monkeypatch):
     _install_pandas_stub_compat(monkeypatch)
 
