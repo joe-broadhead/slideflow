@@ -27,16 +27,14 @@ def _http_error(
 def test_google_provider_init_success(monkeypatch):
     captured: Dict[str, Any] = {}
 
+    def _load_credentials(credentials, scopes, **kwargs):
+        captured["credentials_input"] = credentials
+        captured["scopes"] = scopes
+        captured["loader_kwargs"] = kwargs
+        return SimpleNamespace(credentials="creds", source_type="explicit_json")
+
     monkeypatch.setattr(
-        google_provider_module,
-        "handle_google_credentials",
-        lambda _credentials: {"client_email": "svc@example.com"},
-    )
-    monkeypatch.setattr(
-        google_provider_module.Credentials,
-        "from_service_account_info",
-        lambda info, scopes: captured.update({"info": info, "scopes": scopes})
-        or "creds",
+        google_provider_module, "load_google_credentials", _load_credentials
     )
 
     def _fake_build(service, version, credentials, **kwargs):
@@ -64,8 +62,10 @@ def test_google_provider_init_success(monkeypatch):
     assert provider.slides_service == "slides:v1:creds"
     assert provider.drive_service == "drive:v3:creds"
     assert provider.rate_limiter == "rl:2.5"
-    assert captured["info"] == {"client_email": "svc@example.com"}
     assert captured["scopes"] == google_provider_module.GoogleSlidesProvider.SCOPES
+    assert captured["credentials_input"] == '{"type":"service_account"}'
+    assert captured["loader_kwargs"] == {}
+    assert provider._google_credentials_source == "explicit_json"
     assert len(captured["build_calls"]) == 2
     assert all(
         callable(call["kwargs"].get("requestBuilder"))
@@ -74,15 +74,15 @@ def test_google_provider_init_success(monkeypatch):
 
 
 def test_google_provider_init_authentication_failure(monkeypatch):
+    cause = RuntimeError("bad creds")
+
+    def _raise_auth_error(*_args, **_kwargs):
+        raise AuthenticationError(
+            "Credentials authentication failed: bad creds"
+        ) from cause
+
     monkeypatch.setattr(
-        google_provider_module,
-        "handle_google_credentials",
-        lambda _credentials: {"invalid": True},
-    )
-    monkeypatch.setattr(
-        google_provider_module.Credentials,
-        "from_service_account_info",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("bad creds")),
+        google_provider_module, "load_google_credentials", _raise_auth_error
     )
 
     with pytest.raises(
@@ -94,7 +94,7 @@ def test_google_provider_init_authentication_failure(monkeypatch):
             )
         )
 
-    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert exc_info.value.__cause__ is cause
 
 
 def test_google_slides_config_validates_transfer_ownership_target():

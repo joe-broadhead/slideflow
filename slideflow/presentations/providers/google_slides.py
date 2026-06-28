@@ -15,9 +15,10 @@ The Google Slides provider includes:
     - Comprehensive error handling and API operation logging
 
 Authentication:
-    The provider uses Google service account credentials for authentication,
-    requiring appropriate scopes for Google Slides, Google Drive, and file
-    operations. Credentials must be provided via a service account JSON file.
+    The provider uses Google auth credentials for authentication, requiring
+    appropriate scopes for Google Slides, Google Drive, and file operations.
+    Credentials can come from service-account JSON, Workload Identity
+    Federation / external-account JSON, or Application Default Credentials.
 
 Required Scopes:
     - https://www.googleapis.com/auth/presentations: For Slides API access
@@ -65,12 +66,10 @@ Example:
     >>> print(f"View presentation: {url}")
 """
 
-import os
 import threading
 import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pydantic import Field, field_validator
@@ -88,9 +87,11 @@ from slideflow.presentations.providers.google_drive_ownership import (
     transfer_drive_file_ownership,
 )
 from slideflow.presentations.rate_limiter import get_google_api_rate_limiter
-from slideflow.utilities.auth import handle_google_credentials
+from slideflow.utilities.auth import (
+    describe_google_credentials_source,
+    load_google_credentials,
+)
 from slideflow.utilities.google_api import (
-    build_service_account_credentials,
     execute_rate_limited_request,
     slideflow_google_request_builder,
     upload_png_to_drive,
@@ -118,7 +119,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
 
     Attributes:
         provider_type: Always "google_slides" for this provider.
-        credentials: Path to Google service account credentials JSON file.
+        credentials: Google credentials as a file path or raw JSON payload.
         template_id: Optional Google Slides template ID to copy from when creating presentations.
         drive_folder_id: Optional Google Drive folder ID for organizing uploaded chart images.
         presentation_folder_id: Optional Google Drive folder ID for organizing created presentations.
@@ -139,7 +140,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     provider_type: Literal["google_slides"] = "google_slides"
     credentials: Optional[str] = Field(
         None,
-        description="Google service account credentials as a file path or a JSON string.",
+        description="Google credentials as a file path or a JSON string.",
     )
     template_id: Optional[str] = Field(
         None, description="Google Slides template ID to copy from"
@@ -211,7 +212,7 @@ class GoogleSlidesProvider(PresentationProvider):
     and permission management.
 
     Authentication:
-        Uses Google service account credentials with OAuth2 for authentication.
+        Uses Google OAuth2 credentials from explicit config/env sources or ADC.
         Requires appropriate IAM permissions and API scopes for both Slides and
         Drive APIs.
 
@@ -252,7 +253,7 @@ class GoogleSlidesProvider(PresentationProvider):
         """Initialize Google Slides provider with authentication.
 
         Sets up authenticated Google API service clients for both Slides and Drive
-        APIs using the provided service account credentials.
+        APIs using the configured Google credentials.
 
         Args:
             config: GoogleSlidesProviderConfig containing authentication and
@@ -267,12 +268,12 @@ class GoogleSlidesProvider(PresentationProvider):
         self._uploaded_chart_image_ids_by_url: Dict[str, str] = {}
         self._chart_image_cleanup_failed_ids: List[str] = []
 
-        # Initialize Google API services
-        loaded_credentials = handle_google_credentials(config.credentials)
-
-        credentials = build_service_account_credentials(
-            loaded_credentials, self.SCOPES, credentials_cls=Credentials
+        loaded_credentials = load_google_credentials(
+            config.credentials,
+            scopes=self.SCOPES,
         )
+        self._google_credentials_source = loaded_credentials.source_type
+        credentials = loaded_credentials.credentials
 
         self.slides_service = build(
             "slides",
@@ -317,15 +318,22 @@ class GoogleSlidesProvider(PresentationProvider):
 
     def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
         """Run Google provider preflight checks used by CLI doctor/build."""
-        has_credentials = bool(self.config.credentials) or bool(
-            os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
+        credentials_source = getattr(
+            self,
+            "_google_credentials_source",
+            describe_google_credentials_source(
+                self.config.credentials,
+                [Environment.GOOGLE_SLIDEFLOW_CREDENTIALS],
+                include_adc=False,
+            ),
         )
+        has_credentials = credentials_source != "missing"
         checks: List[Tuple[str, bool, str]] = [
             (
                 "google_credentials_present",
                 has_credentials,
                 (
-                    "Credentials found in config or GOOGLE_SLIDEFLOW_CREDENTIALS"
+                    f"Credentials source: {credentials_source}"
                     if has_credentials
                     else "Missing credentials in config and environment"
                 ),
@@ -875,7 +883,7 @@ class GoogleSlidesProvider(PresentationProvider):
                     logger.warning(
                         f"Presentation {presentation_id} created, but failed to move to folder "
                         f"'{destination_folder_id}'. Please check if the folder exists "
-                        f"and the service account has permissions. Error: {e}"
+                        f"and the configured Google identity has permissions. Error: {e}"
                     )
 
             duration = time.time() - start_time

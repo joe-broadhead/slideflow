@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Google Slides, Docs, and Sheets providers now support service-account JSON,
+  environment-supplied external-account / Workload Identity Federation JSON,
+  `GOOGLE_APPLICATION_CREDENTIALS`, and runtime Application Default Credentials
+  through the shared Google auth loader.
 - Google Slides and Google Docs generated-artifact sharing now defaults to
   `share_role: reader`. Set `provider.config.share_role: writer` explicitly
   if recipients need edit access.

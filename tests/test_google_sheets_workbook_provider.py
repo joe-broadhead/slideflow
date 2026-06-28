@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Set, Tuple
 import pytest
 
 import slideflow.workbooks.providers.google_sheets as sheets_provider_module
+from slideflow.constants import Environment
 from slideflow.workbooks.config import RESERVED_METADATA_TAB
 
 
@@ -73,6 +74,53 @@ def test_google_sheets_config_normalizes_share_role():
     config = sheets_provider_module.GoogleSheetsProviderConfig(share_role=" Writer ")
 
     assert config.share_role == "writer"
+
+
+def test_google_sheets_provider_init_uses_shared_google_loader(monkeypatch):
+    captured: Dict[str, Any] = {}
+
+    def _load_credentials(_credentials, scopes, env_var_names=None):
+        captured["scopes"] = scopes
+        captured["env_var_names"] = list(env_var_names or [])
+        return SimpleNamespace(
+            credentials="creds", source_type="env_google_sheets_credentials"
+        )
+
+    def _fake_build(service, version, credentials, **kwargs):
+        captured.setdefault("build_calls", []).append(
+            {
+                "service": service,
+                "version": version,
+                "credentials": credentials,
+                "kwargs": kwargs,
+            }
+        )
+        return f"{service}:{version}:{credentials}"
+
+    monkeypatch.setattr(
+        sheets_provider_module, "load_google_credentials", _load_credentials
+    )
+    monkeypatch.setattr(sheets_provider_module, "build", _fake_build)
+    monkeypatch.setattr(
+        sheets_provider_module, "_get_rate_limiter", lambda rps: f"rl:{rps}"
+    )
+
+    provider = sheets_provider_module.GoogleSheetsProvider(
+        sheets_provider_module.GoogleSheetsProviderConfig(
+            credentials='{"type":"service_account"}', requests_per_second=2.0
+        )
+    )
+
+    assert provider.sheets_service == "sheets:v4:creds"
+    assert provider.drive_service == "drive:v3:creds"
+    assert provider.rate_limiter == "rl:2.0"
+    assert provider._google_credentials_source == "env_google_sheets_credentials"
+    assert captured["scopes"] == sheets_provider_module.GoogleSheetsProvider.SCOPES
+    assert captured["env_var_names"] == [
+        Environment.GOOGLE_SHEETS_CREDENTIALS,
+        Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
+    ]
+    assert len(captured["build_calls"]) == 2
 
 
 def test_finalize_workbook_rejects_invalid_share_role_before_api_call():

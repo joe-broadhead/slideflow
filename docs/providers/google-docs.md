@@ -13,14 +13,21 @@ It reuses `presentation.slides[]` from the core schema:
 1. Enable APIs in your Google Cloud project:
    - Google Docs API
    - Google Drive API
-2. Create a service account.
-3. Share the template document (and destination Drive folders) with that service account.
+2. Create or select the Google identity SlideFlow will run as. This can be a
+   service account key, Workload Identity Federation, or runtime ADC identity.
+3. Share the template document (and destination Drive folders) with that identity.
 4. Provide credentials via:
-   - `provider.config.credentials` in YAML as a path to an untracked file, or
+   - `provider.config.credentials` in YAML as service-account JSON or a path to an untracked service-account file, or
    - `GOOGLE_DOCS_CREDENTIALS`, or
-   - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback).
+   - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback), or
+   - `GOOGLE_APPLICATION_CREDENTIALS`, or
+   - runtime Application Default Credentials.
 
-Do not commit raw service-account JSON or `.env` files.
+`GOOGLE_DOCS_CREDENTIALS` and `GOOGLE_SLIDEFLOW_CREDENTIALS` accept
+service-account JSON or external-account / Workload Identity Federation JSON as
+a file path or raw JSON payload. Use those environment sources,
+`GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC for WIF. Do not commit raw
+credential JSON or `.env` files.
 
 For production Shared Drive setup and service-account bootstrap commands, see
 [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).

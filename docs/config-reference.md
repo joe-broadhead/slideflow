@@ -70,6 +70,18 @@ Supported values:
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
+Credential precedence for `google_slides`:
+
+1. `provider.config.credentials`
+2. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+3. `GOOGLE_APPLICATION_CREDENTIALS`
+4. Runtime Application Default Credentials
+
+`provider.config.credentials` may contain service-account JSON as a file path
+or raw JSON payload. Use `GOOGLE_SLIDEFLOW_CREDENTIALS`,
+`GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC for external-account / Workload
+Identity Federation credentials.
+
 For provider setup and operational behavior, see [Google Slides Provider](providers/google-slides.md).
 
 ### `provider.config` for `google_docs`
@@ -97,6 +109,13 @@ Credential precedence for `google_docs`:
 1. `provider.config.credentials`
 2. `GOOGLE_DOCS_CREDENTIALS`
 3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+4. `GOOGLE_APPLICATION_CREDENTIALS`
+5. Runtime Application Default Credentials
+
+`provider.config.credentials` may contain service-account JSON as a file path
+or raw JSON payload. Use `GOOGLE_DOCS_CREDENTIALS`,
+`GOOGLE_SLIDEFLOW_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC
+for external-account / Workload Identity Federation credentials.
 
 For provider setup and marker behavior, see [Google Docs Provider](providers/google-docs.md).
 
@@ -116,6 +135,13 @@ Credential precedence for `google_sheets`:
 1. `provider.config.credentials`
 2. `GOOGLE_SHEETS_CREDENTIALS`
 3. `GOOGLE_SLIDEFLOW_CREDENTIALS`
+4. `GOOGLE_APPLICATION_CREDENTIALS`
+5. Runtime Application Default Credentials
+
+`provider.config.credentials` may contain service-account JSON as a file path
+or raw JSON payload. Use `GOOGLE_SHEETS_CREDENTIALS`,
+`GOOGLE_SLIDEFLOW_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC
+for external-account / Workload Identity Federation credentials.
 
 ## `workbook` (Google Sheets pipelines)
 

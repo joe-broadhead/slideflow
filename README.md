@@ -120,12 +120,13 @@ To create your first output, you\'ll need:
     - Google Sheets target (`spreadsheet_id`) or destination folder for workbook creation.
 2.  **Your Data:** Have your data ready in a CSV file, or have your Databricks credentials configured.
 3.  **A YAML Configuration File:** This is where you\'ll define your output artifact. See the [Configuration](#-configuration) section for more details.
-4.  **Google Cloud Credentials:** You'll need a Google Cloud service account with access to the required Google APIs (Slides/Docs/Sheets + Drive as needed). Provide credentials with one of:
+4.  **Google Cloud Credentials:** You'll need a Google identity with access to the required Google APIs (Slides/Docs/Sheets + Drive as needed). That identity can come from a service-account key, Workload Identity Federation, or runtime Application Default Credentials. Provide credentials with one of:
 
-    -   Set the `credentials` field in your `config.yml` to the path of an untracked JSON credentials file.
-    -   Set `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`), `GOOGLE_SHEETS_CREDENTIALS` (for `google_sheets`), or `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback) to a path or secret-manager-injected raw JSON.
+    -   Set the `credentials` field in your `config.yml` to an untracked service-account JSON file or raw service-account JSON.
+    -   Set `GOOGLE_DOCS_CREDENTIALS` (for `google_docs`), `GOOGLE_SHEETS_CREDENTIALS` (for `google_sheets`), or `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback) to a path or secret-manager-injected raw service-account or external-account JSON.
+    -   Set `GOOGLE_APPLICATION_CREDENTIALS` to an ADC-compatible credentials file, or run in an environment where ADC is already available.
 
-    Do not commit raw service-account JSON, OAuth client secrets, refresh tokens, or `.env` files.
+    Do not commit raw credential JSON, OAuth client secrets, refresh tokens, or `.env` files.
 
 Once you have these, you can run the `build` command:
 

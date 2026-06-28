@@ -7,7 +7,6 @@ those marker-defined sections.
 
 from __future__ import annotations
 
-import os
 import re
 import threading
 import time
@@ -15,7 +14,6 @@ from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pydantic import Field, field_validator
@@ -32,10 +30,12 @@ from slideflow.presentations.providers.google_drive_ownership import (
     normalize_transfer_owner_email,
     transfer_drive_file_ownership,
 )
-from slideflow.utilities.auth import handle_google_credentials
+from slideflow.utilities.auth import (
+    describe_google_credentials_source,
+    load_google_credentials,
+)
 from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.google_api import (
-    build_service_account_credentials,
     execute_rate_limited_request,
     slideflow_google_request_builder,
     upload_png_to_drive,
@@ -174,17 +174,16 @@ class GoogleDocsProvider(PresentationProvider):
         self._uploaded_chart_image_ids_by_url: Dict[str, str] = {}
         self._chart_image_cleanup_failed_ids: List[str] = []
 
-        loaded_credentials = handle_google_credentials(
+        loaded_credentials = load_google_credentials(
             config.credentials,
+            scopes=self.SCOPES,
             env_var_names=[
                 Environment.GOOGLE_DOCS_CREDENTIALS,
                 Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
             ],
         )
-
-        credentials = build_service_account_credentials(
-            loaded_credentials, self.SCOPES, credentials_cls=Credentials
-        )
+        self._google_credentials_source = loaded_credentials.source_type
+        credentials = loaded_credentials.credentials
 
         self.docs_service = build(
             "docs",
@@ -205,16 +204,25 @@ class GoogleDocsProvider(PresentationProvider):
         return execute_rate_limited_request(request, self.rate_limiter, num_retries=3)
 
     def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
-        has_credentials = bool(self.config.credentials) or bool(
-            os.getenv(Environment.GOOGLE_DOCS_CREDENTIALS)
-            or os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
+        credentials_source = getattr(
+            self,
+            "_google_credentials_source",
+            describe_google_credentials_source(
+                self.config.credentials,
+                [
+                    Environment.GOOGLE_DOCS_CREDENTIALS,
+                    Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
+                ],
+                include_adc=False,
+            ),
         )
+        has_credentials = credentials_source != "missing"
         checks: List[Tuple[str, bool, str]] = [
             (
                 "google_docs_credentials_present",
                 has_credentials,
                 (
-                    "Credentials found in config or supported environment variables"
+                    f"Credentials source: {credentials_source}"
                     if has_credentials
                     else "Missing credentials in config and environment"
                 ),
