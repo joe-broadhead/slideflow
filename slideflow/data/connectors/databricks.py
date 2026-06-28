@@ -41,6 +41,7 @@ Example:
 
 import os
 import time
+from importlib import import_module
 from typing import Annotated, Any, ClassVar, Literal, Optional, Type
 
 import pandas as pd
@@ -59,14 +60,13 @@ from slideflow.utilities.logging import (
 
 logger = get_logger(__name__)
 
-_databricks_sql: Any
 try:
-    from databricks import sql as _databricks_sql
+    _imported_databricks_sql: Any = import_module("databricks.sql")
 except ImportError:  # pragma: no cover - exercised in optional-dependency tests
-    _databricks_sql = None
+    _imported_databricks_sql = None
 
 # Keep a module-level symbol for test monkeypatching and compatibility.
-sql = _databricks_sql
+sql: Any = _imported_databricks_sql
 
 
 def _resolve_positive_float_from_env(env_var: str, default: float) -> float:
