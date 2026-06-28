@@ -8,7 +8,10 @@ into the destination deck.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
+import stat
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -34,6 +37,7 @@ logger = get_logger(__name__)
 
 EMU_PER_POINT = 12700
 MEMORY_IMAGE_URL_PREFIX = "slideflow-pptx://chart/"
+AUXILIARY_STEM_MAX_LENGTH = 80
 
 
 def _require_python_pptx() -> Any:
@@ -47,6 +51,15 @@ def _require_python_pptx() -> Any:
 
 def _normalize_path(value: Path | str) -> Path:
     return Path(value).expanduser()
+
+
+def _nearest_existing_parent(path: Path) -> Optional[Path]:
+    current = path if path.exists() else path.parent
+    while not current.exists():
+        if current == current.parent:
+            return None
+        current = current.parent
+    return current
 
 
 def _safe_output_stem(name: str) -> str:
@@ -123,6 +136,7 @@ class PowerPointProvider(PresentationProvider):
         self._pptx_factory = _require_python_pptx()
         self._presentations: Dict[str, Any] = {}
         self._presentation_paths: Dict[str, Path] = {}
+        self._presentation_locks: Dict[str, Path] = {}
         self._chart_images: Dict[str, bytes] = {}
 
     def run_preflight_checks(self) -> List[Tuple[str, bool, str]]:
@@ -160,15 +174,20 @@ class PowerPointProvider(PresentationProvider):
         )
 
         output_dir = self.config.output_dir
-        output_parent = output_dir if output_dir.exists() else output_dir.parent
+        output_parent = _nearest_existing_parent(output_dir)
+        output_parent_ok = (
+            output_parent is not None
+            and output_parent.is_dir()
+            and os.access(output_parent, os.W_OK)
+        )
         checks.append(
             (
                 "output_dir_writable",
-                output_parent.exists() and output_parent.is_dir(),
+                output_parent_ok,
                 (
                     f"Output directory is available: {output_dir}"
                     if output_dir.exists()
-                    else f"Output parent is available: {output_parent}"
+                    else f"Output directory can be created under: {output_parent}"
                 ),
             )
         )
@@ -182,21 +201,30 @@ class PowerPointProvider(PresentationProvider):
         if not template_path.is_file():
             raise ConfigurationError(f"PowerPoint template not found: {template_path}")
 
-        output_path = self._resolve_output_path(name)
+        output_path, output_lock_path = self._resolve_output_path(name)
         if (
             output_path.resolve() == template_path.resolve()
             and self.config.read_only_template
         ):
+            if output_lock_path is not None:
+                self._release_output_lock(output_lock_path)
             raise ConfigurationError(
                 "PowerPoint output path resolves to template_path while "
                 "read_only_template is true"
             )
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        presentation = self._pptx_factory(str(template_path))
+        try:
+            presentation = self._pptx_factory(str(template_path))
+        except BaseException:
+            if output_lock_path is not None:
+                self._release_output_lock(output_lock_path)
+            raise
+
         presentation_id = str(output_path)
         self._presentations[presentation_id] = presentation
         self._presentation_paths[presentation_id] = output_path
+        if output_lock_path is not None:
+            self._presentation_locks[presentation_id] = output_lock_path
         return presentation_id
 
     def upload_chart_image(
@@ -286,7 +314,32 @@ class PowerPointProvider(PresentationProvider):
         """Save the generated PPTX artifact to disk."""
         presentation = self._get_presentation(presentation_id)
         output_path = self._presentation_paths[presentation_id]
-        presentation.save(str(output_path))
+        output_lock_path = self._presentation_locks.get(presentation_id)
+        temp_path = self._temp_path_for(output_path)
+        existing_mode = self._existing_file_mode(output_path)
+
+        try:
+            if output_lock_path is not None and output_path.exists():
+                raise ConfigurationError(
+                    f"PowerPoint output appeared after reservation: {output_path}"
+                )
+            if existing_mode is not None:
+                with temp_path.open("xb"):
+                    pass
+                temp_path.chmod(existing_mode)
+            presentation.save(str(temp_path))
+            if existing_mode is not None:
+                temp_path.chmod(existing_mode)
+            temp_path.replace(output_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+            self._release_presentation_lock(presentation_id)
+
+    def abort_presentation(self, presentation_id: str) -> None:
+        """Release a reserved output path after an unsuccessful render."""
+        self._release_presentation_lock(presentation_id)
+        self._presentations.pop(presentation_id, None)
+        self._presentation_paths.pop(presentation_id, None)
 
     def render_citations(
         self,
@@ -312,41 +365,108 @@ class PowerPointProvider(PresentationProvider):
         """Delete an in-memory chart image token."""
         self._chart_images.pop(file_id, None)
 
-    def _resolve_output_path(self, name: str) -> Path:
+    def _resolve_output_path(self, name: str) -> Tuple[Path, Optional[Path]]:
         output_dir = self.config.output_dir
         output_path = output_dir / f"{_safe_output_stem(name)}.pptx"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if output_path.exists():
+        if self.config.file_collision_strategy == "overwrite":
+            if (
+                output_path.resolve() == self.config.template_path.resolve()
+                and self.config.read_only_template
+            ):
+                raise ConfigurationError(
+                    "Refusing to overwrite template_path while "
+                    "read_only_template is true"
+                )
+            return output_path, None
+
+        try:
+            return output_path, self._reserve_output_lock(output_path)
+        except FileExistsError:
             if self.config.file_collision_strategy == "fail":
                 raise ConfigurationError(
                     f"PowerPoint output already exists: {output_path}"
-                )
-            if self.config.file_collision_strategy == "overwrite":
-                if (
-                    output_path.resolve() == self.config.template_path.resolve()
-                    and self.config.read_only_template
-                ):
-                    raise ConfigurationError(
-                        "Refusing to overwrite template_path while "
-                        "read_only_template is true"
-                    )
-                return output_path
-            return self._suffix_output_path(output_path)
+                ) from None
 
-        return output_path
+        return self._suffix_output_path(output_path)
 
     @staticmethod
-    def _suffix_output_path(output_path: Path) -> Path:
+    def _suffix_output_path(output_path: Path) -> Tuple[Path, Path]:
         stem = output_path.stem
         suffix = output_path.suffix
         parent = output_path.parent
         for index in range(1, 10_000):
             candidate = parent / f"{stem}-{index}{suffix}"
-            if not candidate.exists():
-                return candidate
+            try:
+                return candidate, PowerPointProvider._reserve_output_lock(candidate)
+            except FileExistsError:
+                continue
         raise ConfigurationError(
             f"Could not find available suffixed output path for {output_path}"
         )
+
+    @staticmethod
+    def _lock_path_for(output_path: Path) -> Path:
+        return output_path.with_name(
+            f"{PowerPointProvider._auxiliary_name_prefix(output_path)}.lock"
+        )
+
+    @staticmethod
+    def _temp_path_for(output_path: Path) -> Path:
+        return output_path.with_name(
+            f"{PowerPointProvider._auxiliary_name_prefix(output_path)}."
+            f"{uuid.uuid4().hex}.tmp"
+        )
+
+    @staticmethod
+    def _auxiliary_name_prefix(output_path: Path) -> str:
+        stem = output_path.stem[:AUXILIARY_STEM_MAX_LENGTH].rstrip(" .")
+        stem = stem or "presentation"
+        digest = hashlib.sha256(output_path.name.encode("utf-8")).hexdigest()[:16]
+        return f".{stem}.{digest}"
+
+    @staticmethod
+    def _existing_file_mode(output_path: Path) -> Optional[int]:
+        try:
+            return stat.S_IMODE(output_path.stat().st_mode)
+        except FileNotFoundError:
+            return None
+
+    @staticmethod
+    def _reserve_output_lock(output_path: Path) -> Path:
+        if output_path.exists():
+            raise FileExistsError(output_path)
+
+        lock_path = PowerPointProvider._lock_path_for(output_path)
+        try:
+            with lock_path.open("xb"):
+                pass
+        except FileExistsError:
+            raise
+        except OSError as error:
+            raise ConfigurationError(
+                f"Could not reserve PowerPoint output path {output_path}: {error}"
+            ) from error
+
+        if output_path.exists():
+            PowerPointProvider._release_output_lock(lock_path)
+            raise FileExistsError(output_path)
+        return lock_path
+
+    def _release_presentation_lock(self, presentation_id: str) -> None:
+        lock_path = self._presentation_locks.pop(presentation_id, None)
+        if lock_path is not None:
+            self._release_output_lock(lock_path)
+
+    @staticmethod
+    def _release_output_lock(lock_path: Path) -> None:
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError as error:
+            logger.warning(
+                "Could not release PowerPoint output lock %s: %s", lock_path, error
+            )
 
     def _get_presentation(self, presentation_id: str) -> Any:
         try:
@@ -443,15 +563,20 @@ class PowerPointProvider(PresentationProvider):
     def _replace_text_frame(text_frame: Any, placeholder: str, replacement: str) -> int:
         replacements = 0
         for paragraph in text_frame.paragraphs:
+            original_paragraph_text = paragraph.text
+            original_count = original_paragraph_text.count(placeholder)
+            paragraph_replacements = 0
             for run in paragraph.runs:
                 if placeholder not in run.text:
                     continue
-                replacements += run.text.count(placeholder)
+                paragraph_replacements += run.text.count(placeholder)
                 run.text = run.text.replace(placeholder, replacement)
 
-            paragraph_text = paragraph.text
-            if placeholder in paragraph_text:
-                replacements += paragraph_text.count(placeholder)
-                paragraph.text = paragraph_text.replace(placeholder, replacement)
+            replacements += paragraph_replacements
+            if original_count > paragraph_replacements:
+                replacements += original_count - paragraph_replacements
+                paragraph.text = original_paragraph_text.replace(
+                    placeholder, replacement
+                )
 
         return replacements

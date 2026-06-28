@@ -97,7 +97,7 @@ class _RenderContext:
     total_replacements: int = 0
     uploaded_file_ids: List[str] = field(default_factory=list)
     failed_cleanup_ids: List[str] = field(default_factory=list)
-    original_error: Optional[Exception] = None
+    original_error: Optional[BaseException] = None
     ownership_transfer_attempted: bool = False
     ownership_transfer_succeeded: Optional[bool] = None
     ownership_transfer_target: Optional[str] = None
@@ -594,7 +594,13 @@ class Presentation(BaseModel):
         """Create render context after provider preflight and presentation creation."""
         self._run_provider_preflight()
         presentation_id = self.provider.create_presentation(self.name)
-        page_width_pt, page_height_pt = self._resolve_page_dimensions(presentation_id)
+        try:
+            page_width_pt, page_height_pt = self._resolve_page_dimensions(
+                presentation_id
+            )
+        except BaseException:
+            self._abort_provider_presentation_id(presentation_id)
+            raise
 
         return _RenderContext(
             presentation_id=presentation_id,
@@ -953,6 +959,23 @@ class Presentation(BaseModel):
                     "Ownership transfer failed: " f"{context.ownership_transfer_error}"
                 ) from transfer_error
 
+    def _abort_provider_presentation_id(self, presentation_id: str) -> None:
+        abort_presentation = getattr(self.provider, "abort_presentation", None)
+        if not callable(abort_presentation):
+            return
+
+        try:
+            abort_presentation(presentation_id)
+        except Exception as abort_error:
+            logger.warning(
+                "Provider abort hook failed for presentation '%s': %s",
+                presentation_id,
+                redacted_error_line(abort_error),
+            )
+
+    def _abort_provider_presentation(self, context: _RenderContext) -> None:
+        self._abort_provider_presentation_id(context.presentation_id)
+
     def _build_presentation_result(
         self, context: _RenderContext, citation_summary: CitationSummary
     ) -> PresentationResult:
@@ -1042,6 +1065,7 @@ class Presentation(BaseModel):
         """Render the complete presentation with all content and styling."""
         context: Optional[_RenderContext] = None
         cleanup_attempted = False
+        render_completed = False
         try:
             context = self._create_render_context(start_time=time.time())
             self._prefetch_data_sources()
@@ -1053,14 +1077,21 @@ class Presentation(BaseModel):
             self._apply_ownership_transfer(context)
             cleanup_attempted = True
             self._cleanup_uploaded_chart_images(context)
-            return self._build_presentation_result(context, citation_summary)
-        except Exception as error:
+            result = self._build_presentation_result(context, citation_summary)
+            render_completed = True
+            return result
+        except BaseException as error:
             if context is not None:
                 context.original_error = error
             raise
         finally:
-            if context is not None and not cleanup_attempted:
-                self._cleanup_uploaded_chart_images(context)
+            if context is not None:
+                try:
+                    if not cleanup_attempted:
+                        self._cleanup_uploaded_chart_images(context)
+                finally:
+                    if not render_completed:
+                        self._abort_provider_presentation(context)
 
     def get_slide(self, slide_id: str) -> Optional[Slide]:
         """Retrieve a slide by its unique identifier.

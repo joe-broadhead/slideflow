@@ -55,6 +55,7 @@ from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities import ConfigLoader
 from slideflow.utilities.auth import load_google_credentials
+from slideflow.utilities.config import render_params
 from slideflow.utilities.error_messages import redacted_error_line
 
 _GOOGLE_SLIDES_CONTRACT_FIELDS = (
@@ -282,48 +283,118 @@ def _resolve_template_ids_for_contract_check(
     )
 
 
-def _read_powerpoint_template_paths_from_params(params_path: Path) -> List[Path]:
-    """Read unique PowerPoint template paths from params CSV."""
-    template_paths: Set[Path] = set()
-
+def _read_params_rows(params_path: Path) -> List[Dict[str, str]]:
+    """Read params CSV rows as string mappings."""
     with params_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
-        if "template_path" not in (reader.fieldnames or []):
-            raise ValueError(
-                f"Missing 'template_path' column in params file: {params_path}"
-            )
-        for row in reader:
-            template_path = (row.get("template_path") or "").strip()
-            if template_path:
-                template_paths.add(Path(template_path).expanduser())
+        return [{key: value or "" for key, value in row.items()} for row in reader]
 
-    if not template_paths:
+
+def _render_powerpoint_provider_configs_from_params(
+    presentation_config: PresentationConfig, params_path: Path
+) -> List[Dict[str, Any]]:
+    provider_config = getattr(presentation_config.provider, "config", {})
+    if not isinstance(provider_config, dict):
+        provider_config = {}
+
+    rendered_configs = [
+        render_params(provider_config, row) for row in _read_params_rows(params_path)
+    ]
+    rendered_dicts = [
+        _normalize_powerpoint_provider_config(config)
+        for config in rendered_configs
+        if isinstance(config, dict)
+    ]
+    if not rendered_dicts:
         raise ValueError(
-            f"No template_path values found in params file: {params_path}. "
-            "Provide at least one template_path row."
+            f"No parameter rows found in params file: {params_path}. "
+            "Provide at least one row."
         )
+    return rendered_dicts
 
-    return sorted(template_paths, key=str)
+
+def _normalize_powerpoint_provider_config(
+    provider_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    template_path = provider_config.get("template_path")
+    if isinstance(template_path, str):
+        return {**provider_config, "template_path": template_path.strip()}
+    return provider_config
+
+
+def _powerpoint_slide_id_mode(provider_config: Dict[str, Any]) -> str:
+    slide_id_mode = str(provider_config.get("slide_id_mode", "auto"))
+    if slide_id_mode not in {"auto", "index", "native"}:
+        return "auto"
+    return slide_id_mode
+
+
+def _resolve_powerpoint_contract_targets(
+    presentation_config: PresentationConfig, params_path: Optional[Path]
+) -> List[tuple[Path, str]]:
+    if params_path is not None:
+        provider_configs = _render_powerpoint_provider_configs_from_params(
+            presentation_config, params_path
+        )
+    else:
+        provider_config = getattr(presentation_config.provider, "config", {})
+        provider_configs = [
+            provider_config if isinstance(provider_config, dict) else {}
+        ]
+
+    targets: List[tuple[Path, str]] = []
+    seen: Set[tuple[Path, str]] = set()
+    for provider_config in provider_configs:
+        template_path = provider_config.get("template_path")
+        if not isinstance(template_path, (str, Path)) or not str(template_path).strip():
+            continue
+        target = (
+            Path(str(template_path).strip()).expanduser(),
+            _powerpoint_slide_id_mode(provider_config),
+        )
+        if target not in seen:
+            seen.add(target)
+            targets.append(target)
+
+    return targets
 
 
 def _resolve_powerpoint_template_paths_for_contract_check(
     presentation_config: PresentationConfig, params_path: Optional[Path]
 ) -> List[Path]:
     """Resolve PowerPoint template paths from params CSV or provider config."""
-    if params_path is not None:
-        return _read_powerpoint_template_paths_from_params(params_path)
-
-    provider_config = getattr(presentation_config.provider, "config", {})
-    if isinstance(provider_config, dict):
-        template_path = provider_config.get("template_path")
-        if isinstance(template_path, (str, Path)) and str(template_path).strip():
-            return [Path(template_path).expanduser()]
+    targets = _resolve_powerpoint_contract_targets(presentation_config, params_path)
+    if targets:
+        return sorted({template_path for template_path, _mode in targets}, key=str)
 
     raise ValueError(
         "No PowerPoint template paths available for provider contract check. "
         "Provide --params-path with a 'template_path' column or set "
         "provider.config.template_path."
     )
+
+
+def _validate_provider_specific_config(
+    presentation_config: PresentationConfig,
+    *,
+    provider_contract_check: bool,
+    params_path: Optional[Path],
+) -> None:
+    """Validate provider config, resolving PowerPoint contract template params."""
+    from slideflow.presentations.providers.factory import ProviderFactory
+
+    provider_type = presentation_config.provider.type
+    provider_config = presentation_config.provider.config
+    config_class = ProviderFactory.get_config_class(provider_type)
+
+    if provider_type == "powerpoint" and provider_contract_check and params_path:
+        for rendered_config in _render_powerpoint_provider_configs_from_params(
+            presentation_config, params_path
+        ):
+            config_class(**rendered_config)
+        return
+
+    config_class(**provider_config)
 
 
 def _extract_slide_text_map(presentation_payload: Dict[str, Any]) -> Dict[str, str]:
@@ -664,23 +735,21 @@ def _run_powerpoint_provider_contract_check(
             "Install with slideflow-presentations[powerpoint]."
         ) from error
 
-    template_paths = _resolve_powerpoint_template_paths_for_contract_check(
+    contract_targets = _resolve_powerpoint_contract_targets(
         presentation_config, params_path
     )
+    if not contract_targets:
+        raise ValueError(
+            "No PowerPoint template paths available for provider contract check. "
+            "Provide --params-path with params that render "
+            "provider.config.template_path or set provider.config.template_path."
+        )
     expected_contract = _collect_expected_contract(presentation_config)
-    provider_config = getattr(presentation_config.provider, "config", {})
-    slide_id_mode = (
-        provider_config.get("slide_id_mode", "auto")
-        if isinstance(provider_config, dict)
-        else "auto"
-    )
-    if slide_id_mode not in {"auto", "index", "native"}:
-        slide_id_mode = "auto"
 
     issues: List[Dict[str, Any]] = []
     checked_templates = 0
 
-    for template_path in template_paths:
+    for template_path, slide_id_mode in contract_targets:
         template_ref = str(template_path)
         try:
             presentation = PptxPresentation(str(template_path))
@@ -733,7 +802,12 @@ def _run_powerpoint_provider_contract_check(
         "provider_type": presentation_config.provider.type,
         "auth_mode": "local",
         "checked_templates": checked_templates,
-        "template_ids": [str(path) for path in template_paths],
+        "template_ids": [
+            str(path)
+            for path in _resolve_powerpoint_template_paths_for_contract_check(
+                presentation_config, params_path
+            )
+        ],
         "checked_slides": sorted(expected_contract.keys()),
         "issues": issues,
     }
@@ -1004,11 +1078,11 @@ def validate_command(
 
         presentation_config = PresentationConfig(**loader.config)
 
-        # Validate provider-specific configuration
-        from slideflow.presentations.providers.factory import ProviderFactory
-
-        ProviderFactory.get_config_class(presentation_config.provider.type)(
-            **presentation_config.provider.config
+        # Validate provider-specific configuration.
+        _validate_provider_specific_config(
+            presentation_config,
+            provider_contract_check=provider_contract_check,
+            params_path=params_path,
         )
 
         # Validate chart/replacement specs deeply so unresolved function refs fail validation.

@@ -228,6 +228,15 @@ class PresentationProvider(ABC):
         """
         _ = presentation_id
 
+    def abort_presentation(self, presentation_id: str) -> None:
+        """Release provider-specific resources after an unsuccessful render.
+
+        Providers that reserve local paths, create temporary remote artifacts, or
+        hold other render-scoped resources can override this hook. Implementations
+        should be best-effort and idempotent.
+        """
+        _ = presentation_id
+
     def render_citations(
         self,
         presentation_id: str,
