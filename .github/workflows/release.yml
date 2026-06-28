@@ -328,63 +328,16 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python - <<'PY'
-          import os
-          import subprocess
-          import urllib.error
-          import urllib.request
-
-
-          def url_exists(url: str, headers: dict[str, str] | None = None) -> bool:
-              request = urllib.request.Request(url, headers=headers or {})
-              try:
-                  with urllib.request.urlopen(request, timeout=15) as response:
-                      return response.status == 200
-              except urllib.error.HTTPError as error:
-                  if error.code == 404:
-                      return False
-                  raise
-
-
-          version = os.environ["VERSION"]
-          repository = os.environ["REPOSITORY"]
-          tag = f"v{version}"
-
-          package_exists = url_exists(
-              f"https://pypi.org/pypi/slideflow-presentations/{version}/json"
-          )
-          tag_exists = (
-              subprocess.run(
-                  ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}"],
-                  check=False,
-                  capture_output=True,
-                  text=True,
-              ).returncode
-              == 0
-          )
-          release_exists = url_exists(
-              f"https://api.github.com/repos/{repository}/releases/tags/{tag}",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-              },
-          )
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
-              output_file.write(f"package_exists={str(package_exists).lower()}\n")
-              output_file.write(f"tag_exists={str(tag_exists).lower()}\n")
-              output_file.write(f"release_exists={str(release_exists).lower()}\n")
-          PY
+          uv run python scripts/ci/check_release_artifact_state.py \
+            --version "${VERSION}" \
+            --expected-commit "${GITHUB_SHA}" \
+            --repository "${REPOSITORY}"
 
       - name: Release idempotency summary
         run: |
           echo "PyPI version exists: ${{ steps.release_state.outputs.package_exists }}"
           echo "Git tag exists: ${{ steps.release_state.outputs.tag_exists }}"
           echo "GitHub release exists: ${{ steps.release_state.outputs.release_exists }}"
-
-      - name: Publish package to PyPI
-        if: ${{ steps.release_state.outputs.package_exists != 'true' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create and push release tag
         if: ${{ steps.release_state.outputs.tag_exists != 'true' }}
@@ -397,6 +350,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${TAG}"
           git push origin "${TAG}"
+
+      - name: Publish package to PyPI
+        if: ${{ steps.release_state.outputs.package_exists != 'true' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create GitHub release
         if: ${{ steps.release_state.outputs.release_exists != 'true' }}
