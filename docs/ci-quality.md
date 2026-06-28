@@ -17,6 +17,8 @@
   - builds wheel/sdist artifacts and verifies distribution identity (`slideflow-presentations`)
   - installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
 - `Docs` (`.github/workflows/docs.yml`)
+  - builds docs on pull requests that touch docs, README, changelog, package
+    metadata, or docs dependencies
   - installs locked docs dependencies with `uv sync --extra docs --locked`
   - runs `uv run mkdocs build --strict`
   - deploys to GitHub Pages on `master`/`main`

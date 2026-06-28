@@ -111,7 +111,10 @@ uv run mkdocs build --strict
 5. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
 6. Ensure `CHANGELOG.md` has the matching released header.
 7. Create release branch `release/vX.Y.Z`.
-8. Push and monitor `CI`, `Docs`, and `Release` workflows.
+8. Push and monitor the `Release` workflow plus any branch CI/Audit checks. The
+   `Release` workflow runs its own strict docs build; the standalone `Docs`
+   workflow builds docs on docs-related PRs and deploys only after pushes to
+   `master`/`main`.
 9. After release completion, merge the release result back to `master` and verify
    `git merge-base --is-ancestor vX.Y.Z master`.
 10. For release or hardening PRs that update vulnerable dependencies, record

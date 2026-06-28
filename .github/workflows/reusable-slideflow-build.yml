@@ -78,7 +78,7 @@ on:
         default: ""
         type: string
       dry-run:
-        description: "Run build with --dry-run"
+        description: "Run presentation build with --dry-run; unsupported for sheets"
         required: false
         default: false
         type: boolean
@@ -254,6 +254,10 @@ jobs:
           artifact_kind="${{ inputs.artifact-kind }}"
           if [[ "$artifact_kind" != "presentation" && "$artifact_kind" != "sheets" ]]; then
             echo "Unsupported artifact-kind: '$artifact_kind' (expected 'presentation' or 'sheets')" >&2
+            exit 1
+          fi
+          if [[ "$artifact_kind" == "sheets" && "${{ inputs.dry-run }}" == "true" ]]; then
+            echo "dry-run is only supported for presentation artifacts; slideflow sheets build has no dry-run mode." >&2
             exit 1
           fi
           : > "$LOG_FILE"

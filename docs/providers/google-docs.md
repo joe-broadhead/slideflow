@@ -83,7 +83,8 @@ Field behavior:
 Current implementation notes:
 
 - `remove_section_markers` runs after render finalization and deletes section-marker tokens.
-- `default_chart_width_pt` is currently reserved and not yet applied at render time.
+- `default_chart_width_pt` defaults to `480`; it is reserved for future inline
+  chart sizing behavior and is not currently applied at render time.
 
 ## Runtime Behavior
 

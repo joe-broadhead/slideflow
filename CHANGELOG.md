@@ -24,6 +24,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Credential hygiene docs now require secret-manager or environment-backed
   credentials, document GitHub secret scanning/push-protection status, and add a
   SlideFlow-specific secret hygiene check to pre-commit/CI.
+- Workflow and configuration docs now clarify presentation-only dry-run
+  behavior, release/docs workflow triggers, credential handling, and reserved
+  Google Docs chart-width configuration.
 
 ### Fixed
 

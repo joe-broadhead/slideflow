@@ -56,7 +56,7 @@ Supported values:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `credentials` | `str` | conditionally | Path or raw JSON; can also come from env |
+| `credentials` | `str` | conditionally | Path to an untracked file, or secret-manager/env injected raw JSON; can also come from env |
 | `template_id` | `str` | recommended | Source template deck ID |
 | `drive_folder_id` | `str` | no | Folder for uploaded chart images |
 | `presentation_folder_id` | `str` | no | Folder for generated decks |
@@ -76,14 +76,14 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `credentials` | `str` | conditionally | Path/raw JSON; can also come from env |
+| `credentials` | `str` | conditionally | Path to an untracked file, or secret-manager/env injected raw JSON; can also come from env |
 | `template_id` | `str` | recommended | Source template document ID |
 | `document_folder_id` | `str` | no | Folder for generated docs |
 | `drive_folder_id` | `str` | no | Folder for uploaded chart images |
 | `section_marker_prefix` | `str` | no | Marker prefix (default `{{SECTION:`) |
 | `section_marker_suffix` | `str` | no | Marker suffix (default `}}`) |
 | `remove_section_markers` | `bool` | no | Remove `{{SECTION:...}}` markers after render finalization |
-| `default_chart_width_pt` | `float` | no | Reserved config field; currently not applied at render time |
+| `default_chart_width_pt` | `float` | no | Defaults to `480`; reserved for future inline chart sizing and currently not applied at render time |
 | `share_with` | `list[str]` | no | Emails to share generated document with |
 | `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
@@ -104,7 +104,7 @@ For provider setup and marker behavior, see [Google Docs Provider](providers/goo
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `credentials` | `str` | conditionally | Path/raw JSON; can also come from env |
+| `credentials` | `str` | conditionally | Path to an untracked file, or secret-manager/env injected raw JSON; can also come from env |
 | `spreadsheet_id` | `str` | no | Reuse an existing spreadsheet instead of creating one |
 | `drive_folder_id` | `str` | no | Destination folder for newly created spreadsheets |
 | `share_with` | `list[str]` | no | Emails to share generated spreadsheet with |
