@@ -21,7 +21,7 @@ from google.auth.exceptions import DefaultCredentialsError
 
 from slideflow.constants import Defaults, Environment
 from slideflow.data.connectors.base import DataConnector, SQLExecutor
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line, safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
 from slideflow.utilities.logging import (
     get_logger,
@@ -174,7 +174,7 @@ class BigQueryConnector(DataConnector):
                 raise BigQueryConnectorError(
                     "configuration",
                     "Failed to load BigQuery credentials from credentials_json "
-                    f"({safe_error_line(error)})",
+                    f"({redacted_error_line(error)})",
                 ) from error
 
             inferred_project = payload.get("project_id") or getattr(
@@ -192,7 +192,7 @@ class BigQueryConnector(DataConnector):
                 raise BigQueryConnectorError(
                     "configuration",
                     "Failed to load BigQuery credentials from credentials_path "
-                    f"({safe_error_line(error)})",
+                    f"({redacted_error_line(error)})",
                 ) from error
 
             inferred_project = getattr(credentials, "project_id", None)
@@ -236,7 +236,7 @@ class BigQueryConnector(DataConnector):
                 raise BigQueryConnectorError(
                     category,
                     "Failed to initialize BigQuery client "
-                    f"({safe_error_line(error)})",
+                    f"({redacted_error_line(error)})",
                 ) from error
         return self._client
 
@@ -286,7 +286,7 @@ class BigQueryConnector(DataConnector):
                 if isinstance(error, BigQueryConnectorError)
                 else BigQueryConnectorError(
                     self._categorize_error(error),
-                    f"BigQuery query failed ({safe_error_line(error)})",
+                    f"BigQuery query failed ({redacted_error_line(error)})",
                 )
             )
             log_api_operation(

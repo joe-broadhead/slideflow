@@ -75,6 +75,9 @@ Runtime control note:
 
 - The reusable workflow forwards `threads` and `requests-per-second` to both
   `slideflow build` and `slideflow sheets build`.
+- The reusable workflow `dry-run` input applies only to `artifact-kind:
+  presentation`. It fails fast for `artifact-kind: sheets` because
+  `slideflow sheets build` performs workbook writes and has no dry-run mode.
 - Sheets runs tab writes with bounded parallelism based on `--threads` and tab
   count; requested/applied/supported/effective/workload values are reported in
   build JSON.
@@ -120,9 +123,13 @@ The reusable workflow exposes:
 - `presentation-urls`: comma-separated URLs for `presentation` builds
 - `workbook-urls`: comma-separated URLs for `sheets` builds
 - `artifact-urls`: comma-separated URLs for whichever artifact-kind was built
-- `build-result-json`: JSON summary from `slideflow build --output-json` or `slideflow sheets build --output-json`
-- `validate-result-json`: JSON summary from `slideflow validate --output-json` or `slideflow sheets validate --output-json`
-- `doctor-result-json`: JSON summary from `slideflow doctor --output-json` or `slideflow sheets doctor --output-json`
+- `build-result-json`: redacted, non-sensitive JSON summary from `slideflow build --output-json` or `slideflow sheets build --output-json`
+- `validate-result-json`: redacted, non-sensitive JSON summary from `slideflow validate --output-json` or `slideflow sheets validate --output-json`
+- `doctor-result-json`: redacted, non-sensitive JSON summary from `slideflow doctor --output-json` or `slideflow sheets doctor --output-json`
+
+Reusable workflow JSON outputs are compact summaries. They omit raw params,
+full result rows, check details, workbook/document IDs, and URLs; generated
+links remain available through the dedicated URL outputs.
 
 ```yaml
 jobs:

@@ -29,7 +29,7 @@ Key Features:
 Example:
     Creating a line chart with data transformation:
 
-    >>> from slideflow.presentations.charts import PlotlyGraphObjects
+    >>> from slideflow.presentations.charts import PlotlyGraphObjects, chart_export_executor_scope
     >>> from slideflow.data.connectors import CSVDataSource
     >>>
     >>> chart = PlotlyGraphObjects(
@@ -47,24 +47,36 @@ Example:
     ...     x=100, y=150, width=500, height=400
     ... )
     >>>
-    >>> # Generate chart image bytes; provider handles upload/insertion
-    >>> image_bytes = chart.generate_chart_image(chart.fetch_data())
+    >>> # Generate chart image bytes; provider handles upload/insertion.
+    >>> # Presentation.render() manages this scope automatically.
+    >>> with chart_export_executor_scope():
+    ...     image_bytes = chart.generate_chart_image(chart.fetch_data())
 """
 
-import atexit
 import re
 import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
-from threading import Lock
-from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Union
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Union,
+)
 
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from slideflow.builtins.template_engine import get_template_engine
+from slideflow.builtins.template_engine import TemplateEngine, get_template_engine
 from slideflow.constants import GoogleSlides, Timing
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 from slideflow.presentations.positioning import safe_eval_expression
@@ -74,46 +86,79 @@ from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
 _LIST_COLUMN_REF_PATTERN = re.compile(r"^\$([a-zA-Z_]\w*)(?:\[(-?\d+)\])?$")
-
-_CHART_EXPORT_EXECUTOR: Optional[ProcessPoolExecutor] = None
-_CHART_EXPORT_EXECUTOR_LOCK = Lock()
-
-
-def _get_chart_export_executor() -> ProcessPoolExecutor:
-    global _CHART_EXPORT_EXECUTOR
-    with _CHART_EXPORT_EXECUTOR_LOCK:
-        if _CHART_EXPORT_EXECUTOR is None:
-            _CHART_EXPORT_EXECUTOR = ProcessPoolExecutor(max_workers=1)
-        return _CHART_EXPORT_EXECUTOR
+_CHART_EXPORT_SCOPE_ACTIVE: ContextVar[bool] = ContextVar(
+    "slideflow_chart_export_scope_active",
+    default=False,
+)
+_CHART_EXPORT_EXECUTOR: ContextVar[Optional[ProcessPoolExecutor]] = ContextVar(
+    "slideflow_chart_export_executor",
+    default=None,
+)
 
 
-def _reset_chart_export_executor() -> None:
-    global _CHART_EXPORT_EXECUTOR
-    with _CHART_EXPORT_EXECUTOR_LOCK:
-        executor = _CHART_EXPORT_EXECUTOR
-        _CHART_EXPORT_EXECUTOR = None
+def _create_chart_export_executor() -> ProcessPoolExecutor:
+    """Create an executor owned by one chart export attempt."""
+    return ProcessPoolExecutor(max_workers=1)
 
-    if executor is None:
+
+@contextmanager
+def chart_export_executor_scope() -> Iterator[None]:
+    """Reuse one chart export executor within the current render context.
+
+    ``Presentation.render()`` enters this scope automatically. Direct callers
+    that generate multiple chart images should wrap those calls in this scope to
+    reuse one export worker/Kaleido server without sharing it across builds.
+    """
+    if _CHART_EXPORT_SCOPE_ACTIVE.get():
+        yield
         return
 
-    # Best effort teardown: terminate worker process to avoid hanging exports.
+    active_token = _CHART_EXPORT_SCOPE_ACTIVE.set(True)
+    executor_token = _CHART_EXPORT_EXECUTOR.set(None)
     try:
-        for process in getattr(executor, "_processes", {}).values():
-            process.terminate()
-    except Exception as error:
-        logger.debug("Chart export worker teardown failed: %s", error, exc_info=True)
+        yield
+    finally:
+        executor = _CHART_EXPORT_EXECUTOR.get()
+        _CHART_EXPORT_EXECUTOR.reset(executor_token)
+        _CHART_EXPORT_SCOPE_ACTIVE.reset(active_token)
+        if executor is not None:
+            _shutdown_chart_export_executor(executor, terminate_workers=False)
+
+
+def _get_chart_export_executor() -> tuple[ProcessPoolExecutor, bool]:
+    """Return an executor and whether the caller owns its success cleanup."""
+    if _CHART_EXPORT_SCOPE_ACTIVE.get():
+        executor = _CHART_EXPORT_EXECUTOR.get()
+        if executor is None:
+            executor = _create_chart_export_executor()
+            _CHART_EXPORT_EXECUTOR.set(executor)
+        return executor, False
+    return _create_chart_export_executor(), True
+
+
+def _replace_scoped_chart_export_executor() -> None:
+    if _CHART_EXPORT_SCOPE_ACTIVE.get():
+        _CHART_EXPORT_EXECUTOR.set(None)
+
+
+def _shutdown_chart_export_executor(
+    executor: ProcessPoolExecutor, *, terminate_workers: bool
+) -> None:
+    """Clean up a chart export executor without touching unrelated exports."""
+    # Best effort teardown: terminate worker process to avoid hanging exports.
+    if terminate_workers:
+        try:
+            for process in getattr(executor, "_processes", {}).values():
+                process.terminate()
+        except Exception as error:
+            logger.debug(
+                "Chart export worker teardown failed: %s", error, exc_info=True
+            )
 
     try:
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=not terminate_workers, cancel_futures=True)
     except Exception as error:
         logger.debug("Chart export executor shutdown failed: %s", error, exc_info=True)
-
-
-def _shutdown_chart_export_executor() -> None:
-    _reset_chart_export_executor()
-
-
-atexit.register(_shutdown_chart_export_executor)
 
 
 def _plotly_to_image(
@@ -161,23 +206,27 @@ def _plotly_to_image(
         )
 
 
-def _execute_with_retry(func, *args, **kwargs):
+def _execute_with_retry(func, *args, context: Optional[str] = None, **kwargs):
     """
     Executes a function with a retry mechanism.
 
     The timeout sequence is configured via ``Timing.CHART_EXPORT_RETRY_TIMEOUTS_S``.
-    If execution times out, the chart export worker is reset before retrying.
+    Render contexts reuse one worker process, but a timed-out export only
+    terminates the worker owned by that context.
     If all retries are exhausted, raises ChartGenerationError.
     """
     execution_id = uuid.uuid4().hex[:8]
     timeouts = Timing.CHART_EXPORT_RETRY_TIMEOUTS_S
+    context_suffix = f" ({context})" if context else ""
     for i, timeout in enumerate(timeouts):
-        executor = _get_chart_export_executor()
+        executor, owns_executor = _get_chart_export_executor()
+        future = None
         try:
             logger.info(
-                "[%s] Attempting execution of %s (Attempt %s/%s, timeout=%ss)",
+                "[%s] Attempting execution of %s%s (Attempt %s/%s, timeout=%ss)",
                 execution_id,
                 func.__name__,
+                context_suffix,
                 i + 1,
                 len(timeouts),
                 timeout,
@@ -185,29 +234,41 @@ def _execute_with_retry(func, *args, **kwargs):
             future = executor.submit(func, *args, **kwargs)
             result = future.result(timeout=timeout)
             logger.info(
-                "[%s] Execution of %s completed successfully",
+                "[%s] Execution of %s%s completed successfully",
                 execution_id,
                 func.__name__,
+                context_suffix,
             )
+            if owns_executor:
+                _shutdown_chart_export_executor(executor, terminate_workers=False)
             return result
         except TimeoutError:
-            # Reset the worker on timeout to clear stuck browser state.
-            _reset_chart_export_executor()
+            if future is not None:
+                cancel = getattr(future, "cancel", None)
+                if callable(cancel):
+                    cancel()
+            _shutdown_chart_export_executor(executor, terminate_workers=True)
+            if not owns_executor:
+                _replace_scoped_chart_export_executor()
 
             logger.warning(
-                "[%s] Function %s timed out after %s seconds. Retrying... Attempt %s of %s",
+                "[%s] Function %s%s timed out after %s seconds. "
+                "Retrying... Attempt %s of %s",
                 execution_id,
                 func.__name__,
+                context_suffix,
                 timeout,
                 i + 1,
                 len(timeouts),
             )
             continue
         except Exception:
-            _reset_chart_export_executor()
+            _shutdown_chart_export_executor(executor, terminate_workers=False)
+            if not owns_executor:
+                _replace_scoped_chart_export_executor()
             raise
     raise ChartGenerationError(
-        f"[{execution_id}] Function {func.__name__} failed after all retries."
+        f"[{execution_id}] Function {func.__name__}{context_suffix} failed after all retries."
     )
 
 
@@ -293,6 +354,15 @@ class BaseChart(BaseModel, ABC):
         Optional[float],
         Field(2.0, description="Image scaling factor for higher resolution"),
     ]
+    template_engine: Annotated[
+        Optional[TemplateEngine],
+        Field(
+            None,
+            exclude=True,
+            repr=False,
+            description="Build-scoped template engine for resolving chart templates.",
+        ),
+    ] = None
 
     @field_validator("dimensions_format")
     @classmethod
@@ -587,6 +657,11 @@ class PlotlyGraphObjects(BaseChart):
             image_width,
             image_height,
             self.scale,
+            context=(
+                f"{self.type} chart title={self.title!r}"
+                if self.title
+                else f"{self.type} chart"
+            ),
         )
 
     @staticmethod
@@ -950,7 +1025,7 @@ class TemplateChart(BaseChart):
             >>> image_bytes = chart.generate_chart_image(sales_df)
         """
 
-        engine = get_template_engine()
+        engine = self.template_engine or get_template_engine()
 
         # Render the template with user config
         rendered_config = engine.render_template(

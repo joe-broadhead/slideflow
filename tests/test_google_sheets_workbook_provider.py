@@ -57,6 +57,39 @@ def test_get_rate_limiter_creates_distinct_limiters_for_distinct_rates(monkeypat
     assert one_rps is not two_rps
 
 
+def test_google_sheets_config_defaults_share_role_to_reader():
+    config = sheets_provider_module.GoogleSheetsProviderConfig()
+
+    assert config.share_role == "reader"
+
+
+@pytest.mark.parametrize("role", ["owner", "readerwriter", ""])
+def test_google_sheets_config_rejects_invalid_share_role(role: str):
+    with pytest.raises(ValueError, match="share_role"):
+        sheets_provider_module.GoogleSheetsProviderConfig(share_role=role)
+
+
+def test_google_sheets_config_normalizes_share_role():
+    config = sheets_provider_module.GoogleSheetsProviderConfig(share_role=" Writer ")
+
+    assert config.share_role == "writer"
+
+
+def test_finalize_workbook_rejects_invalid_share_role_before_api_call():
+    provider = _provider_without_init()
+    provider.config = SimpleNamespace(share_with=["a@example.com"], share_role="owner")
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("API should not be called")
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="share_role"):
+        provider.finalize_workbook("sheet_123")
+
+
 def test_load_run_key_cache_populates_and_reuses_cache():
     provider = _provider_without_init()
     provider._run_key_cache = {}

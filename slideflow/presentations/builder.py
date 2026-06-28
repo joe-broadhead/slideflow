@@ -46,7 +46,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 from pydantic import TypeAdapter
 
-from slideflow.builtins.template_engine import set_template_paths
+from slideflow.builtins.template_engine import TemplateEngine, create_template_engine
 from slideflow.data.connectors import DataSourceConfig
 from slideflow.presentations.base import Presentation, Slide
 from slideflow.presentations.charts import BaseChart, ChartUnion
@@ -239,14 +239,15 @@ class PresentationBuilder:
             >>> presentation = PresentationBuilder.from_config(config)
             >>> result = presentation.render()
         """
-        if config.template_paths:
-            set_template_paths(cast(List[str | Path], config.template_paths))
+        template_engine = create_template_engine(
+            cast(Optional[List[str | Path]], config.template_paths)
+        )
 
         provider = ProviderFactory.create_provider(config.provider)
 
         slides = []
         for slide_spec in config.presentation.slides:
-            slide = cls._build_slide(slide_spec)
+            slide = cls._build_slide(slide_spec, template_engine=template_engine)
             slides.append(slide)
 
         presentation = Presentation(
@@ -260,7 +261,9 @@ class PresentationBuilder:
         return presentation
 
     @classmethod
-    def _build_slide(cls, spec) -> Slide:
+    def _build_slide(
+        cls, spec, template_engine: Optional[TemplateEngine] = None
+    ) -> Slide:
         """Build a slide from its specification with all content elements.
 
         Constructs a Slide object by processing the slide specification and
@@ -293,7 +296,7 @@ class PresentationBuilder:
 
         charts: List[BaseChart] = []
         for chart_spec in spec.charts:
-            chart = cls._build_chart(chart_spec)
+            chart = cls._build_chart(chart_spec, template_engine=template_engine)
             charts.append(cast(BaseChart, chart))
 
         return Slide(
@@ -358,7 +361,9 @@ class PresentationBuilder:
         return adapter.validate_python(config)
 
     @classmethod
-    def _build_chart(cls, spec) -> ChartUnion:
+    def _build_chart(
+        cls, spec, template_engine: Optional[TemplateEngine] = None
+    ) -> ChartUnion:
         """Build a chart object from its specification.
 
         Constructs the appropriate chart type based on the specification using
@@ -407,6 +412,9 @@ class PresentationBuilder:
 
         if "data_source" in config:
             config["data_source"] = cls._build_data_source(config["data_source"])
+
+        if template_engine is not None:
+            config["template_engine"] = template_engine
 
         # Add type to config and let Pydantic discriminated union handle the rest
         config["type"] = spec.type

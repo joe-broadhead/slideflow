@@ -10,7 +10,7 @@ Key Features:
     - Thread-safe operations with reentrant locking
     - MD5-based key generation from source parameters
     - Enable/disable functionality for cache control
-    - Memory-efficient reference storage (no copying)
+    - Copy-on-read/write storage to isolate callers from mutations
     - Cache introspection and debugging capabilities
 
 The cache is designed to be transparent to data connectors and automatically
@@ -46,15 +46,25 @@ import json
 import os
 import threading
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 import pandas as pd
 
 from slideflow.constants import Defaults, Environment
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.dataframes import copy_dataframe
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class _InflightLoad:
+    """Tracks one cache load that other callers may wait on."""
+
+    event: threading.Event
+    generation: int
 
 
 def _resolve_data_cache_max_entries() -> int:
@@ -77,9 +87,9 @@ class DataSourceCache:
     retrieving DataFrames using MD5-based keys generated from source parameters.
 
     The cache is designed to be transparent to data connectors and automatically
-    manages memory-efficient storage by storing DataFrame references rather than
-    copies. This is safe because the cache lifecycle is contained within single
-    build operations.
+    stores DataFrame copies and returns fresh copies to callers so replacement
+    formatting, chart transforms, and other consumers cannot mutate cached data
+    shared by the rest of the build.
 
     Thread Safety:
         All operations are protected by a reentrant lock (RLock) to ensure
@@ -100,7 +110,7 @@ class DataSourceCache:
 
     Attributes:
         _instance: Class-level singleton instance storage
-        _cache: Thread-safe dictionary storing DataFrame references
+        _cache: Thread-safe dictionary storing isolated DataFrame copies
         _enabled: Boolean flag controlling cache operations
         _lock: Reentrant lock for thread-safe operations
     """
@@ -108,8 +118,9 @@ class DataSourceCache:
     _instance: Optional["DataSourceCache"] = None
     _instance_lock: threading.Lock = threading.Lock()
     _cache: "OrderedDict[str, pd.DataFrame]"
-    _inflight: Dict[str, threading.Event]
+    _inflight: Dict[str, _InflightLoad]
     _enabled: bool
+    _generation: int
     _max_entries: int
     _lock: threading.RLock
 
@@ -130,9 +141,20 @@ class DataSourceCache:
                     cls._instance._cache = OrderedDict()
                     cls._instance._inflight = {}
                     cls._instance._enabled = True
+                    cls._instance._generation = 0
                     cls._instance._max_entries = _resolve_data_cache_max_entries()
                     cls._instance._lock = threading.RLock()
         return cls._instance
+
+    @staticmethod
+    def _copy_frame(data: pd.DataFrame) -> pd.DataFrame:
+        """Return an isolated DataFrame copy for cache storage or consumers."""
+        return copy_dataframe(data)
+
+    @staticmethod
+    def _new_inflight_event() -> threading.Event:
+        """Create an event for coordinating one in-flight cache load."""
+        return threading.Event()
 
     @staticmethod
     def _stable_json(value: Any) -> str:
@@ -202,7 +224,7 @@ class DataSourceCache:
                 logger.debug(
                     "Data cache key normalization: model_dump failed (%s); "
                     "falling back to repr().",
-                    safe_error_line(error),
+                    redacted_error_line(error),
                     exc_info=True,
                 )
 
@@ -266,24 +288,25 @@ class DataSourceCache:
             ... else:
             ...     print("Data not in cache, need to fetch")
         """
-        if not self._enabled:
-            return None
         key = self._generate_key(source_type, **kwargs)
         with self._lock:
+            if not self._enabled:
+                return None
             # guard the lookup
             df = self._cache.get(key)
             if df is not None:
                 # LRU: move most recently used key to the end.
                 self._cache.move_to_end(key)
-        return df
+            else:
+                return None
+        return self._copy_frame(df)
 
     def set(self, data: pd.DataFrame, source_type: str, **kwargs) -> None:
         """Store a DataFrame in the cache.
 
-        Caches the provided DataFrame using a key generated from the source type
-        and parameters. The cache stores a reference to the DataFrame rather than
-        a copy for memory efficiency. This is safe because the cache lifecycle
-        is contained within single build operations.
+        Caches a copy of the provided DataFrame using a key generated from the
+        source type and parameters. Later reads return fresh copies so callers
+        can safely mutate their returned frames without corrupting the cache.
 
         Args:
             data: The DataFrame to cache.
@@ -298,13 +321,12 @@ class DataSourceCache:
             >>> # Later retrieval will use the same parameters
             >>> cached_data = cache.get("csv", file_path="/data/sales.csv")
         """
-        if not self._enabled:
-            return
         key = self._generate_key(source_type, **kwargs)
+        cache_entry = self._copy_frame(data)
         with self._lock:
-            # Store reference instead of copy - safe since cache lifecycle
-            # is contained within a single build operation
-            self._cache[key] = data
+            if not self._enabled:
+                return
+            self._cache[key] = cache_entry
             self._cache.move_to_end(key)
             self._enforce_size_limit_locked()
 
@@ -327,44 +349,65 @@ class DataSourceCache:
         key = self._generate_key(source_type, **kwargs)
 
         while True:
-            if not self._enabled:
+            cached = None
+            pending = None
+            is_owner = False
+            load_uncached = False
+            with self._lock:
+                if not self._enabled:
+                    load_uncached = True
+                else:
+                    cached = self._cache.get(key)
+                    if cached is not None:
+                        self._cache.move_to_end(key)
+                    else:
+                        pending = self._inflight.get(key)
+                        if pending is None:
+                            pending = _InflightLoad(
+                                event=self._new_inflight_event(),
+                                generation=self._generation,
+                            )
+                            self._inflight[key] = pending
+                            is_owner = True
+
+            if load_uncached:
                 return loader()
 
-            with self._lock:
-                cached = self._cache.get(key)
-                if cached is not None:
-                    self._cache.move_to_end(key)
-                    return cached
-
-                pending = self._inflight.get(key)
-                if pending is None:
-                    pending = threading.Event()
-                    self._inflight[key] = pending
-                    is_owner = True
-                else:
-                    is_owner = False
+            if cached is not None:
+                return self._copy_frame(cached)
 
             if is_owner:
+                assert pending is not None
                 try:
                     data = loader()
                 except BaseException:
                     with self._lock:
-                        event = self._inflight.pop(key, None)
-                        if event is not None:
-                            event.set()
+                        current = self._inflight.get(key)
+                        if current is pending:
+                            self._inflight.pop(key, None)
+                        pending.event.set()
                     raise
 
+                cache_entry = self._copy_frame(data)
                 with self._lock:
-                    if self._enabled:
-                        self._cache[key] = data
+                    current = self._inflight.get(key)
+                    if (
+                        self._enabled
+                        and self._generation == pending.generation
+                        and current is pending
+                    ):
+                        self._cache[key] = cache_entry
                         self._cache.move_to_end(key)
                         self._enforce_size_limit_locked()
-                    event = self._inflight.pop(key, None)
-                    if event is not None:
-                        event.set()
+                        self._inflight.pop(key, None)
+                    elif current is pending:
+                        self._inflight.pop(key, None)
+                    pending.event.set()
                 return data
 
-            pending.wait()
+            if pending is None:
+                continue
+            pending.event.wait()
 
     def clear(self) -> None:
         """Remove all cached DataFrames.
@@ -378,7 +421,9 @@ class DataSourceCache:
             >>> print(f"Cache size after clear: {cache.size}")  # 0
         """
         with self._lock:
+            self._generation += 1
             self._cache.clear()
+            self._release_inflight_locked()
 
     def disable(self) -> None:
         """Disable the cache and clear all cached data.
@@ -394,7 +439,9 @@ class DataSourceCache:
         """
         with self._lock:
             self._enabled = False
+            self._generation += 1
             self._cache.clear()
+            self._release_inflight_locked()
 
     def enable(self) -> None:
         """Re-enable cache operations.
@@ -410,6 +457,13 @@ class DataSourceCache:
         with self._lock:
             self._enabled = True
             self._max_entries = _resolve_data_cache_max_entries()
+
+    def _release_inflight_locked(self) -> None:
+        """Wake all waiters after cache state invalidation. Caller holds lock."""
+        inflight = list(self._inflight.values())
+        self._inflight.clear()
+        for pending in inflight:
+            pending.event.set()
 
     @property
     def is_enabled(self) -> bool:

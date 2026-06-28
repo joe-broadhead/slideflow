@@ -56,17 +56,17 @@ Supported values:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `credentials` | `str` | conditionally | Path or raw JSON; can also come from env |
+| `credentials` | `str` | conditionally | Path to an untracked file, or secret-manager/env injected raw JSON; can also come from env |
 | `template_id` | `str` | recommended | Source template deck ID |
 | `drive_folder_id` | `str` | no | Folder for uploaded chart images |
 | `presentation_folder_id` | `str` | no | Folder for generated decks |
 | `new_folder_name` | `str` | no | Create/use subfolder under `presentation_folder_id` |
 | `new_folder_name_fn` | `callable` | no | Dynamic folder-name generator |
 | `share_with` | `list[str]` | no | Emails to share generated deck with |
-| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
-| `chart_image_sharing_mode` | `str` | no | `public` (default) or `restricted` for uploaded chart-image ACL behavior |
+| `chart_image_sharing_mode` | `str` | no | `restricted` (default) or explicit `public` for uploaded chart-image ACL behavior |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
@@ -76,19 +76,19 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `credentials` | `str` | conditionally | Path/raw JSON; can also come from env |
+| `credentials` | `str` | conditionally | Path to an untracked file, or secret-manager/env injected raw JSON; can also come from env |
 | `template_id` | `str` | recommended | Source template document ID |
 | `document_folder_id` | `str` | no | Folder for generated docs |
 | `drive_folder_id` | `str` | no | Folder for uploaded chart images |
 | `section_marker_prefix` | `str` | no | Marker prefix (default `{{SECTION:`) |
 | `section_marker_suffix` | `str` | no | Marker suffix (default `}}`) |
 | `remove_section_markers` | `bool` | no | Remove `{{SECTION:...}}` markers after render finalization |
-| `default_chart_width_pt` | `float` | no | Reserved config field; currently not applied at render time |
+| `default_chart_width_pt` | `float` | no | Defaults to `480`; reserved for future inline chart sizing and currently not applied at render time |
 | `share_with` | `list[str]` | no | Emails to share generated document with |
-| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
-| `chart_image_sharing_mode` | `str` | no | `public` (default) or `restricted` for uploaded chart-image ACL behavior |
+| `chart_image_sharing_mode` | `str` | no | `restricted` (default) or explicit `public` for uploaded chart-image ACL behavior |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
 
@@ -104,11 +104,11 @@ For provider setup and marker behavior, see [Google Docs Provider](providers/goo
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `credentials` | `str` | conditionally | Path/raw JSON; can also come from env |
+| `credentials` | `str` | conditionally | Path to an untracked file, or secret-manager/env injected raw JSON; can also come from env |
 | `spreadsheet_id` | `str` | no | Reuse an existing spreadsheet instead of creating one |
 | `drive_folder_id` | `str` | no | Destination folder for newly created spreadsheets |
 | `share_with` | `list[str]` | no | Emails to share generated spreadsheet with |
-| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `requests_per_second` | `float` | no | API rate limit override |
 
 Credential precedence for `google_sheets`:
@@ -385,11 +385,18 @@ dbt:
   project_dir: "/tmp/dbt_project"
   branch: "main"
   target: "prod"
+  compile: true # optional; default true
   vars:
     as_of_date: "2026-02-18"
 warehouse:
   type: "databricks"
 ```
+
+`dbt.compile: true` clones the repository, runs `dbt deps`, and runs
+`dbt compile`. Set `dbt.compile: false` only when `dbt.project_dir` already
+points at a compiled dbt project with `target/manifest.json` and the compiled
+SQL files referenced by that manifest; SlideFlow will not clone or invoke dbt in
+that mode.
 
 Optional alias disambiguation fields for `dbt`:
 
@@ -456,6 +463,7 @@ package_url: "https://$GIT_TOKEN@github.com/org/repo.git"
 project_dir: "/tmp/dbt_project"
 branch: "main"
 target: "prod"
+compile: true # optional; default true
 vars:
   as_of_date: "2026-02-18"
 ```

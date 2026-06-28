@@ -35,6 +35,7 @@ Options:
 | `-r`, `--registry` | One or more Python registry files |
 | `-f`, `--params-path` | Optional CSV used for provider contract checks (`template_id` column) |
 | `--provider-contract-check` | Validate provider template contracts (`google_slides`: slide IDs/placeholders, `google_docs`: section markers/placeholders) |
+| `--provider-contract-full-auth-fallback` | Allow contract validation to instantiate the full Google provider if read-only auth initialization fails; omitted by default |
 | `--output-json` | Write machine-readable validation summary JSON |
 
 Registry resolution order:
@@ -58,6 +59,9 @@ Provider contract behavior:
 
 - `google_slides`: validates slide IDs and placeholders in template decks.
 - `google_docs`: validates section markers and placeholders in template docs.
+- Contract checks use Google read-only scopes by default and fail closed on
+  read-only auth initialization errors unless
+  `--provider-contract-full-auth-fallback` is explicitly passed.
 
 ## `slideflow build`
 
@@ -76,6 +80,11 @@ Options:
 | `--rps` | Override provider requests/second |
 | `--output-json` | Write machine-readable build summary JSON |
 
+Build JSON omits batch params by default. Secret-like keys and values are
+redacted recursively before JSON is written, including token/key/secret fields,
+Google credential fields, authorization headers, bearer/basic tokens, URL
+userinfo, and sensitive URL query parameters.
+
 Build JSON highlights (`--output-json`):
 
 - top-level:
@@ -85,6 +94,9 @@ Build JSON highlights (`--output-json`):
   - `citations_emitted_sources`
   - `citations_truncated`
 - per-result:
+  - `variant_index`
+  - `url`
+  - `presentation_name`
   - `ownership_transfer_attempted`
   - `ownership_transfer_succeeded`
   - `ownership_transfer_target`

@@ -29,6 +29,32 @@ def _reset_dbt_caches() -> None:
     dbt_module._manifest_index_inflight.clear()
 
 
+def _write_compiled_dbt_project(
+    project_dir: Path,
+    *,
+    alias: str = "metrics_model",
+    compiled_path: str = "target/compiled.sql",
+    sql: str = "select 1 as answer",
+) -> None:
+    compiled_file = project_dir / compiled_path
+    compiled_file.parent.mkdir(parents=True, exist_ok=True)
+    compiled_file.write_text(sql)
+    manifest = {
+        "nodes": {
+            "model.project.metrics": {
+                "resource_type": "model",
+                "alias": alias,
+                "compiled_path": compiled_path,
+                "original_file_path": "models/metrics.sql",
+                "package_name": "project",
+                "name": "metrics",
+            }
+        }
+    }
+    (project_dir / "target").mkdir(parents=True, exist_ok=True)
+    (project_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+
 def test_sanitize_git_url_redacts_embedded_credentials():
     url = "https://mytoken@github.com/org/repo.git"
     redacted = dbt_module._sanitize_git_url(url)
@@ -68,6 +94,75 @@ def test_clone_repo_error_message_redacts_token_value(monkeypatch, tmp_path):
     message = str(exc_info.value)
     assert "secret-token-123" not in message
     assert "https://***@github.com/org/repo.git" in message
+
+
+def test_compile_false_uses_existing_compiled_project_without_clone_or_dbt(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    project_dir = tmp_path / "compiled_project"
+    _write_compiled_dbt_project(project_dir, sql="select 42 as answer")
+
+    def _unexpected_clone(*_args, **_kwargs):
+        raise AssertionError("compile:false must not clone repositories")
+
+    class _UnexpectedRunner:
+        def __init__(self):
+            raise AssertionError("compile:false must not create dbtRunner")
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _unexpected_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _UnexpectedRunner)
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(project_dir),
+        branch="main",
+        target="prod",
+        compile=False,
+    )
+
+    assert connector.get_compiled_query("metrics_model") == "select 42 as answer"
+
+
+def test_compile_false_requires_existing_manifest(tmp_path):
+    _reset_dbt_caches()
+    project_dir = tmp_path / "missing_manifest"
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(project_dir),
+        target="prod",
+        compile=False,
+    )
+
+    with pytest.raises(DataSourceError, match=r"compile:false requires.*manifest"):
+        connector.get_compiled_query("metrics_model")
+
+
+def test_compile_false_requires_manifest_compiled_file(tmp_path):
+    _reset_dbt_caches()
+    project_dir = tmp_path / "missing_compiled_file"
+    (project_dir / "target").mkdir(parents=True)
+    manifest = {
+        "nodes": {
+            "model.project.metrics": {
+                "resource_type": "model",
+                "alias": "metrics_model",
+                "compiled_path": "target/missing.sql",
+            }
+        }
+    }
+    (project_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(project_dir),
+        target="prod",
+        compile=False,
+    )
+
+    with pytest.raises(DataSourceError, match=r"compile:false requires compiled SQL"):
+        connector.get_compiled_query("metrics_model")
 
 
 def test_resolve_managed_clone_dir_rejects_protected_roots():
@@ -1198,8 +1293,14 @@ def test_legacy_and_composable_dbt_configs_fetch_with_runtime_parity(monkeypatch
     assert legacy_first.to_dict(orient="records") == composable_first.to_dict(
         orient="records"
     )
-    assert legacy_first is legacy_second
-    assert composable_first is composable_second
+    assert legacy_first is not legacy_second
+    assert composable_first is not composable_second
+    assert legacy_first.to_dict(orient="records") == legacy_second.to_dict(
+        orient="records"
+    )
+    assert composable_first.to_dict(orient="records") == composable_second.to_dict(
+        orient="records"
+    )
     assert len(connector_calls) == 2
     assert connector_calls[0] == connector_calls[1]
 
@@ -1234,7 +1335,8 @@ def test_composable_dbt_source_config_fetch_data_routes_and_caches(monkeypatch):
     second = config.fetch_data()
 
     assert call_count == 1
-    assert first is second
+    assert first is not second
+    assert first.to_dict(orient="records") == second.to_dict(orient="records")
 
     cache.clear()
 

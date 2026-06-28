@@ -11,6 +11,14 @@ build/*
 dist/*
 sa.json
 # Local credential/key material
+credentials/
+secrets/
+client_secret*.json
+*client-secret*.json
+*refresh-token*.json
+*.secret.json
+google-application-credentials.json
+*service-account*.json
 *.pem
 *.key
 *.p12

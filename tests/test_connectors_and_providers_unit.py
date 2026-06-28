@@ -171,7 +171,9 @@ def test_base_source_config_fetch_data_deduplicates_concurrent_connector_fetches
         results = list(executor.map(lambda _i: config.fetch_data(), range(8)))
 
     assert CountingConnector.fetch_calls() == 1
-    assert all(result is results[0] for result in results)
+    assert len({id(result) for result in results}) == len(results)
+    for result in results:
+        assert result.to_dict(orient="records") == results[0].to_dict(orient="records")
 
     cache.clear()
 
@@ -486,7 +488,9 @@ def test_google_provider_helper_methods(monkeypatch):
     assert provider.create_presentation("Deck2", template_id="template-2") == "copied"
     assert copy_calls[-1] == ("template-2", "Deck2")
 
-    provider.config = SimpleNamespace(template_id=None)
+    provider.config = SimpleNamespace(
+        template_id=None, chart_image_sharing_mode="public"
+    )
     assert provider.create_presentation("Plain Deck") == "created"
     assert create_calls == ["Plain Deck"]
 
@@ -552,7 +556,9 @@ def test_google_provider_execute_request_and_batch_update(monkeypatch):
 
 def test_google_provider_upload_image_uses_configured_propagation_delay(monkeypatch):
     provider = object.__new__(google_provider_module.GoogleSlidesProvider)
-    provider.config = SimpleNamespace(drive_folder_id="folder-1")
+    provider.config = SimpleNamespace(
+        drive_folder_id="folder-1", chart_image_sharing_mode="public"
+    )
 
     class _Files:
         def create(self, **kwargs):

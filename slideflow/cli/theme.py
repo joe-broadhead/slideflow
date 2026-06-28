@@ -37,6 +37,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from slideflow.utilities.redaction import redact_text
+
 console = Console(force_terminal=True, color_system="truecolor")
 
 
@@ -218,9 +220,9 @@ def print_error(
         console.print(f"[bold yellow]Error Code:[/bold yellow] [red]{error_code}[/red]")
 
     if verbose:
-        console.print(f"[red]{error_msg}[/red]")
+        console.print(f"[red]{redact_text(str(error_msg))}[/red]")
     else:
-        first_line = str(error_msg).split("\n")[0]
+        first_line = redact_text(str(error_msg).split("\n")[0])
         console.print(f"[red]{first_line}[/red]")
 
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")
@@ -331,10 +333,10 @@ def print_build_error(
         console.print(f"[bold yellow]Error Code:[/bold yellow] [red]{error_code}[/red]")
 
     if verbose:
-        console.print(f"[red]{error_msg}[/red]")
+        console.print(f"[red]{redact_text(str(error_msg))}[/red]")
     else:
         # Show first line only
-        first_line = str(error_msg).split("\n")[0]
+        first_line = redact_text(str(error_msg).split("\n")[0])
         console.print(f"[red]{first_line}[/red]")
 
     console.print("[red]━━━━━━━━━━━━━━━━━━━━━━━[/red]")

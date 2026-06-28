@@ -77,6 +77,21 @@ def test_theme_validation_error_verbose_includes_full_message(monkeypatch):
     assert any("line1\nline2" in entry for entry in rendered)
 
 
+def test_theme_errors_redact_secret_values(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        theme_module.console, "print", lambda *a, **k: calls.append((a, k))
+    )
+
+    theme_module.print_error("Authorization: Bearer raw-token", verbose=True)
+    theme_module.print_build_error("client_secret=secret-value", verbose=True)
+    rendered = [str(args[0]) for args, _ in calls if args]
+
+    assert all("raw-token" not in entry for entry in rendered)
+    assert all("secret-value" not in entry for entry in rendered)
+    assert any("***REDACTED***" in entry for entry in rendered)
+
+
 def test_cli_utils_helpers_emit_summary_and_error(monkeypatch):
     header_calls = []
     summary_calls = []

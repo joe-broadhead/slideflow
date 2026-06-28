@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from slideflow.utilities.redaction import redact_value
+
 
 def now_iso8601_utc() -> str:
     """Return current timestamp in ISO 8601 UTC format."""
@@ -36,9 +38,10 @@ def write_output_json(path: Optional[Path], payload: Dict[str, Any]) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     normalized_payload = _normalize_json_value(payload)
+    redacted_payload = redact_value(normalized_payload)
     path.write_text(
         json.dumps(
-            normalized_payload,
+            redacted_payload,
             indent=2,
             sort_keys=True,
             allow_nan=False,

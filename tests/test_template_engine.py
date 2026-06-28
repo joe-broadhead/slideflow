@@ -73,6 +73,12 @@ def test_default_engine_can_load_packaged_builtin_templates():
     assert rendered["layout_config"]["title"] == "Revenue"
 
 
+def test_create_template_engine_can_disable_defaults():
+    engine = template_engine_module.create_template_engine(None, include_defaults=False)
+
+    assert engine.template_paths == []
+
+
 def test_local_template_precedence_overrides_packaged_builtin(tmp_path):
     custom_templates = tmp_path / "templates"
     custom_templates.mkdir(parents=True, exist_ok=True)

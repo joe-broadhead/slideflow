@@ -3,9 +3,12 @@
 ## Workflows
 
 - `CI` (`.github/workflows/ci.yml`)
+  - runs blocking GitHub workflow linting with `actionlint`
   - enforces lock freshness with `uv lock --check`
   - installs project + dev deps with locked resolution (`uv sync --extra dev --extra ai --locked`)
   - runs `uv pip check`
+  - runs pre-commit on Python 3.12, including `detect-secrets` and
+    `scripts/ci/check_secret_hygiene.py`
   - runs NumPy/Pandas ABI compatibility check (`scripts/ci/check_numpy_binary_compatibility.py`)
   - runs pinned `black --check` via `uvx --from black==26.3.1`, plus `ruff check` and `mypy`
   - runs unit tests with coverage gate (`-m "not integration and not e2e"`)
@@ -14,7 +17,10 @@
   - builds wheel/sdist artifacts and verifies distribution identity (`slideflow-presentations`)
   - installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
 - `Docs` (`.github/workflows/docs.yml`)
-  - runs `mkdocs build --strict`
+  - builds docs on pull requests that touch docs, README, changelog, package
+    metadata, or docs dependencies
+  - installs locked docs dependencies with `uv sync --extra docs --locked`
+  - runs `uv run mkdocs build --strict`
   - deploys to GitHub Pages on `master`/`main`
 - `Release` (`.github/workflows/release.yml`)
   - runs on `release/vX.Y.Z`
@@ -25,7 +31,8 @@
   - publishes to PyPI first
   - creates tag + GitHub release only after publish succeeds
 - `Audit` (`.github/workflows/audit.yml`)
-  - runs `pip-audit`
+  - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, and `duckdb` extras
+  - runs blocking `pip-audit` from that locked environment
   - runs `bandit`
   - uploads audit reports as artifacts
 - `Live Google Slides` (`.github/workflows/live-google-slides.yml`)
@@ -72,10 +79,13 @@
 ## Required local checks before PR
 
 ```bash
-uv sync --extra docs --extra dev --extra ai --locked
+uv sync --extra docs --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check
+uv run python scripts/ci/check_secret_hygiene.py
+uv run pip-audit
+actionlint
 uv run python scripts/ci/check_numpy_binary_compatibility.py
 uvx --from black==26.3.1 black --check slideflow tests scripts
 uv run python -m ruff check slideflow tests scripts
@@ -107,6 +117,12 @@ uv run bash scripts/ci/run_quickstart_smoke.sh
 - Patch/minor updates are grouped to reduce review load.
 - Major updates are reviewed separately and merged deliberately.
 - Auto-merge is disabled by default; every dependency PR must pass full CI and maintainer review.
+- Security dependency fixes can land through either a focused Dependabot PR or a
+  broader hardening PR, but alerts are not treated as closed until the fixed
+  lockfile is on the default branch and GitHub reports no related open alert.
+- When a hardening PR supersedes open Dependabot PRs, capture the affected PR
+  numbers in the hardening PR description and close the superseded PRs after the
+  default-branch alert check passes.
 
 ## Branching policy
 

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from slideflow.constants import Environment, GoogleSlides
 from slideflow.utilities.auth import handle_google_credentials
@@ -20,6 +20,7 @@ from slideflow.utilities.google_api import (
     execute_rate_limited_request,
     slideflow_google_request_builder,
 )
+from slideflow.utilities.google_permissions import normalize_google_share_role
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 from slideflow.workbooks.config import RESERVED_METADATA_TAB
@@ -69,6 +70,11 @@ class GoogleSheetsProviderConfig(WorkbookProviderConfig):
         gt=0,
         description="Maximum Google API requests per second.",
     )
+
+    @field_validator("share_role")
+    @classmethod
+    def _validate_share_role(cls, value: str) -> str:
+        return normalize_google_share_role(value)
 
 
 class GoogleSheetsProvider(WorkbookProvider):
@@ -767,10 +773,11 @@ class GoogleSheetsProvider(WorkbookProvider):
             return
 
         drive_api = self._drive_api()
+        share_role = normalize_google_share_role(self.config.share_role)
         for email in self.config.share_with:
             permission = {
                 "type": "user",
-                "role": self.config.share_role,
+                "role": share_role,
                 "emailAddress": email,
             }
             try:
@@ -785,7 +792,7 @@ class GoogleSheetsProvider(WorkbookProvider):
                 logger.info(
                     "Shared spreadsheet with %s as %s",
                     email,
-                    self.config.share_role,
+                    share_role,
                 )
             except HttpError as error:
                 raise RenderingError(

@@ -173,6 +173,11 @@ Behavior highlights:
 
 - Repositories are cloned under `project_dir/.slideflow_dbt_clones/<key>`.
 - `project_dir` is treated as a workspace root, not a direct clone target.
+- Default `compile: true` runs `dbt deps` and `dbt compile`; dbt packages and
+  macros can execute during that step.
+- `compile: false` never clones and never runs dbt. In that mode,
+  `project_dir` must already be a compiled dbt project containing
+  `target/manifest.json` and the compiled SQL files referenced by the manifest.
 - If `package_url` embeds `$TOKEN_NAME`, that env var must exist at runtime.
 - If `profiles_dir` is provided, SlideFlow copies profiles into the cloned dbt
   workspace and runs dbt with `--profiles-dir <clone_dir>`.
@@ -278,7 +283,16 @@ SlideFlow caches connector fetches by config identity, which helps when:
 - multiple charts use the same query/file in one run
 - multiple replacements reuse one source
 
+Cached `DataFrame` values are copied on cache write and copied again on cache
+reads. This keeps table formatting, chart transforms, and custom replacements
+from mutating shared cached data. The tradeoff is extra memory and copy time for
+large frames, so prefer selecting only the columns and rows needed for the
+artifact before handing data to SlideFlow.
+
 Treat connectors as read-only sources during a run for predictable results.
+`clear()` and `disable()` also wake in-flight waiters; a waiter will either
+reload against the current cache state or run uncached when the cache has been
+disabled.
 
 Cache/compile tuning env vars:
 
@@ -301,3 +315,5 @@ Cache/compile tuning env vars:
 - dbt model not found: check `model_alias`, `branch`, and `target`.
 - dbt alias ambiguity: add `model_unique_id`, `model_package_name`, or `model_selector_name`.
 - dbt Git clone fails: verify token variable in `package_url` and repo access.
+- dbt `compile:false` fails: ensure `project_dir/target/manifest.json` exists
+  and every selected manifest node has a compiled SQL file on disk.

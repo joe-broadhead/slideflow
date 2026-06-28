@@ -7,6 +7,38 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Google Slides and Google Docs generated-artifact sharing now defaults to
+  `share_role: reader`. Set `provider.config.share_role: writer` explicitly
+  if recipients need edit access.
+- Google provider contract validation now fails closed when read-only auth
+  initialization fails. Pass `--provider-contract-full-auth-fallback` only when
+  validation is allowed to instantiate providers with full build scopes.
+- Presentation builds now resolve chart templates with a build-scoped
+  `TemplateEngine`, so concurrent builds with different `template_paths` do not
+  mutate shared template state.
+- Security and release docs now spell out how hardening PRs reconcile
+  Dependabot alerts and superseded dependency-update PRs after the patched
+  lockfile reaches the default branch.
+- Credential hygiene docs now require secret-manager or environment-backed
+  credentials, document GitHub secret scanning/push-protection status, and add a
+  SlideFlow-specific secret hygiene check to pre-commit/CI.
+- Workflow and configuration docs now clarify presentation-only dry-run
+  behavior, release/docs workflow triggers, credential handling, and reserved
+  Google Docs chart-width configuration.
+
+### Fixed
+
+- Data-source cache reads now return isolated `DataFrame` copies, table
+  formatting avoids mutating shared source frames, and cache `clear()`/`disable()`
+  wake in-flight waiters without allowing stale loads to refill the cache.
+- Plotly chart export timeouts now terminate only the timed-out export worker,
+  so one build cannot reset another build's in-flight chart export.
+- Release provenance checks now keep version metadata, changelog release headers,
+  tag ancestry, and existing PyPI artifacts aligned with the artifact-producing
+  commit.
+
 ## [0.0.7] - 2026-05-25
 
 ### Added
@@ -36,7 +68,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `provider.config.transfer_ownership_to`
   - `provider.config.transfer_ownership_strict`
 - Chart image sharing-mode controls for Google Slides/Docs:
-  - `provider.config.chart_image_sharing_mode` (`public` | `restricted`)
+  - `provider.config.chart_image_sharing_mode` (`restricted` by default, explicit `public` opt-in)
+  - cleanup failure counts and file IDs in build results/output JSON
 - Shared Google API utility layer for provider internals:
   - shared credential construction
   - shared rate-limited request execution helper

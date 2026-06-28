@@ -56,8 +56,10 @@ Functions:
     reset_template_engine: Reset to default configuration
 """
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Union
 
 import yaml  # type: ignore[import-untyped]
 from jinja2 import BaseLoader, Environment, select_autoescape
@@ -676,6 +678,9 @@ class TemplateEngine:
 
 # Global template engine instance
 _template_engine = None
+_context_template_engine: ContextVar[Optional[TemplateEngine]] = ContextVar(
+    "slideflow_template_engine", default=None
+)
 
 
 def _default_template_paths() -> List[Path]:
@@ -708,9 +713,43 @@ def get_template_engine() -> TemplateEngine:
         - Use set_template_paths() to configure custom paths
     """
     global _template_engine
+    context_engine = _context_template_engine.get()
+    if context_engine is not None:
+        return context_engine
+
     if _template_engine is None:
         _template_engine = TemplateEngine()
     return _template_engine
+
+
+@contextmanager
+def use_template_engine(engine: Optional[TemplateEngine]) -> Iterator[None]:
+    """Temporarily expose a build-scoped template engine via get_template_engine()."""
+    if engine is None:
+        yield
+        return
+
+    token = _context_template_engine.set(engine)
+    try:
+        yield
+    finally:
+        _context_template_engine.reset(token)
+
+
+def create_template_engine(
+    template_paths: Optional[List[Union[str, Path]]] = None,
+    include_defaults: bool = True,
+) -> TemplateEngine:
+    """Create an isolated template engine without mutating global state."""
+    paths: List[Union[str, Path]] = (
+        [] if template_paths is None else list(template_paths)
+    )
+    if include_defaults:
+        for default_path in _default_template_paths():
+            if default_path not in paths:
+                paths.append(default_path)
+
+    return TemplateEngine(template_paths=paths)
 
 
 def set_template_paths(
@@ -747,14 +786,8 @@ def set_template_paths(
         - When include_defaults=True, custom paths override defaults
         - Use reset_template_engine() to return to default paths
     """
-    paths: List[Union[str, Path]] = list(template_paths)
-    if include_defaults:
-        for default_path in _default_template_paths():
-            if default_path not in paths:
-                paths.append(default_path)
-
     global _template_engine
-    _template_engine = TemplateEngine(template_paths=paths)
+    _template_engine = create_template_engine(template_paths, include_defaults)
 
 
 def reset_template_engine() -> None:

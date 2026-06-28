@@ -10,25 +10,60 @@ Example:
 
 - `release/vX.Y.Z`
 
+## Post-release master policy
+
+After a release completes, `master` tracks the latest released version metadata
+until the next release branch is prepared. Unreleased work stays under the
+`[Unreleased]` changelog section, while `pyproject.toml`,
+`slideflow/__init__.py`, `uv.lock`, and the latest released changelog header all
+continue to agree on the last published version.
+
+Release tags must remain ancestors of `master` after release completion. If a
+tag was created on a side branch, reconcile by merging the tag side back into
+`master`; do not move a published tag unless the package has not been published
+and the correction is explicitly approved.
+
 ## Automated release flow
 
 On push to a `release/vX.Y.Z` branch, the `Release` workflow:
 
 1. validates branch naming
-2. validates project version consistency
-3. validates NumPy/Pandas ABI compatibility
-4. runs release test suite + coverage gate
-5. builds wheel and source distributions
-6. installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
+2. blocks publishing on workflow lint, full CI-style tests, optional connector
+   tests, docs build, dependency audit, and live Google validation evidence for
+   the same commit
+3. validates project version consistency
+4. builds wheel and source distributions
+5. installs built wheel and runs package smoke validation:
+   - `twine check`
+   - `pip check`
+   - CLI entrypoint import/help
+   - packaged built-in template discovery and render
+   - quickstart `validate` + `build --dry-run`
+6. creates and pushes Git tag `vX.Y.Z`
 7. publishes package to PyPI (OIDC trusted publishing)
-8. creates and pushes Git tag `vX.Y.Z`
-9. creates GitHub release with artifacts
+8. creates GitHub release with artifacts
+
+The protected `google-live-validation` environment must define these variables
+with successful GitHub Actions run IDs for the current release commit:
+
+- `SLIDEFLOW_LIVE_GOOGLE_SLIDES_RUN_ID`
+- `SLIDEFLOW_LIVE_GOOGLE_DOCS_RUN_ID`
+- `SLIDEFLOW_LIVE_GOOGLE_SHEETS_RUN_ID`
+
+The release workflow verifies each run through the GitHub API and requires the
+run to be completed, successful, from the matching live workflow file, and bound
+to the current `GITHUB_SHA`. Configure required reviewers on the environment so
+a human verifies the evidence before publishing can continue.
 
 Idempotency behavior:
 
 - If the same version is already published on PyPI, publish is skipped.
-- If tag/release already exist, those steps are skipped.
-- This keeps reruns green when a release branch receives a follow-up docs/metadata commit.
+- If tag/release already exist on the same artifact-producing commit, those
+  steps are skipped.
+- If the PyPI version already exists but the matching tag is missing, or if the
+  tag points at any commit other than the current workflow commit, the workflow
+  fails. Follow-up commits on a release branch must not silently reuse an
+  existing package version or tag.
 
 ## Version consistency contract
 
@@ -36,6 +71,7 @@ These must match:
 
 - `pyproject.toml` -> `[project].version`
 - `slideflow/__init__.py` -> `__version__`
+- latest released `CHANGELOG.md` header
 - release branch suffix -> `release/vX.Y.Z`
 
 PyPI package identity:
@@ -73,8 +109,22 @@ uv run mkdocs build --strict
    - `uv.lock` is current for the release branch
 
 5. Bump versions in `pyproject.toml` and `slideflow/__init__.py`.
-6. Create release branch `release/vX.Y.Z`.
-7. Push and monitor `CI`, `Docs`, and `Release` workflows.
+6. Ensure `CHANGELOG.md` has the matching released header.
+7. Create release branch `release/vX.Y.Z`.
+8. Push and monitor the `Release` workflow plus any branch CI/Audit checks. The
+   `Release` workflow runs its own strict docs build; the standalone `Docs`
+   workflow builds docs on docs-related PRs and deploys only after pushes to
+   `master`/`main`.
+9. After release completion, merge the release result back to `master` and verify
+   `git merge-base --is-ancestor vX.Y.Z master`.
+10. For release or hardening PRs that update vulnerable dependencies, record
+    which Dependabot PRs are superseded or merged, then verify after the
+    default-branch merge that the related Dependabot alerts are fixed.
+
+```bash
+gh api '/repos/OWNER/REPO/dependabot/alerts?state=open' --paginate
+gh pr list --author app/dependabot --state open
+```
 
 ## PyPI trusted publishing setup
 
@@ -85,8 +135,12 @@ uv run mkdocs build --strict
 
 ## Rollback guidance
 
-If release publish fails after tag creation:
+If release publish fails after tag creation before PyPI publication:
 
 1. fix issue in a new commit on release branch
 2. re-run workflow (or push follow-up commit)
-3. if needed, delete bad tag and recreate only when corrected artifacts are ready
+3. if explicitly approved, delete the bad tag and recreate only when corrected
+   artifacts are ready
+
+If PyPI publication succeeded, do not move the tag. Publish a corrective release
+with a new version and document the incident.

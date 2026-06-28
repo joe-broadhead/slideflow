@@ -78,15 +78,21 @@ from slideflow.utilities.logging import get_logger, log_data_operation, log_perf
 
 logger = get_logger(__name__)
 
+_dbt_runner_cls: Any = None
 try:
-    from dbt.cli.main import dbtRunner as _dbt_runner_cls
-except ImportError:  # pragma: no cover - exercised in optional-dependency tests
-    _dbt_runner_cls = None
+    from dbt.cli.main import dbtRunner as _imported_dbt_runner_cls
 
-try:
-    from git import Repo as _git_repo_cls
+    _dbt_runner_cls = _imported_dbt_runner_cls
 except ImportError:  # pragma: no cover - exercised in optional-dependency tests
-    _git_repo_cls = None
+    pass
+
+_git_repo_cls: Any = None
+try:
+    from git import Repo as _imported_git_repo_cls
+
+    _git_repo_cls = _imported_git_repo_cls
+except ImportError:  # pragma: no cover - exercised in optional-dependency tests
+    pass
 
 # Keep module-level symbols for test monkeypatch compatibility.
 dbtRunner = _dbt_runner_cls
@@ -680,6 +686,28 @@ def _resolve_managed_clone_dir(
     return managed_root / key
 
 
+def _resolve_existing_compiled_project_dir(
+    project_dir: str,
+    *,
+    acquire_lease: bool = False,
+) -> Path:
+    """Resolve and validate an existing compiled dbt project directory."""
+    compiled_project_dir = Path(project_dir).expanduser().resolve()
+    manifest_path = compiled_project_dir / "target" / "manifest.json"
+    if not manifest_path.is_file():
+        raise DataSourceError(
+            "dbt compile:false requires an existing compiled dbt project at "
+            f"{compiled_project_dir}. Expected manifest at {manifest_path}. "
+            "Run `dbt deps` and `dbt compile` first, or set compile:true to let "
+            "Slideflow clone and compile the project."
+        )
+
+    if acquire_lease:
+        with _cache_lock:
+            _acquire_compiled_project_lease_locked(compiled_project_dir)
+    return compiled_project_dir
+
+
 def _get_compiled_project(
     package_url: str,
     project_dir: str,
@@ -688,6 +716,7 @@ def _get_compiled_project(
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
+    compile: bool = Defaults.DBT_COMPILE,
     acquire_lease: bool = False,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
@@ -725,8 +754,14 @@ def _get_compiled_project(
         ...     {"start_date": "2024-01-01"}
         ... )
     """
-    canonical_profiles_dir = _canonical_profiles_dir(profiles_dir)
     canonical_project_dir = _canonical_project_dir(project_dir)
+    if not compile:
+        return _resolve_existing_compiled_project_dir(
+            canonical_project_dir,
+            acquire_lease=acquire_lease,
+        )
+
+    canonical_profiles_dir = _canonical_profiles_dir(profiles_dir)
     cache_key = (
         package_url,
         canonical_project_dir,
@@ -895,6 +930,7 @@ def _compiled_project_lease(
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
+    compile: bool = Defaults.DBT_COMPILE,
 ) -> Iterator[Path]:
     """Acquire a temporary usage lease for a compiled DBT clone directory."""
     clone_dir = _get_compiled_project(
@@ -905,6 +941,7 @@ def _compiled_project_lease(
         vars=vars,
         profiles_dir=profiles_dir,
         profile_name=profile_name,
+        compile=compile,
         acquire_lease=True,
     )
     try:
@@ -997,6 +1034,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
             vars=self.vars,
             profiles_dir=self.profiles_dir,
             profile_name=self.profile_name,
+            compile=self.compile,
         ) as clone_dir:
             manifest_index = _get_manifest_index(clone_dir)
             candidates = list(manifest_index.by_alias.get(model_name, []))
@@ -1086,6 +1124,13 @@ class DBTManifestConnector(BaseModel, DataConnector):
                 selected.alias,
                 selected.compiled_path,
             )
+            if not self.compile:
+                raise DataSourceError(
+                    "dbt compile:false requires compiled SQL files referenced by "
+                    f"manifest.json. Missing compiled file for alias "
+                    f"'{selected.alias}': {selected.compiled_path}. Run `dbt compile` "
+                    "for this project, or set compile:true to let Slideflow compile it."
+                )
             return None
 
     def fetch_data(self) -> pd.DataFrame:

@@ -15,7 +15,38 @@ Credential value can be:
 - Path to service-account JSON
 - Raw JSON payload
 
-Recommended: use environment variables in CI and avoid storing secrets in repo files.
+Recommended: use environment variables in CI and avoid storing secrets in repo
+files. If you use raw JSON, inject it through a secret manager or GitHub
+Secrets-backed environment variable; do not paste it into checked-in YAML.
+
+## Credential hygiene policy
+
+Do:
+
+- Store Google service-account JSON, OAuth client secrets, refresh tokens,
+  Databricks tokens, OpenAI/Gemini keys, dbt Git tokens, and BigQuery credential
+  JSON in GitHub Secrets, a platform secret manager, or an untracked local file.
+- Prefer `provider.config.credentials` as a path to an untracked local file for
+  local work, and prefer provider environment variables in CI.
+- Keep generated build JSON, doctor output, and live-test artifacts out of
+  public issue comments unless they have been reviewed for sensitive IDs.
+- Rotate credentials periodically and after any suspected exposure.
+
+Do not:
+
+- Commit `.env` files, `client_secret*.json`, service-account JSON,
+  refresh-token exports, private keys, or raw credential JSON in YAML.
+- Put long-lived credentials in examples, docs, screenshots, or generated
+  artifacts.
+- Share generated chart images publicly unless `chart_image_sharing_mode:
+  public` is an explicit, reviewed exception.
+
+Local and CI checks:
+
+```bash
+uv run python scripts/ci/check_secret_hygiene.py
+uv run pre-commit run detect-secrets --all-files
+```
 
 ## Required scopes
 
@@ -37,6 +68,15 @@ Google Sheets provider scopes:
 - `https://www.googleapis.com/auth/drive`
 - `https://www.googleapis.com/auth/drive.file`
 
+Provider contract validation scopes:
+
+- `slideflow validate --provider-contract-check` for `google_slides` uses
+  `https://www.googleapis.com/auth/presentations.readonly`
+- `slideflow validate --provider-contract-check` for `google_docs` uses
+  `https://www.googleapis.com/auth/documents.readonly`
+- Validation does not fall back to the broader build-provider scopes unless
+  `--provider-contract-full-auth-fallback` is passed explicitly.
+
 ## Databricks auth
 
 Databricks connectors require:
@@ -55,11 +95,24 @@ https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git
 
 Set `DBT_GIT_TOKEN` in environment, not in YAML.
 
+With the default `compile: true`, dbt sources clone the configured repository,
+run `dbt deps`, and run `dbt compile`; dbt package code and macros may execute
+during that phase. Use trusted dbt repositories/packages and least-privilege
+CI secrets. Set `compile: false` only for precompiled local projects with
+`target/manifest.json` and compiled SQL files already present; that mode does
+not clone or invoke dbt.
+
 ## Logging hygiene
 
 - Do not print raw credential payloads.
 - Keep logs at `INFO` or lower in production.
 - Use `--debug` only for short-lived troubleshooting sessions.
+- CLI error rendering, machine-readable JSON output, and reusable workflow JSON
+  outputs share centralized redaction for common secret fields, authorization
+  headers, bearer/basic tokens, URL userinfo, and sensitive URL query
+  parameters.
+- `slideflow build --output-json` does not emit batch params by default. Workflow
+  JSON outputs publish compact summaries instead of full local result JSON.
 - Built-in networked providers/connectors include a `Slideflow` client
   identifier where SDK/API support exists, improving service-side auditability.
 
@@ -77,17 +130,56 @@ when `--registry` or `registry:` config paths are provided.
 
 The repository includes a dedicated `Audit` workflow that runs:
 
-- dependency audit (`pip-audit`)
+- dependency audit (`pip-audit`) from a locked environment that includes the
+  supported optional connector extras
 - static security scan (`bandit`)
 
 Both reports are uploaded as artifacts for triage.
 
+The main `CI` and `Release` workflows also run pre-commit, which includes:
+
+- `scripts/ci/check_secret_hygiene.py` for SlideFlow-specific credential file
+  names and token shapes
+- `detect-secrets` for private keys, high-entropy strings, and provider tokens
+
+Repository controls:
+
+- GitHub secret scanning: enabled
+- GitHub secret scanning push protection: enabled
+- GitHub secret scanning non-provider patterns: disabled
+- GitHub secret scanning validity checks: disabled
+
+Keep `check_secret_hygiene.py` and `detect-secrets` as local/CI controls for
+credential classes not covered by repository-level secret scanning.
+
 Audit enforcement policy:
 
-- Audit findings are advisory for all events (pull requests, pushes, schedules).
-- Findings are surfaced as warnings and uploaded artifacts for triage follow-up.
-- Audit workflow is intentionally non-blocking until baseline findings are
-  reduced and a blocking threshold policy is adopted.
+- Dependency vulnerabilities are blocking for pull requests, pushes, schedules,
+  and manual runs.
+- Static Bandit findings remain advisory while existing low-signal findings are
+  triaged and converted into explicit suppressions or code changes.
+
+Default-branch dependency alert closure:
+
+- Treat the locked all-extras `pip-audit` result as the branch-side proof that a
+  dependency vulnerability is fixed.
+- GitHub Dependabot alerts are considered closed only after the patched
+  `uv.lock` reaches the default branch and GitHub reports the alert fixed.
+- Before merging a security or hardening PR, list the open Dependabot alerts and
+  dependency PRs it supersedes, merges, or intentionally leaves open.
+- After the merge, re-check open Dependabot alerts and close superseded
+  Dependabot PRs with a comment that points at the fixing PR.
+- If any alert remains open after the default-branch merge, keep a follow-up
+  issue with the alert IDs, affected package, manifest, patched version, and
+  remaining action.
+
+Useful checks:
+
+```bash
+uv run pip-audit --progress-spinner off
+gh api '/repos/OWNER/REPO/dependabot/alerts?state=open' --paginate
+gh pr list --author app/dependabot --state open
+```
 
 Action pinning policy:
 
@@ -109,10 +201,23 @@ Use OIDC trusted publishing instead of API tokens.
 3. Add required reviewers for release protection if needed.
 4. Keep `id-token: write` enabled in release workflow permissions.
 
+## Secret incident handling
+
+1. Revoke or rotate the exposed credential at the provider first.
+2. Remove the secret from the working tree and from generated artifacts.
+3. If the secret reached Git history, coordinate history purging and force-push
+   only after maintainers approve the repository impact.
+4. Open a private advisory or security issue with affected provider, scope,
+   exposure window, rotation evidence, and follow-up owner.
+5. Re-run local checks, pre-commit, and GitHub secret-scanning alerts; keep the
+   issue open until alerts are closed or explicitly dismissed with rationale.
+
 ## Hardening checklist
 
 - [ ] Secrets only via environment or secret manager
 - [ ] No credentials committed to Git
+- [ ] GitHub secret scanning and push protection enabled
+- [ ] `scripts/ci/check_secret_hygiene.py` and `detect-secrets` passing
 - [ ] Pre-commit hooks installed and passing (`uv run pre-commit run --all-files`)
 - [ ] `slideflow validate` enforced in CI before build/release
 - [ ] Audit workflow reviewed weekly

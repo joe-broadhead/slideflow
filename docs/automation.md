@@ -71,7 +71,9 @@ jobs:
 - `run-validate` (optional): Run validate before build (`slideflow validate` for `presentation`, `slideflow sheets validate` for `sheets`). Default `true`.
 - `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate for `presentation` builds (`google_slides` and `google_docs`). Ignored for `sheets`. Default `false`.
 - `provider-contract-params-path` (optional): CSV path for validate contract checks; falls back to `params-path` when unset.
-- `dry-run` (optional): Run build with `--dry-run`. Default `false`.
+- `dry-run` (optional): Run presentation builds with `--dry-run`. Default
+  `false`. Unsupported for `artifact-kind: sheets`; the workflow fails fast
+  rather than performing a real Sheets write after a caller requested dry-run.
 - `threads` (optional): Value passed to `--threads` for both `presentation`
   and `sheets` builds.
 - `requests-per-second` (optional): Value passed to `--rps` for both
@@ -84,9 +86,13 @@ jobs:
 - `presentation-urls`: Comma-separated URLs for `presentation` builds.
 - `workbook-urls`: Comma-separated URLs for `sheets` builds.
 - `artifact-urls`: Comma-separated URLs for whichever artifact-kind was built.
-- `doctor-result-json`: JSON summary emitted by doctor command (`slideflow doctor` or `slideflow sheets doctor`).
-- `validate-result-json`: JSON summary emitted by validate command (`slideflow validate` or `slideflow sheets validate`).
-- `build-result-json`: JSON summary emitted by build command (`slideflow build` or `slideflow sheets build`).
+- `doctor-result-json`: redacted, non-sensitive JSON summary emitted by doctor command (`slideflow doctor` or `slideflow sheets doctor`).
+- `validate-result-json`: redacted, non-sensitive JSON summary emitted by validate command (`slideflow validate` or `slideflow sheets validate`).
+- `build-result-json`: redacted, non-sensitive JSON summary emitted by build command (`slideflow build` or `slideflow sheets build`).
+
+Workflow JSON outputs intentionally omit full result rows, raw params, check
+details, workbook/document IDs, and URLs. Use `artifact-urls` for the generated
+artifact links and keep downstream handling scoped to trusted jobs.
 
 Example downstream usage:
 

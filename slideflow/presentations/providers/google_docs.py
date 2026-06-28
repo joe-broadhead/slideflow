@@ -40,6 +40,7 @@ from slideflow.utilities.google_api import (
     slideflow_google_request_builder,
     upload_png_to_drive,
 )
+from slideflow.utilities.google_permissions import normalize_google_share_role
 from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 
@@ -101,7 +102,7 @@ class GoogleDocsProviderConfig(PresentationProviderConfig):
         description="Email addresses to share the generated document with.",
     )
     share_role: str = Field(
-        GoogleSlides.PERMISSION_WRITER,
+        GoogleSlides.PERMISSION_READER,
         description="Share role: reader, writer, or commenter.",
     )
     requests_per_second: float = Field(
@@ -114,10 +115,10 @@ class GoogleDocsProviderConfig(PresentationProviderConfig):
         description="If true, fail rendering when chart image cleanup fails.",
     )
     chart_image_sharing_mode: Literal["public", "restricted"] = Field(
-        "public",
+        "restricted",
         description=(
-            "Chart image sharing mode. 'public' grants anyone:reader (default); "
-            "'restricted' skips public sharing for tighter access control."
+            "Chart image sharing mode. 'restricted' skips public sharing (default); "
+            "'public' grants anyone:reader and should be used only when explicitly needed."
         ),
     )
     transfer_ownership_to: Optional[str] = Field(
@@ -133,6 +134,11 @@ class GoogleDocsProviderConfig(PresentationProviderConfig):
     @classmethod
     def _validate_transfer_ownership_to(cls, value: Optional[str]) -> Optional[str]:
         return normalize_transfer_owner_email(value)
+
+    @field_validator("share_role")
+    @classmethod
+    def _validate_share_role(cls, value: str) -> str:
+        return normalize_google_share_role(value)
 
 
 class GoogleDocsProvider(PresentationProvider):
@@ -165,6 +171,8 @@ class GoogleDocsProvider(PresentationProvider):
         super().__init__(config)
         self.config: GoogleDocsProviderConfig = config
         self._section_insert_indices: Dict[Tuple[str, str], int] = {}
+        self._uploaded_chart_image_ids_by_url: Dict[str, str] = {}
+        self._chart_image_cleanup_failed_ids: List[str] = []
 
         loaded_credentials = handle_google_credentials(
             config.credentials,
@@ -256,7 +264,9 @@ class GoogleDocsProvider(PresentationProvider):
         self, presentation_id: str, image_data: bytes, filename: str
     ) -> Tuple[str, str]:
         del presentation_id
-        return self._upload_image_to_drive(image_data, filename)
+        url, file_id = self._upload_image_to_drive(image_data, filename)
+        self._remember_uploaded_chart_image(url, file_id)
+        return url, file_id
 
     def insert_chart_to_slide(
         self,
@@ -298,23 +308,27 @@ class GoogleDocsProvider(PresentationProvider):
         if insert_index < anchor.section_start:
             insert_index = anchor.section_start
 
-        requests = [
-            {
-                "insertInlineImage": {
-                    "uri": image_url,
-                    "location": {"index": insert_index},
-                    "objectSize": {
-                        "width": {"magnitude": width, "unit": "PT"},
-                        "height": {"magnitude": height, "unit": "PT"},
-                    },
+        temporary_permission = self._grant_temporary_chart_image_access(image_url)
+        try:
+            requests = [
+                {
+                    "insertInlineImage": {
+                        "uri": image_url,
+                        "location": {"index": insert_index},
+                        "objectSize": {
+                            "width": {"magnitude": width, "unit": "PT"},
+                            "height": {"magnitude": height, "unit": "PT"},
+                        },
+                    }
                 }
-            }
-        ]
-        self._execute_request(
-            self.docs_service.documents().batchUpdate(
-                documentId=presentation_id, body={"requests": requests}
+            ]
+            self._execute_request(
+                self.docs_service.documents().batchUpdate(
+                    documentId=presentation_id, body={"requests": requests}
+                )
             )
-        )
+        finally:
+            self._revoke_temporary_chart_image_access(temporary_permission)
         # Docs inserts inline objects as a single position in the text stream.
         self._section_insert_indices[section_key] = insert_index + 1
 
@@ -828,11 +842,15 @@ class GoogleDocsProvider(PresentationProvider):
             return None
 
     def share_presentation(
-        self, presentation_id: str, emails: List[str], role: str = "writer"
+        self,
+        presentation_id: str,
+        emails: List[str],
+        role: str = GoogleSlides.PERMISSION_READER,
     ) -> None:
         if not emails:
             return
 
+        role = normalize_google_share_role(role)
         for email in emails:
             permission = {"type": "user", "role": role, "emailAddress": email}
             self._execute_request(
@@ -893,8 +911,7 @@ class GoogleDocsProvider(PresentationProvider):
                 )
             else:
                 logger.error("Error trashing file %s: %s", file_id, error)
-            if self.config.strict_cleanup:
-                raise
+            raise
 
     def _create_document(self, title: str) -> str:
         created = self._execute_request(
@@ -937,7 +954,12 @@ class GoogleDocsProvider(PresentationProvider):
     def _upload_image_to_drive(
         self, image_bytes: bytes, filename: str
     ) -> Tuple[str, str]:
-        sharing_mode = getattr(self.config, "chart_image_sharing_mode", "public")
+        sharing_mode = getattr(self.config, "chart_image_sharing_mode", "restricted")
+        if sharing_mode == "public":
+            logger.warning(
+                "Chart image sharing mode is public; uploaded chart images will "
+                "be granted anyone:reader and may expose sensitive data."
+            )
         return upload_png_to_drive(
             drive_service=self.drive_service,
             execute_request=self._execute_request,
@@ -950,9 +972,80 @@ class GoogleDocsProvider(PresentationProvider):
             sleep_fn=time.sleep,
             on_restricted_file=(
                 lambda resolved_file_id: logger.info(
-                    "Chart image sharing mode is restricted; skipping public Drive permission "
+                    "Chart image sharing mode is restricted; uploaded Drive file "
+                    "will stay private except for temporary insertion access "
                     "(file_id=%s).",
                     resolved_file_id,
                 )
             ),
         )
+
+    def _remember_uploaded_chart_image(self, image_url: str, file_id: str) -> None:
+        if not hasattr(self, "_uploaded_chart_image_ids_by_url"):
+            self._uploaded_chart_image_ids_by_url = {}
+        self._uploaded_chart_image_ids_by_url[image_url] = file_id
+
+    def _grant_temporary_chart_image_access(
+        self, image_url: str
+    ) -> Optional[Tuple[str, str]]:
+        if (
+            getattr(self.config, "chart_image_sharing_mode", "restricted")
+            != "restricted"
+        ):
+            return None
+
+        file_id = getattr(self, "_uploaded_chart_image_ids_by_url", {}).get(image_url)
+        if not file_id:
+            return None
+
+        permission = self._execute_request(
+            self.drive_service.permissions().create(
+                fileId=file_id,
+                body={
+                    "role": "reader",
+                    "type": "anyone",
+                    "allowFileDiscovery": False,
+                },
+                fields="id",
+                supportsAllDrives=True,
+            )
+        )
+        permission_id = permission.get("id")
+        if not permission_id:
+            raise RenderingError(
+                f"Google Drive did not return a permission ID for temporary chart image access: {file_id}"
+            )
+        if Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S > 0:
+            time.sleep(Timing.GOOGLE_DRIVE_PERMISSION_PROPAGATION_DELAY_S)
+        return file_id, str(permission_id)
+
+    def _revoke_temporary_chart_image_access(
+        self, temporary_permission: Optional[Tuple[str, str]]
+    ) -> None:
+        if temporary_permission is None:
+            return
+
+        file_id, permission_id = temporary_permission
+        try:
+            self._execute_request(
+                self.drive_service.permissions().delete(
+                    fileId=file_id,
+                    permissionId=permission_id,
+                    supportsAllDrives=True,
+                )
+            )
+        except Exception as error:
+            logger.error(
+                "Failed to revoke temporary public chart image access for %s: %s",
+                file_id,
+                error,
+            )
+            if not hasattr(self, "_chart_image_cleanup_failed_ids"):
+                self._chart_image_cleanup_failed_ids = []
+            if file_id not in self._chart_image_cleanup_failed_ids:
+                self._chart_image_cleanup_failed_ids.append(file_id)
+
+    def consume_chart_image_cleanup_failures(self) -> List[str]:
+        failures = list(getattr(self, "_chart_image_cleanup_failed_ids", []))
+        self._chart_image_cleanup_failed_ids = []
+        return failures

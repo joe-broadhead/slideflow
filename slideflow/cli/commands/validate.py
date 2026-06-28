@@ -56,7 +56,7 @@ from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities import ConfigLoader
 from slideflow.utilities.auth import handle_google_credentials
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 
 _GOOGLE_SLIDES_CONTRACT_FIELDS = (
     "slides(objectId,pageElements(shape(text(textElements(textRun(content))))))"
@@ -158,11 +158,21 @@ def _build_readonly_google_contract_client(
 
 def _create_google_contract_check_client(
     presentation_config: PresentationConfig,
+    *,
+    allow_full_auth_fallback: bool = False,
 ) -> Any:
-    """Create readonly contract-check clients with provider fallback."""
+    """Create readonly contract-check clients with explicit provider fallback."""
     try:
         return _build_readonly_google_contract_client(presentation_config)
-    except Exception:
+    except Exception as error:
+        if not allow_full_auth_fallback:
+            raise ValueError(
+                "Read-only Google provider contract auth failed; refusing to "
+                "fall back to broader provider scopes without "
+                "--provider-contract-full-auth-fallback. "
+                f"Cause: {_first_error_line(error)}"
+            ) from error
+
         from slideflow.presentations.providers.factory import ProviderFactory
 
         provider = ProviderFactory.create_provider(presentation_config.provider)
@@ -200,7 +210,7 @@ class ProviderContractValidationError(ValueError):
 
 def _first_error_line(error: Exception) -> str:
     """Return a safe single-line error description."""
-    return safe_error_line(error)
+    return redacted_error_line(error)
 
 
 def _collect_expected_contract(
@@ -705,6 +715,16 @@ def validate_command(
             help="Run provider-aware contract checks (Google Slides or Google Docs templates)",
         ),
     ] = False,
+    provider_contract_full_auth_fallback: Annotated[
+        bool,
+        typer.Option(
+            "--provider-contract-full-auth-fallback",
+            help=(
+                "Allow provider contract checks to fall back to the full Google "
+                "provider scopes when read-only auth initialization fails"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Validate YAML configuration and registry files.
 
@@ -733,6 +753,9 @@ def validate_command(
         provider_contract_check: When true, runs provider-aware contract checks
             for Google Slides (slide IDs/placeholders) and Google Docs
             (section markers/placeholders).
+        provider_contract_full_auth_fallback: When true, allows contract checks
+            to instantiate the full provider if least-privilege read-only auth
+            initialization fails.
 
     Raises:
         typer.Exit: Exits with code 1 if validation fails at any stage.
@@ -818,7 +841,10 @@ def validate_command(
                     "provider types 'google_slides' and 'google_docs'."
                 )
 
-            contract_client = _create_google_contract_check_client(presentation_config)
+            contract_client = _create_google_contract_check_client(
+                presentation_config,
+                allow_full_auth_fallback=provider_contract_full_auth_fallback,
+            )
             if provider_type == "google_slides":
                 provider_contract_summary = _run_google_provider_contract_check(
                     presentation_config=presentation_config,

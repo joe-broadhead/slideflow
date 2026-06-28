@@ -82,7 +82,7 @@ from slideflow.ai.providers import AIProvider
 from slideflow.ai.registry import get_provider_class
 from slideflow.data.connectors.connect import DataSourceConfig
 from slideflow.replacements.base import BaseReplacement
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.exceptions import ReplacementError
 from slideflow.utilities.logging import get_logger
 
@@ -371,7 +371,7 @@ class AITextReplacement(BaseReplacement):
                             "AI text replacement fallback: data transform failed for "
                             "source '%s' (%s)",
                             name,
-                            safe_error_line(error),
+                            redacted_error_line(error),
                             exc_info=True,
                         )
                         return f'Summary unable to be generated as data source "{name}" was not available'

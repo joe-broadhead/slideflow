@@ -7,13 +7,255 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
+  workflow-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Lint GitHub workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
+
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install project and test dependencies (locked)
+        run: |
+          uv lock --check
+          uv sync --extra dev --extra ai --locked
+
+      - name: Validate dependency resolution
+        run: |
+          uv pip check
+
+      - name: Run pre-commit hooks
+        if: matrix.python-version == '3.12'
+        run: |
+          uv run pre-commit run --all-files
+
+      - name: Check NumPy/Pandas binary compatibility
+        run: |
+          uv run python scripts/ci/check_numpy_binary_compatibility.py
+
+      - name: Validate version consistency
+        run: |
+          uv run python scripts/ci/check_version_consistency.py "${GITHUB_REF_NAME}"
+
+      - name: Check code formatting
+        run: |
+          uvx --from black==26.3.1 black --check slideflow tests scripts
+
+      - name: Run lint checks
+        run: |
+          uv run python -m ruff check slideflow tests scripts
+
+      - name: Run type checks
+        run: |
+          uv run python -m mypy slideflow
+
+      - name: Run unit tests with coverage
+        run: |
+          uv run python -m pytest -q \
+            -m "not integration and not e2e" \
+            --cov=slideflow \
+            --cov-branch \
+            --cov-report=term \
+            --cov-report=xml \
+            --cov-fail-under=82
+
+      - name: Run integration tests
+        run: |
+          uv run python -m pytest -q -m integration
+
+      - name: Run e2e tests
+        run: |
+          uv run python -m pytest -q -m e2e
+
+  optional-connectors:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install optional connector dependencies (locked)
+        run: |
+          uv lock --check
+          uv sync --extra dev --extra ai --extra databricks --extra dbt --extra bigquery --extra duckdb --locked
+
+      - name: Validate dependency resolution
+        run: |
+          uv pip check
+
+      - name: Verify optional connector extras importability
+        run: |
+          uv run python - <<'PY'
+          import dbt.cli.main  # noqa: F401
+          import databricks.sql  # noqa: F401
+          import git  # noqa: F401
+          import google.cloud.bigquery  # noqa: F401
+          import duckdb  # noqa: F401
+          print("Optional connector extras importability check passed.")
+          PY
+
+      - name: Run optional connector functional tests
+        run: |
+          uv run python -m pytest -q \
+            tests/test_bigquery_connector.py \
+            tests/test_duckdb_connector.py \
+            tests/test_connectors_and_providers_unit.py \
+            tests/test_dbt_sanitization.py
+
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install locked docs environment
+        run: |
+          uv lock --check
+          uv sync --extra docs --locked
+
+      - name: Build MkDocs site (strict)
+        run: |
+          uv run mkdocs build --strict
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install locked audit environment
+        run: |
+          uv lock --check
+          uv sync \
+            --extra dev \
+            --extra ai \
+            --extra databricks \
+            --extra dbt \
+            --extra bigquery \
+            --extra duckdb \
+            --locked
+
+      - name: Run pip-audit
+        run: |
+          uv run pip-audit --progress-spinner off
+
+  live-google-validation:
+    runs-on: ubuntu-latest
+    environment: google-live-validation
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate live Google workflow evidence
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SLIDES_RUN_ID: ${{ vars.SLIDEFLOW_LIVE_GOOGLE_SLIDES_RUN_ID }}
+          DOCS_RUN_ID: ${{ vars.SLIDEFLOW_LIVE_GOOGLE_DOCS_RUN_ID }}
+          SHEETS_RUN_ID: ${{ vars.SLIDEFLOW_LIVE_GOOGLE_SHEETS_RUN_ID }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SLIDES_RUN_ID}" || -z "${DOCS_RUN_ID}" || -z "${SHEETS_RUN_ID}" ]]; then
+            echo "::error::Set SLIDEFLOW_LIVE_GOOGLE_SLIDES_RUN_ID, SLIDEFLOW_LIVE_GOOGLE_DOCS_RUN_ID, and SLIDEFLOW_LIVE_GOOGLE_SHEETS_RUN_ID on the google-live-validation environment."
+            exit 1
+          fi
+
+          python scripts/ci/check_live_validation_evidence.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --expected-sha "${GITHUB_SHA}" \
+            --slides-run-id "${SLIDES_RUN_ID}" \
+            --docs-run-id "${DOCS_RUN_ID}" \
+            --sheets-run-id "${SHEETS_RUN_ID}" | tee -a "$GITHUB_STEP_SUMMARY"
+
   release:
     runs-on: ubuntu-latest
+    needs:
+      - workflow-lint
+      - test
+      - optional-connectors
+      - docs
+      - dependency-audit
+      - live-google-validation
     environment: pypi
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -46,45 +288,22 @@ jobs:
         run: |
           uv pip check
 
-      - name: Check NumPy/Pandas binary compatibility
-        run: |
-          uv run python scripts/ci/check_numpy_binary_compatibility.py
-
       - name: Validate version consistency
         run: |
           uv run python scripts/ci/check_version_consistency.py "${GITHUB_REF_NAME}"
 
-      - name: Check code formatting
-        run: |
-          uvx --from black==26.3.1 black --check slideflow tests scripts
-
-      - name: Run lint checks
-        run: |
-          uv run python -m ruff check slideflow tests scripts
-
-      - name: Run type checks
-        run: |
-          uv run python -m mypy slideflow
-
-      - name: Run release test suite
-        run: |
-          uv run python -m pytest -q \
-            --cov=slideflow \
-            --cov-report=term \
-            --cov-fail-under=80
-
       - name: Build distribution artifacts
         run: |
-          uv pip install build
+          uv pip install build twine
           uv run python -m build
 
       - name: Smoke test built wheel
         run: |
           python -m venv .venv-smoke
           . .venv-smoke/bin/activate
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip twine
           python -m pip install dist/*.whl
-          bash scripts/ci/run_quickstart_smoke.sh
+          bash scripts/ci/smoke_installed_wheel.sh dist docs/quickstart/smoke
 
       - name: Verify distribution package identity
         run: |
@@ -109,63 +328,16 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python - <<'PY'
-          import os
-          import subprocess
-          import urllib.error
-          import urllib.request
-
-
-          def url_exists(url: str, headers: dict[str, str] | None = None) -> bool:
-              request = urllib.request.Request(url, headers=headers or {})
-              try:
-                  with urllib.request.urlopen(request, timeout=15) as response:
-                      return response.status == 200
-              except urllib.error.HTTPError as error:
-                  if error.code == 404:
-                      return False
-                  raise
-
-
-          version = os.environ["VERSION"]
-          repository = os.environ["REPOSITORY"]
-          tag = f"v{version}"
-
-          package_exists = url_exists(
-              f"https://pypi.org/pypi/slideflow-presentations/{version}/json"
-          )
-          tag_exists = (
-              subprocess.run(
-                  ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}"],
-                  check=False,
-                  capture_output=True,
-                  text=True,
-              ).returncode
-              == 0
-          )
-          release_exists = url_exists(
-              f"https://api.github.com/repos/{repository}/releases/tags/{tag}",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-              },
-          )
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
-              output_file.write(f"package_exists={str(package_exists).lower()}\n")
-              output_file.write(f"tag_exists={str(tag_exists).lower()}\n")
-              output_file.write(f"release_exists={str(release_exists).lower()}\n")
-          PY
+          uv run python scripts/ci/check_release_artifact_state.py \
+            --version "${VERSION}" \
+            --expected-commit "${GITHUB_SHA}" \
+            --repository "${REPOSITORY}"
 
       - name: Release idempotency summary
         run: |
           echo "PyPI version exists: ${{ steps.release_state.outputs.package_exists }}"
           echo "Git tag exists: ${{ steps.release_state.outputs.tag_exists }}"
           echo "GitHub release exists: ${{ steps.release_state.outputs.release_exists }}"
-
-      - name: Publish package to PyPI
-        if: ${{ steps.release_state.outputs.package_exists != 'true' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create and push release tag
         if: ${{ steps.release_state.outputs.tag_exists != 'true' }}
@@ -178,6 +350,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${TAG}"
           git push origin "${TAG}"
+
+      - name: Publish package to PyPI
+        if: ${{ steps.release_state.outputs.package_exists != 'true' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create GitHub release
         if: ${{ steps.release_state.outputs.release_exists != 'true' }}

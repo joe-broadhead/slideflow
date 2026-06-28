@@ -66,6 +66,17 @@ Template resolution is deterministic and non-breaking:
 If the same template name exists in multiple locations, earlier paths win. This
 means local/project templates override packaged built-ins.
 
+`template_paths` are scoped to the individual build. Concurrent builds can use
+different template directories with the same template names without changing
+process-global template state. Template charts and custom chart functions that
+call `get_template_engine()` during rendering see the active build-scoped
+engine. The global template engine is retained for direct template inspection
+APIs such as `slideflow templates ...` outside a build render.
+
+Each build-scoped engine has its own in-memory template cache. Long-running
+services that render many presentations trade a small amount of repeated
+template parsing for isolation between concurrent builds.
+
 ## Names and categories
 
 Built-ins are organized in category folders (for example `bars/bar_basic`). You can

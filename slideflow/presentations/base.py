@@ -63,13 +63,15 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from slideflow.builtins.template_engine import use_template_engine
 from slideflow.citations import CitationEntry, CitationRegistry, CitationSummary
 from slideflow.constants import GoogleSlides, Timing
+from slideflow.presentations.charts import chart_export_executor_scope
 from slideflow.presentations.config import CitationConfig
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.logging import get_logger
 
@@ -148,6 +150,20 @@ class PresentationResult(BaseModel):
     ]
     replacements_made: Annotated[
         int, Field(..., description="Number of text replacements made")
+    ]
+    chart_image_cleanup_failed_count: Annotated[
+        int,
+        Field(
+            default=0,
+            description="Number of uploaded chart images that could not be cleaned up",
+        ),
+    ]
+    chart_image_cleanup_failed_ids: Annotated[
+        List[str],
+        Field(
+            default_factory=list,
+            description="Uploaded chart image file IDs that could not be cleaned up",
+        ),
     ]
     render_time: Annotated[
         float, Field(..., description="Time taken to render presentation in seconds")
@@ -681,7 +697,8 @@ class Presentation(BaseModel):
                     if chart.data_source
                     else pd.DataFrame()
                 )
-                image_data = chart.generate_chart_image(df)
+                with use_template_engine(getattr(chart, "template_engine", None)):
+                    image_data = chart.generate_chart_image(df)
                 image_url, file_id = self.provider.upload_chart_image(
                     context.presentation_id,
                     image_data,
@@ -880,7 +897,11 @@ class Presentation(BaseModel):
             self.provider.share_presentation(
                 context.presentation_id,
                 self.provider.config.share_with,
-                getattr(self.provider.config, "share_role", "writer"),
+                getattr(
+                    self.provider.config,
+                    "share_role",
+                    GoogleSlides.PERMISSION_READER,
+                ),
             )
 
     def _apply_ownership_transfer(self, context: _RenderContext) -> None:
@@ -920,7 +941,7 @@ class Presentation(BaseModel):
             context.ownership_transfer_succeeded = True
         except Exception as transfer_error:  # pragma: no cover - guarded via tests
             context.ownership_transfer_succeeded = False
-            context.ownership_transfer_error = safe_error_line(transfer_error)
+            context.ownership_transfer_error = redacted_error_line(transfer_error)
             logger.error(
                 "Ownership transfer failed for '%s' -> '%s': %s",
                 context.presentation_id,
@@ -944,6 +965,8 @@ class Presentation(BaseModel):
             ),
             charts_generated=context.total_charts,
             replacements_made=context.total_replacements,
+            chart_image_cleanup_failed_count=len(context.failed_cleanup_ids),
+            chart_image_cleanup_failed_ids=list(context.failed_cleanup_ids),
             render_time=render_time,
             created_at=datetime.now(),
             ownership_transfer_attempted=context.ownership_transfer_attempted,
@@ -978,6 +1001,14 @@ class Presentation(BaseModel):
                         cleanup_error,
                     )
 
+            provider_cleanup_failures = getattr(
+                self.provider, "consume_chart_image_cleanup_failures", None
+            )
+            if callable(provider_cleanup_failures):
+                for file_id in provider_cleanup_failures():
+                    if file_id not in context.failed_cleanup_ids:
+                        context.failed_cleanup_ids.append(file_id)
+
             deleted_cleanup_count = len(context.uploaded_file_ids) - len(
                 context.failed_cleanup_ids
             )
@@ -1010,21 +1041,25 @@ class Presentation(BaseModel):
     def render(self) -> PresentationResult:
         """Render the complete presentation with all content and styling."""
         context: Optional[_RenderContext] = None
+        cleanup_attempted = False
         try:
             context = self._create_render_context(start_time=time.time())
             self._prefetch_data_sources()
             self._collect_citations_for_slides(context)
-            self._process_slide_content(context)
+            with chart_export_executor_scope():
+                self._process_slide_content(context)
             citation_summary = self._summarize_and_render_citations(context)
             self._finalize_and_share_presentation(context)
             self._apply_ownership_transfer(context)
+            cleanup_attempted = True
+            self._cleanup_uploaded_chart_images(context)
             return self._build_presentation_result(context, citation_summary)
         except Exception as error:
             if context is not None:
                 context.original_error = error
             raise
         finally:
-            if context is not None:
+            if context is not None and not cleanup_attempted:
                 self._cleanup_uploaded_chart_images(context)
 
     def get_slide(self, slide_id: str) -> Optional[Slide]:

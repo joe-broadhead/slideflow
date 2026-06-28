@@ -12,7 +12,7 @@ from pydantic import ConfigDict, Field
 
 from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.data.connectors.base import BaseSourceConfig, DataConnector, SQLExecutor
-from slideflow.utilities.error_messages import safe_error_line
+from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.exceptions import DataSourceError
 
 
@@ -91,7 +91,7 @@ class DuckDBConnector(DataConnector):
                 raise DuckDBConnectorError(
                     "connection",
                     "Failed to initialize DuckDB connection "
-                    f"({safe_error_line(error)})",
+                    f"({redacted_error_line(error)})",
                 ) from error
         return self._connection
 
@@ -141,7 +141,8 @@ class DuckDBConnector(DataConnector):
         except Exception as error:
             raise DuckDBConnectorError(
                 "configuration",
-                "Failed to set DuckDB file_search_path " f"({safe_error_line(error)})",
+                "Failed to set DuckDB file_search_path "
+                f"({redacted_error_line(error)})",
             ) from error
         self._file_search_path_applied = True
 
@@ -157,7 +158,7 @@ class DuckDBConnector(DataConnector):
         except Exception as error:
             raise DuckDBConnectorError(
                 "query",
-                f"Failed to execute DuckDB query ({safe_error_line(error)})",
+                f"Failed to execute DuckDB query ({redacted_error_line(error)})",
             ) from error
 
 
