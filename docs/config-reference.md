@@ -9,7 +9,7 @@ presentation:
   slides: [...]
 
 provider:
-  type: "google_slides" # or "google_docs" (use "google_sheets" with workbook schema)
+  type: "google_slides" # or "google_docs" / "powerpoint" (use "google_sheets" with workbook schema)
   config: {...}
 
 citations: {...} # optional source provenance output
@@ -20,7 +20,7 @@ registry: ["./registry.py"] # optional
 
 Use one of:
 
-- `presentation:` + `provider.type: google_slides|google_docs` with `slideflow validate/build`
+- `presentation:` + `provider.type: google_slides|google_docs|powerpoint` with `slideflow validate/build`
 - `workbook:` + `provider.type: google_sheets` with `slideflow sheets validate/build/doctor`
 
 ## `presentation`
@@ -37,7 +37,7 @@ Use one of:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `id` | `str` | yes | `google_slides`: target slide object ID, `google_docs`: target section marker id |
+| `id` | `str` | yes | `google_slides`: target slide object ID, `google_docs`: target section marker id, `powerpoint`: one-based slide index or native slide ID |
 | `title` | `str` | no | Metadata only |
 | `replacements` | `list` | no | `text`, `table`, `ai_text` specs |
 | `charts` | `list` | no | `plotly_go`, `template`, `custom` specs |
@@ -50,6 +50,7 @@ Supported values:
 
 - `google_slides`
 - `google_docs`
+- `powerpoint`
 - `google_sheets` (for `workbook:` pipelines via `slideflow sheets ...`)
 
 ### `provider.config` for `google_slides`
@@ -118,6 +119,25 @@ or raw JSON payload. Use `GOOGLE_DOCS_CREDENTIALS`,
 for external-account / Workload Identity Federation credentials.
 
 For provider setup and marker behavior, see [Google Docs Provider](providers/google-docs.md).
+
+### `provider.config` for `powerpoint`
+
+Install the optional extra first:
+
+```bash
+pip install "slideflow-presentations[powerpoint]"
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `template_path` | `str` | yes | Path to the source `.pptx` template |
+| `output_dir` | `str` | no | Destination directory for generated `.pptx` files; defaults to current directory |
+| `slide_id_mode` | `str` | no | `auto` (default), `index`, or `native` |
+| `read_only_template` | `bool` | no | Defaults to `true`; prevents writes to `template_path` |
+| `file_collision_strategy` | `str` | no | `fail` (default), `overwrite`, or `suffix` |
+| `strict_cleanup` | `bool` | no | Fail if temporary in-memory chart image cleanup fails |
+
+For provider setup and behavior, see [PowerPoint Provider](providers/powerpoint.md).
 
 ### `provider.config` for `google_sheets`
 

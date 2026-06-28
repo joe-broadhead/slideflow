@@ -257,6 +257,34 @@ def test_provider_checks_success(monkeypatch, tmp_path):
     assert by_name["provider:quota"]["ok"] is False
 
 
+def test_provider_checks_powerpoint_success(tmp_path):
+    pptx_module = pytest.importorskip("pptx")
+    template_path = tmp_path / "template.pptx"
+    prs = pptx_module.Presentation()
+    prs.slides.add_slide(prs.slide_layouts[6])
+    prs.save(template_path)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider:\n"
+        "  type: powerpoint\n"
+        "  config:\n"
+        f"    template_path: {template_path}\n"
+        f"    output_dir: {tmp_path}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n",
+        encoding="utf-8",
+    )
+
+    checks = doctor_module._provider_checks(config_file, registry_paths=None)
+    by_name = {check["name"]: check for check in checks}
+
+    assert by_name["provider_init"]["ok"] is True
+    assert by_name["provider:python_pptx_import"]["ok"] is True
+    assert by_name["provider:template_path_exists"]["ok"] is True
+
+
 def test_provider_checks_converts_exceptions_to_failed_check(monkeypatch, tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text("provider: {type: google_slides, config: {}}\n")

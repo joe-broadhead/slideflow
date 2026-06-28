@@ -72,6 +72,7 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 -   **Multiple Output Providers:**
     -   `google_slides`: Build slide decks from template slides.
     -   `google_docs`: Build marker-anchored documents for newsletter/report workflows.
+    -   `powerpoint`: Build native local `.pptx` decks from PowerPoint templates.
     -   `google_sheets`: Build workbook outputs with tab-level replace/append semantics.
 -   **Optional Source Citations:**
     -   Emit deterministic source provenance (`model` and/or `execution`) into output artifacts.
@@ -109,6 +110,9 @@ pip install "slideflow-presentations[dbt]"
 pip install "slideflow-presentations[bigquery]"
 pip install "slideflow-presentations[duckdb]"
 pip install "slideflow-presentations[redshift]"
+
+# Native local PPTX output
+pip install "slideflow-presentations[powerpoint]"
 ```
 
 ---

@@ -33,8 +33,8 @@ Options:
 | Option | Description |
 | --- | --- |
 | `-r`, `--registry` | One or more Python registry files |
-| `-f`, `--params-path` | Optional CSV used for provider contract checks (`template_id` column) |
-| `--provider-contract-check` | Validate provider template contracts (`google_slides`: slide IDs/placeholders, `google_docs`: section markers/placeholders) |
+| `-f`, `--params-path` | Optional CSV used for provider contract checks (`template_id` for Google providers, `template_path` for PowerPoint) |
+| `--provider-contract-check` | Validate provider template contracts (`google_slides`: slide IDs/placeholders, `google_docs`: section markers/placeholders, `powerpoint`: slide IDs/placeholders) |
 | `--provider-contract-full-auth-fallback` | Allow contract validation to instantiate the full Google provider if read-only auth initialization fails; omitted by default |
 | `--output-json` | Write machine-readable validation summary JSON |
 
@@ -59,6 +59,8 @@ Provider contract behavior:
 
 - `google_slides`: validates slide IDs and placeholders in template decks.
 - `google_docs`: validates section markers and placeholders in template docs.
+- `powerpoint`: validates one-based slide indexes or native slide IDs and
+  placeholders in local `.pptx` templates.
 - Contract checks use Google read-only scopes by default and fail closed on
   read-only auth initialization errors unless
   `--provider-contract-full-auth-fallback` is explicitly passed.

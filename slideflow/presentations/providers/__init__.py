@@ -43,9 +43,13 @@ Example:
 
 Available Providers:
     - GoogleSlidesProvider: For Google Slides presentation creation and management
+    - GoogleDocsProvider: For Google Docs document creation and management
+    - PowerPointProvider: For local native PPTX artifact creation
 
 Available Configurations:
     - GoogleSlidesProviderConfig: Configuration for Google Slides provider
+    - GoogleDocsProviderConfig: Configuration for Google Docs provider
+    - PowerPointProviderConfig: Configuration for PowerPoint provider
 
 Result Classes:
     - ProviderPresentationResult: Result from presentation operations
@@ -70,6 +74,10 @@ from slideflow.presentations.providers.google_slides import (
     GoogleSlidesProvider,
     GoogleSlidesProviderConfig,
 )
+from slideflow.presentations.providers.powerpoint import (
+    PowerPointProvider,
+    PowerPointProviderConfig,
+)
 
 __all__ = [
     "PresentationProvider",
@@ -80,5 +88,7 @@ __all__ = [
     "GoogleSlidesProviderConfig",
     "GoogleDocsProvider",
     "GoogleDocsProviderConfig",
+    "PowerPointProvider",
+    "PowerPointProviderConfig",
     "ProviderFactory",
 ]

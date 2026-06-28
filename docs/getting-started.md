@@ -9,6 +9,8 @@
   - Google Sheets API enabled (if using `google_sheets` provider)
   - Google Drive API enabled
 - A service account with access to your target template deck/document/spreadsheet and Drive folders
+- For local PowerPoint output, a `.pptx` template and the optional
+  `slideflow-presentations[powerpoint]` extra.
 
 ## Install
 
@@ -72,6 +74,7 @@ Create a template and decide provider mode:
 - `google_slides`: Google Slides template deck with placeholder text and target slide IDs.
 - `google_docs`: Google Docs template with explicit section markers (for example `{{SECTION:intro}}`).
 - `google_sheets`: Google Sheets workbook output (`workbook:` schema with tab write rules).
+- `powerpoint`: local `.pptx` template with placeholders in text boxes or table cells.
 
 You will need:
 
@@ -79,6 +82,7 @@ You will need:
 - `google_slides`: slide IDs for each slide you modify
 - `google_docs`: marker ids that match `presentation.slides[].id`
 - `google_sheets`: either `spreadsheet_id` (reuse) or `drive_folder_id` (create destination)
+- `powerpoint`: `template_path` and either one-based slide indexes or native slide IDs.
 
 ## Minimal config
 

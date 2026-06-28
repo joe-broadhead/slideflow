@@ -44,6 +44,9 @@ class FakeProvider:
         self.page_size = None
         self.preflight_checks = []
         self.finalize_calls = []
+        self.abort_calls = []
+        self.fail_finalize = False
+        self.fail_page_size = False
 
     def create_presentation(self, _name):
         return "presentation-1"
@@ -88,6 +91,8 @@ class FakeProvider:
             raise RuntimeError("cleanup failed")
 
     def get_presentation_page_size(self, _presentation_id):
+        if self.fail_page_size:
+            raise RuntimeError("page size failed")
         return self.page_size
 
     def run_preflight_checks(self):
@@ -95,6 +100,11 @@ class FakeProvider:
 
     def finalize_presentation(self, presentation_id):
         self.finalize_calls.append(presentation_id)
+        if self.fail_finalize:
+            raise RuntimeError("finalize failed")
+
+    def abort_presentation(self, presentation_id):
+        self.abort_calls.append(presentation_id)
 
 
 def _build_presentation(provider):
@@ -184,6 +194,46 @@ def test_render_fails_fast_when_provider_preflight_fails():
 
     with pytest.raises(RenderingError, match="Provider preflight checks failed"):
         presentation.render()
+
+
+def test_render_aborts_provider_on_failure_after_creation():
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=False)
+    provider.fail_finalize = True
+    presentation, _chart = _build_presentation(provider)
+
+    with pytest.raises(RuntimeError, match="finalize failed"):
+        presentation.render()
+
+    assert provider.abort_calls == ["presentation-1"]
+
+
+def test_render_aborts_provider_when_context_creation_fails_after_creation():
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=False)
+    provider.fail_page_size = True
+    presentation, _chart = _build_presentation(provider)
+
+    with pytest.raises(RuntimeError, match="page size failed"):
+        presentation.render()
+
+    assert provider.abort_calls == ["presentation-1"]
+
+
+def test_render_aborts_provider_on_base_exception_after_creation():
+    class RenderInterrupted(BaseException):
+        pass
+
+    class InterruptedProvider(FakeProvider):
+        def finalize_presentation(self, presentation_id):
+            self.finalize_calls.append(presentation_id)
+            raise RenderInterrupted()
+
+    provider = InterruptedProvider(strict_cleanup=False, fail_cleanup=False)
+    presentation, _chart = _build_presentation(provider)
+
+    with pytest.raises(RenderInterrupted):
+        presentation.render()
+
+    assert provider.abort_calls == ["presentation-1"]
 
 
 def test_render_transfers_ownership_when_configured():
