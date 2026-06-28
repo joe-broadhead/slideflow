@@ -64,7 +64,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from slideflow.builtins.template_engine import get_template_engine
+from slideflow.builtins.template_engine import TemplateEngine, get_template_engine
 from slideflow.constants import GoogleSlides, Timing
 from slideflow.data.connectors.base import BaseSourceConfig as DataSourceConfig
 from slideflow.presentations.positioning import safe_eval_expression
@@ -293,6 +293,15 @@ class BaseChart(BaseModel, ABC):
         Optional[float],
         Field(2.0, description="Image scaling factor for higher resolution"),
     ]
+    template_engine: Annotated[
+        Optional[TemplateEngine],
+        Field(
+            None,
+            exclude=True,
+            repr=False,
+            description="Build-scoped template engine for resolving chart templates.",
+        ),
+    ] = None
 
     @field_validator("dimensions_format")
     @classmethod
@@ -950,7 +959,7 @@ class TemplateChart(BaseChart):
             >>> image_bytes = chart.generate_chart_image(sales_df)
         """
 
-        engine = get_template_engine()
+        engine = self.template_engine or get_template_engine()
 
         # Render the template with user config
         rendered_config = engine.render_template(

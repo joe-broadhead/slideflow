@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from slideflow.builtins.template_engine import use_template_engine
 from slideflow.citations import CitationEntry, CitationRegistry, CitationSummary
 from slideflow.constants import GoogleSlides, Timing
 from slideflow.presentations.config import CitationConfig
@@ -695,7 +696,8 @@ class Presentation(BaseModel):
                     if chart.data_source
                     else pd.DataFrame()
                 )
-                image_data = chart.generate_chart_image(df)
+                with use_template_engine(getattr(chart, "template_engine", None)):
+                    image_data = chart.generate_chart_image(df)
                 image_url, file_id = self.provider.upload_chart_image(
                     context.presentation_id,
                     image_data,

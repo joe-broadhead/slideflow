@@ -15,6 +15,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Google provider contract validation now fails closed when read-only auth
   initialization fails. Pass `--provider-contract-full-auth-fallback` only when
   validation is allowed to instantiate providers with full build scopes.
+- Presentation builds now resolve chart templates with a build-scoped
+  `TemplateEngine`, so concurrent builds with different `template_paths` do not
+  mutate shared template state.
 
 ### Fixed
 

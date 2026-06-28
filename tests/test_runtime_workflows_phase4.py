@@ -406,11 +406,15 @@ def test_presentation_builder_from_config_sets_templates_and_builds_slides(monke
 
     template_calls = []
     slide_ids = []
+    template_engines = []
+    fake_engine = object()
     fake_provider = object()
     fake_slides = [SimpleNamespace(id="s1"), SimpleNamespace(id="s2")]
 
     monkeypatch.setattr(
-        builder_module, "set_template_paths", lambda paths: template_calls.append(paths)
+        builder_module,
+        "create_template_engine",
+        lambda paths: template_calls.append(paths) or fake_engine,
     )
     monkeypatch.setattr(
         builder_module.ProviderFactory,
@@ -418,8 +422,9 @@ def test_presentation_builder_from_config_sets_templates_and_builds_slides(monke
         staticmethod(lambda _provider_config: fake_provider),
     )
 
-    def _build_slide(cls, spec):
+    def _build_slide(cls, spec, template_engine=None):
         slide_ids.append(spec.id)
+        template_engines.append(template_engine)
         return fake_slides[len(slide_ids) - 1]
 
     monkeypatch.setattr(
@@ -433,6 +438,7 @@ def test_presentation_builder_from_config_sets_templates_and_builds_slides(monke
 
     assert template_calls == [["./templates"]]
     assert slide_ids == ["slide_1", "slide_2"]
+    assert template_engines == [fake_engine, fake_engine]
     assert presentation.provider is fake_provider
     assert presentation.name == "Demo"
     assert presentation.slides == fake_slides
