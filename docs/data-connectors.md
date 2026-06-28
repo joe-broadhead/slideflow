@@ -173,6 +173,11 @@ Behavior highlights:
 
 - Repositories are cloned under `project_dir/.slideflow_dbt_clones/<key>`.
 - `project_dir` is treated as a workspace root, not a direct clone target.
+- Default `compile: true` runs `dbt deps` and `dbt compile`; dbt packages and
+  macros can execute during that step.
+- `compile: false` never clones and never runs dbt. In that mode,
+  `project_dir` must already be a compiled dbt project containing
+  `target/manifest.json` and the compiled SQL files referenced by the manifest.
 - If `package_url` embeds `$TOKEN_NAME`, that env var must exist at runtime.
 - If `profiles_dir` is provided, SlideFlow copies profiles into the cloned dbt
   workspace and runs dbt with `--profiles-dir <clone_dir>`.
@@ -301,3 +306,5 @@ Cache/compile tuning env vars:
 - dbt model not found: check `model_alias`, `branch`, and `target`.
 - dbt alias ambiguity: add `model_unique_id`, `model_package_name`, or `model_selector_name`.
 - dbt Git clone fails: verify token variable in `package_url` and repo access.
+- dbt `compile:false` fails: ensure `project_dir/target/manifest.json` exists
+  and every selected manifest node has a compiled SQL file on disk.

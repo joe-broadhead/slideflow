@@ -87,6 +87,9 @@ Fixes:
 
 - set `dbt.profiles_dir` in your `dbt` source config (or `profiles_dir` in legacy `databricks_dbt`), or
 - ensure `profiles.yml` exists at the dbt project root in the cloned repo.
+- if using `compile: false`, run `dbt deps` and `dbt compile` before SlideFlow
+  and point `project_dir` at that compiled project; SlideFlow expects
+  `target/manifest.json` and the selected node's compiled SQL file to exist.
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.

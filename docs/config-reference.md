@@ -385,11 +385,18 @@ dbt:
   project_dir: "/tmp/dbt_project"
   branch: "main"
   target: "prod"
+  compile: true # optional; default true
   vars:
     as_of_date: "2026-02-18"
 warehouse:
   type: "databricks"
 ```
+
+`dbt.compile: true` clones the repository, runs `dbt deps`, and runs
+`dbt compile`. Set `dbt.compile: false` only when `dbt.project_dir` already
+points at a compiled dbt project with `target/manifest.json` and the compiled
+SQL files referenced by that manifest; SlideFlow will not clone or invoke dbt in
+that mode.
 
 Optional alias disambiguation fields for `dbt`:
 
@@ -456,6 +463,7 @@ package_url: "https://$GIT_TOKEN@github.com/org/repo.git"
 project_dir: "/tmp/dbt_project"
 branch: "main"
 target: "prod"
+compile: true # optional; default true
 vars:
   as_of_date: "2026-02-18"
 ```

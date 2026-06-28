@@ -55,6 +55,13 @@ https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git
 
 Set `DBT_GIT_TOKEN` in environment, not in YAML.
 
+With the default `compile: true`, dbt sources clone the configured repository,
+run `dbt deps`, and run `dbt compile`; dbt package code and macros may execute
+during that phase. Use trusted dbt repositories/packages and least-privilege
+CI secrets. Set `compile: false` only for precompiled local projects with
+`target/manifest.json` and compiled SQL files already present; that mode does
+not clone or invoke dbt.
+
 ## Logging hygiene
 
 - Do not print raw credential payloads.
