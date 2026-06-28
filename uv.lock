@@ -3040,7 +3040,7 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.7.6" },
     { name = "mkdocs-minify-plugin", marker = "extra == 'docs'", specifier = ">=0.8" },
     { name = "mypy", marker = "extra == 'dev'" },
-    { name = "numpy", specifier = ">=2.0,<2.5" },
+    { name = "numpy", specifier = ">=2.0,<2.6" },
     { name = "openai", marker = "extra == 'ai'", specifier = ">=1.0,<3.0" },
     { name = "pandas", specifier = ">=2.2,<2.4" },
     { name = "pandas-stubs", marker = "extra == 'dev'" },
