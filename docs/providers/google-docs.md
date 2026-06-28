@@ -69,7 +69,7 @@ Field behavior:
 - `document_folder_id`: destination folder for generated docs.
 - `drive_folder_id`: destination folder for uploaded chart images.
 - `section_marker_prefix` / `section_marker_suffix`: marker token format.
-- `share_with` / `share_role`: post-render sharing.
+- `share_with` / `share_role`: post-render sharing; `share_role` defaults to `reader`.
 - `transfer_ownership_to`: optional ownership handoff target after successful render/share.
 - `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
 - `chart_image_sharing_mode`: uploaded chart-image ACL mode:
@@ -113,6 +113,10 @@ Use provider contract checks before build:
 ```bash
 slideflow validate config.yml --provider-contract-check --params-path variants.csv
 ```
+
+Contract checks use read-only Google Docs auth scopes by default. If read-only
+auth initialization fails, validation fails closed unless you explicitly pass
+`--provider-contract-full-auth-fallback`.
 
 Contract checks for `google_docs` validate:
 

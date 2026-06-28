@@ -160,6 +160,11 @@ slideflow doctor --config-file config.yml --strict
 slideflow validate config.yml --provider-contract-check
 ```
 
+Provider contract validation uses read-only Google scopes by default and fails
+closed if that auth path cannot initialize. Pass
+`--provider-contract-full-auth-fallback` only when validation is allowed to use
+the same broad scopes as a build.
+
 ## Troubleshooting Map
 
 | Error / Symptom | Likely Cause | Remediation |

@@ -95,6 +95,7 @@ from slideflow.utilities.google_api import (
     slideflow_google_request_builder,
     upload_png_to_drive,
 )
+from slideflow.utilities.google_permissions import normalize_google_share_role
 from slideflow.utilities.logging import get_logger, log_api_operation
 from slideflow.utilities.rate_limiter import RateLimiter
 
@@ -160,7 +161,7 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         default_factory=list, description="Email addresses to share presentation with"
     )
     share_role: str = Field(
-        GoogleSlides.PERMISSION_WRITER,
+        GoogleSlides.PERMISSION_READER,
         description="Permission role: reader, writer, or commenter",
     )
     requests_per_second: float = Field(
@@ -190,6 +191,11 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
     @classmethod
     def _validate_transfer_ownership_to(cls, value: Optional[str]) -> Optional[str]:
         return normalize_transfer_owner_email(value)
+
+    @field_validator("share_role")
+    @classmethod
+    def _validate_share_role(cls, value: str) -> str:
+        return normalize_google_share_role(value)
 
 
 class GoogleSlidesProvider(PresentationProvider):
@@ -638,7 +644,7 @@ class GoogleSlidesProvider(PresentationProvider):
         self,
         presentation_id: str,
         emails: List[str],
-        role: str = GoogleSlides.PERMISSION_WRITER,
+        role: str = GoogleSlides.PERMISSION_READER,
     ) -> None:
         """Share Google Slides presentation with users.
 
@@ -648,6 +654,7 @@ class GoogleSlidesProvider(PresentationProvider):
             role: Permission role (reader, writer, commenter)
         """
         if emails:
+            role = normalize_google_share_role(role)
             try:
                 for email in emails:
                     permission = {"type": "user", "role": role, "emailAddress": email}

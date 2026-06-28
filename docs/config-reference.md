@@ -63,7 +63,7 @@ Supported values:
 | `new_folder_name` | `str` | no | Create/use subfolder under `presentation_folder_id` |
 | `new_folder_name_fn` | `callable` | no | Dynamic folder-name generator |
 | `share_with` | `list[str]` | no | Emails to share generated deck with |
-| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
 | `chart_image_sharing_mode` | `str` | no | `restricted` (default) or explicit `public` for uploaded chart-image ACL behavior |
@@ -85,7 +85,7 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 | `remove_section_markers` | `bool` | no | Remove `{{SECTION:...}}` markers after render finalization |
 | `default_chart_width_pt` | `float` | no | Reserved config field; currently not applied at render time |
 | `share_with` | `list[str]` | no | Emails to share generated document with |
-| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
 | `chart_image_sharing_mode` | `str` | no | `restricted` (default) or explicit `public` for uploaded chart-image ACL behavior |
@@ -108,7 +108,7 @@ For provider setup and marker behavior, see [Google Docs Provider](providers/goo
 | `spreadsheet_id` | `str` | no | Reuse an existing spreadsheet instead of creating one |
 | `drive_folder_id` | `str` | no | Destination folder for newly created spreadsheets |
 | `share_with` | `list[str]` | no | Emails to share generated spreadsheet with |
-| `share_role` | `str` | no | `reader`, `writer`, or `commenter` |
+| `share_role` | `str` | no | `reader` (default), `writer`, or `commenter` |
 | `requests_per_second` | `float` | no | API rate limit override |
 
 Credential precedence for `google_sheets`:

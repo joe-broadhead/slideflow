@@ -46,6 +46,24 @@ def test_google_docs_config_defaults_chart_images_to_restricted():
     assert config.chart_image_sharing_mode == "restricted"
 
 
+def test_google_docs_config_defaults_share_role_to_reader():
+    config = google_docs_module.GoogleDocsProviderConfig()
+
+    assert config.share_role == "reader"
+
+
+@pytest.mark.parametrize("role", ["owner", "readerwriter", ""])
+def test_google_docs_config_rejects_invalid_share_role(role: str):
+    with pytest.raises(ValueError, match="share_role"):
+        google_docs_module.GoogleDocsProviderConfig(share_role=role)
+
+
+def test_google_docs_config_normalizes_share_role():
+    config = google_docs_module.GoogleDocsProviderConfig(share_role=" Commenter ")
+
+    assert config.share_role == "commenter"
+
+
 def _document_from_paragraph_run_groups(
     *paragraph_run_groups: Tuple[str, ...],
 ) -> Dict[str, Any]:
@@ -727,6 +745,20 @@ def test_upload_share_and_delete_paths():
     )
     with pytest.raises(google_docs_module.HttpError):
         provider.delete_chart_image("file-2")
+
+
+def test_google_docs_share_presentation_rejects_invalid_role_before_api_call():
+    provider = _provider_without_init()
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("API should not be called")
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="share_role"):
+        provider.share_presentation("doc-1", ["a@example.com"], role="owner")
 
 
 def test_upload_chart_image_public_mode_waits_for_drive_acl_propagation_and_warns(

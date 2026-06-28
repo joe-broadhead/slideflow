@@ -144,6 +144,10 @@ For provider contract checks (recommended in CI):
 slideflow validate config.yml --provider-contract-check
 ```
 
+Provider contract checks use read-only Google scopes by default. Use
+`--provider-contract-full-auth-fallback` only for environments that explicitly
+accept validation with full build-provider scopes.
+
 To discover built-in chart templates:
 
 ```bash

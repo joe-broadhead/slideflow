@@ -37,6 +37,15 @@ Google Sheets provider scopes:
 - `https://www.googleapis.com/auth/drive`
 - `https://www.googleapis.com/auth/drive.file`
 
+Provider contract validation scopes:
+
+- `slideflow validate --provider-contract-check` for `google_slides` uses
+  `https://www.googleapis.com/auth/presentations.readonly`
+- `slideflow validate --provider-contract-check` for `google_docs` uses
+  `https://www.googleapis.com/auth/documents.readonly`
+- Validation does not fall back to the broader build-provider scopes unless
+  `--provider-contract-full-auth-fallback` is passed explicitly.
+
 ## Databricks auth
 
 Databricks connectors require:

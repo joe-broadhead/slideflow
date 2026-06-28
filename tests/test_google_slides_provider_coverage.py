@@ -115,6 +115,24 @@ def test_google_slides_config_defaults_chart_images_to_restricted():
     assert config.chart_image_sharing_mode == "restricted"
 
 
+def test_google_slides_config_defaults_share_role_to_reader():
+    config = google_provider_module.GoogleSlidesProviderConfig()
+
+    assert config.share_role == "reader"
+
+
+@pytest.mark.parametrize("role", ["owner", "readerwriter", ""])
+def test_google_slides_config_rejects_invalid_share_role(role: str):
+    with pytest.raises(ValueError, match="share_role"):
+        google_provider_module.GoogleSlidesProviderConfig(share_role=role)
+
+
+def test_google_slides_config_normalizes_share_role():
+    config = google_provider_module.GoogleSlidesProviderConfig(share_role=" Writer ")
+
+    assert config.share_role == "writer"
+
+
 @pytest.mark.parametrize(
     ("dimension", "expected"),
     [
@@ -200,6 +218,20 @@ def test_share_presentation_success_and_error(monkeypatch):
 
     with pytest.raises(google_provider_module.HttpError):
         provider.share_presentation("pres-2", ["x@example.com"], role="writer")
+
+
+def test_share_presentation_rejects_invalid_role_before_api_call():
+    provider = _provider_without_init()
+    provider.drive_service = SimpleNamespace(
+        permissions=lambda: SimpleNamespace(
+            create=lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("API should not be called")
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="share_role"):
+        provider.share_presentation("pres-1", ["a@example.com"], role="owner")
 
 
 def test_transfer_presentation_ownership_success_and_shared_drive_guard():

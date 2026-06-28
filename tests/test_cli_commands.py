@@ -156,7 +156,38 @@ def test_build_readonly_google_contract_client_docs_uses_read_scope(monkeypatch)
     assert client.marker_suffix == ">>"
 
 
-def test_create_google_contract_check_client_falls_back_to_provider(monkeypatch):
+def test_create_google_contract_check_client_fails_closed_without_fallback(monkeypatch):
+    monkeypatch.setattr(
+        validate_command_module,
+        "_build_readonly_google_contract_client",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("readonly failed")
+        ),
+    )
+
+    def _unexpected_create_provider(_provider_config):
+        raise AssertionError("full provider fallback should not be used by default")
+
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(_unexpected_create_provider),
+    )
+
+    presentation_config = types.SimpleNamespace(
+        provider=types.SimpleNamespace(type="google_slides", config={})
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="--provider-contract-full-auth-fallback",
+    ):
+        validate_command_module._create_google_contract_check_client(
+            presentation_config
+        )
+
+
+def test_create_google_contract_check_client_falls_back_when_explicit(monkeypatch):
     monkeypatch.setattr(
         validate_command_module,
         "_build_readonly_google_contract_client",
@@ -177,11 +208,80 @@ def test_create_google_contract_check_client_falls_back_to_provider(monkeypatch)
     )
 
     result = validate_command_module._create_google_contract_check_client(
-        presentation_config
+        presentation_config,
+        allow_full_auth_fallback=True,
     )
 
     assert result is sentinel_provider
     assert result.auth_mode == "provider_fallback"
+
+
+def test_validate_provider_contract_check_fails_closed_without_fallback(
+    tmp_path, monkeypatch
+):
+    stub_build_validate_cli_output(monkeypatch)
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "PresentationConfig",
+        lambda **_: types.SimpleNamespace(
+            provider=types.SimpleNamespace(type="google_slides", config={}),
+            presentation=types.SimpleNamespace(name="Demo", slides=[]),
+        ),
+    )
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "get_config_class",
+        staticmethod(lambda _provider_type: (lambda **_cfg: None)),
+    )
+    monkeypatch.setattr(
+        validate_command_module,
+        "_build_readonly_google_contract_client",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("readonly failed")
+        ),
+    )
+
+    def _unexpected_create_provider(_provider_config):
+        raise AssertionError("full provider fallback should not be used by default")
+
+    monkeypatch.setattr(
+        provider_factory_module.ProviderFactory,
+        "create_provider",
+        staticmethod(_unexpected_create_provider),
+    )
+
+    class FakeLoader:
+        def __init__(self, yaml_path: Path, registry_paths):
+            self.config = _minimal_loader_config()
+
+    monkeypatch.setattr(validate_command_module, "ConfigLoader", FakeLoader)
+
+    config_file = tmp_path / "config.yaml"
+    output_file = tmp_path / "validate-fail-closed.json"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n"
+    )
+
+    with pytest.raises(validate_command_module.typer.Exit) as exc_info:
+        validate_command_module.validate_command(
+            config_file=config_file,
+            registry_paths=None,
+            output_json=output_file,
+            params_path=None,
+            provider_contract_check=True,
+        )
+
+    assert exc_info.value.code == 1
+    payload = json.loads(output_file.read_text(encoding="utf-8"))
+    assert payload["status"] == "error"
+    assert "--provider-contract-full-auth-fallback" in payload["error"]["message"]
+    assert payload["provider_contract"] is None
 
 
 def test_build_dry_run_validates_all_param_rows_and_uses_empty_registry_default(
@@ -853,6 +953,7 @@ def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypa
         output_json=output_file,
         params_path=params_path,
         provider_contract_check=True,
+        provider_contract_full_auth_fallback=True,
     )
 
     payload = json.loads(output_file.read_text(encoding="utf-8"))
@@ -955,6 +1056,7 @@ def test_validate_provider_contract_check_writes_failure_json(tmp_path, monkeypa
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1017,6 +1119,7 @@ def test_validate_provider_contract_check_requires_google_provider(
             registry_paths=None,
             output_json=output_file,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1136,6 +1239,7 @@ def test_validate_provider_contract_check_merges_duplicate_slide_ids(
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1254,6 +1358,7 @@ def test_validate_provider_contract_check_google_docs_success(tmp_path, monkeypa
         output_json=output_file,
         params_path=params_path,
         provider_contract_check=True,
+        provider_contract_full_auth_fallback=True,
     )
 
     payload = json.loads(output_file.read_text(encoding="utf-8"))
@@ -1381,6 +1486,7 @@ def test_validate_provider_contract_check_google_docs_ignores_toc_markers(
         output_json=output_file,
         params_path=params_path,
         provider_contract_check=True,
+        provider_contract_full_auth_fallback=True,
     )
 
     payload = json.loads(output_file.read_text(encoding="utf-8"))
@@ -1487,6 +1593,7 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_mark
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1595,6 +1702,7 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_plac
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1705,6 +1813,7 @@ def test_validate_provider_contract_check_google_docs_missing_section_marker(
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1817,6 +1926,7 @@ def test_validate_provider_contract_check_google_docs_duplicate_marker(
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1
@@ -1923,6 +2033,7 @@ def test_validate_provider_contract_check_google_docs_missing_placeholder(
             output_json=output_file,
             params_path=params_path,
             provider_contract_check=True,
+            provider_contract_full_auth_fallback=True,
         )
 
     assert exc_info.value.code == 1

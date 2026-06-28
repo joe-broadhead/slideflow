@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Google Slides and Google Docs generated-artifact sharing now defaults to
+  `share_role: reader`. Set `provider.config.share_role: writer` explicitly
+  if recipients need edit access.
+- Google provider contract validation now fails closed when read-only auth
+  initialization fails. Pass `--provider-contract-full-auth-fallback` only when
+  validation is allowed to instantiate providers with full build scopes.
+
+### Fixed
+
+- Release provenance checks now keep version metadata, changelog release headers,
+  tag ancestry, and existing PyPI artifacts aligned with the artifact-producing
+  commit.
+
 ## [0.0.7] - 2026-05-25
 
 ### Added

@@ -894,7 +894,11 @@ class Presentation(BaseModel):
             self.provider.share_presentation(
                 context.presentation_id,
                 self.provider.config.share_with,
-                getattr(self.provider.config, "share_role", "writer"),
+                getattr(
+                    self.provider.config,
+                    "share_role",
+                    GoogleSlides.PERMISSION_READER,
+                ),
             )
 
     def _apply_ownership_transfer(self, context: _RenderContext) -> None:

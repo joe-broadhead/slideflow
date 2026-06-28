@@ -63,7 +63,7 @@ Field behavior:
 - `drive_folder_id`: destination folder for uploaded chart images.
   - If omitted, SlideFlow falls back to the presentation destination folder logic.
 - `new_folder_name` + `new_folder_name_fn`: optional dynamic subfolder under `presentation_folder_id`.
-- `share_with` + `share_role`: shares the rendered deck after generation.
+- `share_with` + `share_role`: shares the rendered deck after generation; `share_role` defaults to `reader`.
 - `transfer_ownership_to`: optional ownership handoff target after successful render/share.
 - `transfer_ownership_strict`: if `true`, ownership handoff failure fails the run.
 - `chart_image_sharing_mode`: uploaded chart-image ACL mode:
@@ -77,13 +77,25 @@ Field behavior:
 Sharing is performed by the service account, not your personal user.
 
 - Ensure the service account has permission to share files in the target drive/folder.
-- `share_role` supports `reader`, `writer`, and `commenter`.
+- `share_role` supports `reader`, `writer`, and `commenter`; omit it for least-privilege reader access and set `writer` only when recipients must edit.
 - Google may send notification emails when sharing is executed.
 - Ownership transfer is explicit opt-in and only works for files in **My Drive** (not Shared Drives).
 - Transfer uses Google Drive ownership APIs and may notify the target owner.
 
 For Shared Drive-first permission patterns and ownership-transfer constraints,
 see [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
+
+## Contract Validation
+
+Use provider contract checks before build:
+
+```bash
+slideflow validate config.yml --provider-contract-check --params-path variants.csv
+```
+
+Contract checks use read-only Google Slides auth scopes by default. If read-only
+auth initialization fails, validation fails closed unless you explicitly pass
+`--provider-contract-full-auth-fallback`.
 
 ## Cleanup Semantics
 

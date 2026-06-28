@@ -36,6 +36,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
+from slideflow.constants import GoogleSlides
+
 
 class ProviderSlideResult(BaseModel):
     """Result model for individual slide operations in presentation providers.
@@ -394,7 +396,10 @@ class PresentationProvider(ABC):
 
     @abstractmethod
     def share_presentation(
-        self, presentation_id: str, emails: List[str], role: str = "writer"
+        self,
+        presentation_id: str,
+        emails: List[str],
+        role: str = GoogleSlides.PERMISSION_READER,
     ) -> None:
         """Share the presentation with specified users.
 

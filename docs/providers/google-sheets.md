@@ -37,7 +37,7 @@ Field behavior:
 
 - `spreadsheet_id`: if set, writes into an existing spreadsheet.
 - `drive_folder_id`: destination folder for newly created spreadsheets.
-- `share_with` / `share_role`: optional post-build sharing.
+- `share_with` / `share_role`: optional post-build sharing; `share_role` defaults to `reader`.
 - `requests_per_second`: Google API pacing for this build.
   - Can be overridden at runtime via `slideflow sheets build --rps ...`.
 
