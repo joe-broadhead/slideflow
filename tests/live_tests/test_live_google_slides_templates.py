@@ -2,7 +2,7 @@ import os
 import uuid
 from math import ceil
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pytest
 import yaml  # type: ignore[import-untyped]
@@ -32,6 +32,20 @@ def _require_env(var_name: str) -> str:
     return value
 
 
+def _resolve_live_credentials(var_names: Sequence[str]) -> Optional[str]:
+    for var_name in var_names:
+        value = os.getenv(var_name)
+        if value:
+            return value
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        return None
+    pytest.skip(
+        "GOOGLE_SLIDEFLOW_CREDENTIALS or GOOGLE_APPLICATION_CREDENTIALS is not set; "
+        "skipping live Google Slides tests."
+    )
+    raise RuntimeError("unreachable")
+
+
 def _parse_optional_email_list(var_name: str) -> List[str]:
     raw = os.getenv(var_name, "")
     if not raw:
@@ -48,7 +62,7 @@ def live_provider() -> GoogleSlidesProvider:
     if os.getenv("SLIDEFLOW_RUN_LIVE") != "1":
         pytest.skip("SLIDEFLOW_RUN_LIVE != 1; skipping live Google Slides tests.")
 
-    credentials = _require_env("GOOGLE_SLIDEFLOW_CREDENTIALS")
+    credentials = _resolve_live_credentials(["GOOGLE_SLIDEFLOW_CREDENTIALS"])
     presentation_folder_id = _require_env("SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID")
     drive_folder_id = os.getenv(
         "SLIDEFLOW_LIVE_DRIVE_FOLDER_ID", presentation_folder_id
@@ -518,7 +532,7 @@ def test_live_feature_matrix_covers_templates_plotly_and_dynamic_replacements(
         slides_payload.append(slide_payload)
 
     provider_config: Dict[str, Any] = {
-        "credentials": os.environ["GOOGLE_SLIDEFLOW_CREDENTIALS"],
+        "credentials": live_provider.config.credentials,
         "template_id": template_id,
         "presentation_folder_id": os.environ["SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID"],
         "drive_folder_id": os.getenv(

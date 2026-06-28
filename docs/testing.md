@@ -79,6 +79,8 @@ Run live template + chart rendering tests locally:
 ```bash
 export SLIDEFLOW_RUN_LIVE=1
 export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/to/service-account.json
+# or, for ADC/WIF:
+# export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/external-account.json
 export SLIDEFLOW_LIVE_PRESENTATION_FOLDER_ID=<drive-folder-id>
 # optional override for chart image uploads:
 export SLIDEFLOW_LIVE_DRIVE_FOLDER_ID=<drive-folder-id>
@@ -103,6 +105,8 @@ Run live Google Docs tests locally:
 ```bash
 export SLIDEFLOW_RUN_LIVE=1
 export GOOGLE_DOCS_CREDENTIALS=/absolute/path/to/service-account.json
+# or, for ADC/WIF:
+# export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/external-account.json
 export SLIDEFLOW_LIVE_DOCUMENT_FOLDER_ID=<drive-folder-id>
 # optional override for chart image uploads:
 export SLIDEFLOW_LIVE_DRIVE_FOLDER_ID=<drive-folder-id>
@@ -123,6 +127,8 @@ Run live Google Sheets tests locally:
 ```bash
 export SLIDEFLOW_RUN_LIVE=1
 export GOOGLE_SHEETS_CREDENTIALS=/absolute/path/to/service-account.json
+# or, for ADC/WIF:
+# export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/external-account.json
 export SLIDEFLOW_LIVE_SHEETS_FOLDER_ID=<drive-folder-id>
 # optional override:
 export SLIDEFLOW_LIVE_DRIVE_FOLDER_ID=<drive-folder-id>

@@ -1,7 +1,7 @@
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pytest
 import yaml  # type: ignore[import-untyped]
@@ -24,6 +24,17 @@ def _require_first_env(var_names: Iterable[str], reason: str) -> str:
     raise RuntimeError("unreachable")
 
 
+def _resolve_live_credentials(var_names: Sequence[str], reason: str) -> Optional[str]:
+    for var_name in var_names:
+        value = os.getenv(var_name)
+        if value:
+            return value
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        return None
+    pytest.skip(reason)
+    raise RuntimeError("unreachable")
+
+
 def _parse_optional_email_list(var_name: str) -> List[str]:
     raw = os.getenv(var_name, "")
     if not raw:
@@ -40,9 +51,9 @@ def live_provider() -> GoogleSheetsProvider:
     if os.getenv("SLIDEFLOW_RUN_LIVE") != "1":
         pytest.skip("SLIDEFLOW_RUN_LIVE != 1; skipping live Google Sheets tests.")
 
-    credentials = _require_first_env(
+    credentials = _resolve_live_credentials(
         ["GOOGLE_SHEETS_CREDENTIALS", "GOOGLE_SLIDEFLOW_CREDENTIALS"],
-        "GOOGLE_SHEETS_CREDENTIALS/GOOGLE_SLIDEFLOW_CREDENTIALS is not set.",
+        "GOOGLE_SHEETS_CREDENTIALS/GOOGLE_SLIDEFLOW_CREDENTIALS/GOOGLE_APPLICATION_CREDENTIALS is not set.",
     )
     workbook_folder_id = _require_first_env(
         [

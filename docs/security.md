@@ -15,9 +15,14 @@ For Google provider auth, SlideFlow reads credentials from:
 Credential value can be:
 
 - Path to service-account JSON
-- Path to external-account / Workload Identity Federation JSON
-- Raw JSON payload
+- Path to external-account / Workload Identity Federation JSON from trusted env/ADC sources
+- Raw JSON payload from trusted env sources
 - Runtime ADC credentials, when no explicit credential source is configured
+
+`provider.config.credentials` accepts service-account JSON only. External-account
+/ Workload Identity Federation JSON is active credential configuration, so keep
+it in trusted environment variables, `GOOGLE_APPLICATION_CREDENTIALS`, or
+runtime ADC rather than repository YAML.
 
 Recommended: use environment variables in CI and avoid storing secrets in repo
 files. If you use raw JSON, inject it through a secret manager or GitHub

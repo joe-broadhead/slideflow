@@ -12,15 +12,15 @@ It can create a blank deck or copy a template, insert chart images, run text/tab
    service account key, Workload Identity Federation, or runtime ADC identity.
 3. Share the template deck (and destination Drive folder) with that identity.
 4. Supply credentials via either:
-   - `provider.config.credentials` in YAML as a path to an untracked file, or
+   - `provider.config.credentials` in YAML as service-account JSON or a path to an untracked service-account file, or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable, or
    - `GOOGLE_APPLICATION_CREDENTIALS`, or
    - runtime Application Default Credentials.
 
-`provider.config.credentials` and `GOOGLE_SLIDEFLOW_CREDENTIALS` accept
-service-account JSON or external-account / Workload Identity Federation JSON as
-a file path or raw JSON payload. Do not commit raw credential JSON or `.env`
-files.
+`GOOGLE_SLIDEFLOW_CREDENTIALS` accepts service-account JSON or external-account
+/ Workload Identity Federation JSON as a file path or raw JSON payload. Use
+that environment source, `GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC for
+WIF. Do not commit raw credential JSON or `.env` files.
 
 For production Shared Drive setup and command-by-command service-account
 bootstrap, see [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).

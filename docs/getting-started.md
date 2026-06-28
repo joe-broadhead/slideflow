@@ -31,7 +31,7 @@ source .venv/bin/activate
 
 SlideFlow accepts credentials via:
 
-1. `provider.config.credentials` in YAML as a path to an untracked file
+1. `provider.config.credentials` in YAML for service-account JSON
 2. `GOOGLE_DOCS_CREDENTIALS` environment variable (for `google_docs`)
 3. `GOOGLE_SHEETS_CREDENTIALS` environment variable (for `google_sheets`)
 4. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable (shared fallback)
@@ -43,6 +43,10 @@ Environment credential values support either:
 - Path to service-account JSON file
 - Path to external-account / Workload Identity Federation JSON file
 - Raw JSON string content injected by a secret manager or GitHub Secrets
+
+Keep external-account / Workload Identity Federation configs in trusted
+environment or ADC sources. `provider.config.credentials` accepts
+service-account JSON, but not external-account JSON from repository YAML.
 
 Example:
 

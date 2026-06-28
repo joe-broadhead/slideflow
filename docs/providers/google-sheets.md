@@ -15,16 +15,17 @@ schema with tab-level write definitions and optional AI summary rules.
 3. Share destination Drive folders (and existing target sheet, if reusing one)
    with that identity.
 4. Provide credentials via:
-   - `provider.config.credentials` as a path to an untracked file, or
+   - `provider.config.credentials` as service-account JSON or a path to an untracked service-account file, or
    - `GOOGLE_SHEETS_CREDENTIALS`, or
    - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback), or
    - `GOOGLE_APPLICATION_CREDENTIALS`, or
    - runtime Application Default Credentials.
 
-`provider.config.credentials`, `GOOGLE_SHEETS_CREDENTIALS`, and
-`GOOGLE_SLIDEFLOW_CREDENTIALS` accept service-account JSON or external-account /
-Workload Identity Federation JSON as a file path or raw JSON payload. Do not
-commit raw credential JSON or `.env` files.
+`GOOGLE_SHEETS_CREDENTIALS` and `GOOGLE_SLIDEFLOW_CREDENTIALS` accept
+service-account JSON or external-account / Workload Identity Federation JSON as
+a file path or raw JSON payload. Use those environment sources,
+`GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC for WIF. Do not commit raw
+credential JSON or `.env` files.
 
 ## Provider Config
 

@@ -110,6 +110,8 @@ def _load_google_credentials_from_mapping(
     google_auth: Any,
     payload: dict[str, Any],
     scopes: Optional[Sequence[str]],
+    *,
+    allow_generic_loader: bool,
 ) -> tuple[Any, Optional[str]]:
     credential_type = str(payload.get("type", "")).strip()
     if credential_type == "service_account":
@@ -124,9 +126,17 @@ def _load_google_credentials_from_mapping(
         )
         return credentials, project_id if isinstance(project_id, str) else None
 
+    if not allow_generic_loader:
+        raise AuthenticationError(
+            "Non-service-account Google credential JSON contains active "
+            "credential configuration and must be supplied through trusted "
+            "environment credentials, such as GOOGLE_APPLICATION_CREDENTIALS "
+            "or provider credential environment variables."
+        )
+
     # google-auth's generic loader is the supported cross-type path for
-    # external_account/WIF variants. The source is Slideflow config/env, not
-    # untrusted user-submitted payload.
+    # external_account/WIF variants. It is only enabled for trusted runtime
+    # sources such as environment variables and ADC files, not repository YAML.
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
@@ -143,6 +153,8 @@ def _load_google_credentials_from_file(
     google_auth: Any,
     filename: str,
     scopes: Optional[Sequence[str]],
+    *,
+    allow_generic_loader: bool,
 ) -> tuple[Any, Optional[str]]:
     try:
         with open(filename, "r", encoding="utf-8") as credential_file:
@@ -153,7 +165,12 @@ def _load_google_credentials_from_file(
     if not isinstance(payload, dict):
         raise AuthenticationError("Credentials file must contain a JSON object.")
 
-    return _load_google_credentials_from_mapping(google_auth, payload, scopes)
+    return _load_google_credentials_from_mapping(
+        google_auth,
+        payload,
+        scopes,
+        allow_generic_loader=allow_generic_loader,
+    )
 
 
 def handle_google_credentials(
@@ -212,8 +229,10 @@ def load_google_credentials(
     3. ``GOOGLE_APPLICATION_CREDENTIALS`` file path
     4. ``google.auth.default``
 
-    ``google.auth`` handles both service-account and external-account payloads,
-    which enables Workload Identity Federation and keyless ADC runtimes.
+    Service-account JSON can be loaded from explicit config. Generic Google auth
+    payloads such as external-account / Workload Identity Federation JSON are
+    loaded only from trusted runtime sources such as environment variables,
+    ``GOOGLE_APPLICATION_CREDENTIALS``, or runtime ADC.
     """
 
     try:
@@ -239,12 +258,14 @@ def load_google_credentials(
         )
 
     try:
+        allow_generic_loader = source_name != "provider.config.credentials"
         if source_type == "explicit_path":
             assert source_value is not None
             loaded_credentials, project_id = _load_google_credentials_from_file(
                 google.auth,
                 source_value,
                 scopes,
+                allow_generic_loader=allow_generic_loader,
             )
         elif source_type == "explicit_json":
             try:
@@ -261,6 +282,7 @@ def load_google_credentials(
                 google.auth,
                 payload,
                 scopes,
+                allow_generic_loader=allow_generic_loader,
             )
         elif source_type == _google_auth_source_type_for_env(
             Environment.GOOGLE_APPLICATION_CREDENTIALS
@@ -270,6 +292,7 @@ def load_google_credentials(
                 google.auth,
                 source_value,
                 scopes,
+                allow_generic_loader=allow_generic_loader,
             )
         elif source_type == "adc_default":
             loaded_credentials, project_id = google.auth.default(
@@ -281,6 +304,7 @@ def load_google_credentials(
                     google.auth,
                     source_value,
                     scopes,
+                    allow_generic_loader=allow_generic_loader,
                 )
             else:
                 try:
@@ -297,6 +321,7 @@ def load_google_credentials(
                     google.auth,
                     payload,
                     scopes,
+                    allow_generic_loader=allow_generic_loader,
                 )
     except AuthenticationError:
         raise

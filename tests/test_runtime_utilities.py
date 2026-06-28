@@ -489,10 +489,18 @@ def test_handle_google_credentials_validation_errors(tmp_path, monkeypatch):
         handle_google_credentials(None)
 
 
-def test_load_google_credentials_from_external_account_json(monkeypatch):
+def test_load_google_credentials_from_env_external_account_json(monkeypatch):
     import google.auth
 
     calls = {}
+    payload = {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/projects/123/locations/global",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {"file": "/tmp/token"},
+    }
+    monkeypatch.setenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, json.dumps(payload))
 
     def _load_from_dict(info, scopes=None, **kwargs):
         calls["info"] = info
@@ -503,24 +511,39 @@ def test_load_google_credentials_from_external_account_json(monkeypatch):
     monkeypatch.setattr(google.auth, "load_credentials_from_dict", _load_from_dict)
 
     result = load_google_credentials(
-        json.dumps(
-            {
-                "type": "external_account",
-                "audience": "//iam.googleapis.com/projects/123/locations/global",
-                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-                "token_url": "https://sts.googleapis.com/v1/token",
-                "credential_source": {"file": "/tmp/token"},
-            }
-        ),
+        None,
         scopes=["scope-a"],
     )
 
     assert result.credentials == "credentials"
     assert result.project_id == "project-from-json"
-    assert result.source_type == "explicit_json"
-    assert result.source_name == "provider.config.credentials"
+    assert result.source_type == "env_google_slideflow_credentials"
+    assert result.source_name == Environment.GOOGLE_SLIDEFLOW_CREDENTIALS
     assert calls["info"]["type"] == "external_account"
     assert calls["scopes"] == ["scope-a"]
+
+
+def test_load_google_credentials_rejects_external_account_from_provider_config(
+    tmp_path, monkeypatch
+):
+    import google.auth
+
+    payload = json.dumps({"type": "external_account", "audience": "repo-config"})
+    monkeypatch.setattr(
+        google.auth,
+        "load_credentials_from_dict",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("generic loader should not accept provider config")
+        ),
+    )
+
+    with pytest.raises(AuthenticationError, match="Non-service-account"):
+        load_google_credentials(payload, scopes=["scope-blocked"])
+
+    creds_path = tmp_path / "external-account.json"
+    creds_path.write_text(payload)
+    with pytest.raises(AuthenticationError, match="Non-service-account"):
+        load_google_credentials(str(creds_path), scopes=["scope-blocked"])
 
 
 def test_load_google_credentials_uses_service_account_specific_loader(monkeypatch):
@@ -568,27 +591,45 @@ def test_load_google_credentials_uses_service_account_specific_loader(monkeypatc
     assert calls["scopes"] == ["scope-sa"]
 
 
-def test_load_google_credentials_from_explicit_file(tmp_path, monkeypatch):
+def test_load_google_credentials_from_explicit_service_account_file(
+    tmp_path, monkeypatch
+):
     import google.auth
+    from google.oauth2 import service_account
 
-    creds_path = tmp_path / "external-account.json"
-    creds_path.write_text('{"type":"external_account","audience":"file"}')
+    creds_path = tmp_path / "service-account.json"
+    creds_path.write_text(
+        '{"type":"service_account","client_email":"svc@example.com","project_id":"file-project"}'
+    )
     calls = {}
 
-    def _load_from_dict(info, scopes=None, **kwargs):
+    class FakeCredentials:
+        project_id = "file-project"
+
+    def _from_service_account_info(info, scopes=None):
         calls["info"] = info
         calls["scopes"] = scopes
-        calls["kwargs"] = kwargs
-        return "credentials", None
+        return FakeCredentials()
 
-    monkeypatch.setattr(google.auth, "load_credentials_from_dict", _load_from_dict)
+    monkeypatch.setattr(
+        service_account.Credentials,
+        "from_service_account_info",
+        staticmethod(_from_service_account_info),
+    )
+    monkeypatch.setattr(
+        google.auth,
+        "load_credentials_from_dict",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("generic loader should not be used for service accounts")
+        ),
+    )
 
     result = load_google_credentials(str(creds_path), scopes=["scope-b"])
 
-    assert result.credentials == "credentials"
+    assert isinstance(result.credentials, FakeCredentials)
     assert result.source_type == "explicit_path"
     assert result.source_name == "provider.config.credentials"
-    assert calls["info"]["audience"] == "file"
+    assert calls["info"]["client_email"] == "svc@example.com"
     assert calls["scopes"] == ["scope-b"]
 
 

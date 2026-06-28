@@ -77,9 +77,10 @@ Credential precedence for `google_slides`:
 3. `GOOGLE_APPLICATION_CREDENTIALS`
 4. Runtime Application Default Credentials
 
-`credentials` and credential environment variables may contain a path to
-service-account JSON, a path to external-account / Workload Identity Federation
-JSON, or raw JSON payload.
+`provider.config.credentials` may contain service-account JSON as a file path
+or raw JSON payload. Use `GOOGLE_SLIDEFLOW_CREDENTIALS`,
+`GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC for external-account / Workload
+Identity Federation credentials.
 
 For provider setup and operational behavior, see [Google Slides Provider](providers/google-slides.md).
 
@@ -111,9 +112,10 @@ Credential precedence for `google_docs`:
 4. `GOOGLE_APPLICATION_CREDENTIALS`
 5. Runtime Application Default Credentials
 
-`credentials` and credential environment variables may contain a path to
-service-account JSON, a path to external-account / Workload Identity Federation
-JSON, or raw JSON payload.
+`provider.config.credentials` may contain service-account JSON as a file path
+or raw JSON payload. Use `GOOGLE_DOCS_CREDENTIALS`,
+`GOOGLE_SLIDEFLOW_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC
+for external-account / Workload Identity Federation credentials.
 
 For provider setup and marker behavior, see [Google Docs Provider](providers/google-docs.md).
 
@@ -136,9 +138,10 @@ Credential precedence for `google_sheets`:
 4. `GOOGLE_APPLICATION_CREDENTIALS`
 5. Runtime Application Default Credentials
 
-`credentials` and credential environment variables may contain a path to
-service-account JSON, a path to external-account / Workload Identity Federation
-JSON, or raw JSON payload.
+`provider.config.credentials` may contain service-account JSON as a file path
+or raw JSON payload. Use `GOOGLE_SHEETS_CREDENTIALS`,
+`GOOGLE_SLIDEFLOW_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or runtime ADC
+for external-account / Workload Identity Federation credentials.
 
 ## `workbook` (Google Sheets pipelines)
 
