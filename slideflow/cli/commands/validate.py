@@ -303,7 +303,7 @@ def _read_powerpoint_template_paths_from_params(params_path: Path) -> List[Path]
             "Provide at least one template_path row."
         )
 
-    return sorted(template_paths, key=lambda path: str(path))
+    return sorted(template_paths, key=str)
 
 
 def _resolve_powerpoint_template_paths_for_contract_check(
