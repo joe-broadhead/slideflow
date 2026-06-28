@@ -66,6 +66,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from slideflow.builtins.template_engine import use_template_engine
 from slideflow.citations import CitationEntry, CitationRegistry, CitationSummary
 from slideflow.constants import GoogleSlides, Timing
+from slideflow.presentations.charts import chart_export_executor_scope
 from slideflow.presentations.config import CitationConfig
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
@@ -1045,7 +1046,8 @@ class Presentation(BaseModel):
             context = self._create_render_context(start_time=time.time())
             self._prefetch_data_sources()
             self._collect_citations_for_slides(context)
-            self._process_slide_content(context)
+            with chart_export_executor_scope():
+                self._process_slide_content(context)
             citation_summary = self._summarize_and_render_citations(context)
             self._finalize_and_share_presentation(context)
             self._apply_ownership_transfer(context)

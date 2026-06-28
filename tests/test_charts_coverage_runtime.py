@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import TimeoutError
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from types import SimpleNamespace
 from typing import Any, Dict, List, Literal
 
@@ -19,7 +20,7 @@ class _MinimalChart(charts_module.BaseChart):
         return b"image-bytes"
 
 
-def test_reset_chart_export_executor_terminates_processes_and_shutdowns():
+def test_shutdown_chart_export_executor_terminates_owned_processes_and_shutdowns():
     class _Process:
         def __init__(self) -> None:
             self.terminated = False
@@ -36,16 +37,14 @@ def test_reset_chart_export_executor_terminates_processes_and_shutdowns():
             self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
 
     executor = _Executor()
-    charts_module._CHART_EXPORT_EXECUTOR = executor
 
-    charts_module._reset_chart_export_executor()
+    charts_module._shutdown_chart_export_executor(executor, terminate_workers=True)
 
-    assert charts_module._CHART_EXPORT_EXECUTOR is None
     assert all(process.terminated for process in executor._processes.values())
     assert executor.shutdown_calls == [{"wait": False, "cancel_futures": True}]
 
 
-def test_reset_chart_export_executor_handles_terminate_and_shutdown_errors():
+def test_shutdown_chart_export_executor_handles_terminate_and_shutdown_errors():
     class _Process:
         def terminate(self) -> None:
             raise RuntimeError("terminate failed")
@@ -56,15 +55,41 @@ def test_reset_chart_export_executor_handles_terminate_and_shutdown_errors():
         def shutdown(self, wait: bool, cancel_futures: bool) -> None:
             raise RuntimeError("shutdown failed")
 
-    charts_module._CHART_EXPORT_EXECUTOR = _Executor()
+    charts_module._shutdown_chart_export_executor(_Executor(), terminate_workers=True)
 
-    charts_module._reset_chart_export_executor()
 
-    assert charts_module._CHART_EXPORT_EXECUTOR is None
+def test_shutdown_chart_export_executor_without_terminate_waits_for_cleanup():
+    class _Process:
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+    class _Executor:
+        def __init__(self) -> None:
+            self._processes = {"a": _Process()}
+            self.shutdown_calls: List[Dict[str, Any]] = []
+
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+    executor = _Executor()
+
+    charts_module._shutdown_chart_export_executor(executor, terminate_workers=False)
+
+    assert executor._processes["a"].terminated is False
+    assert executor.shutdown_calls == [{"wait": True, "cancel_futures": True}]
 
 
 def test_execute_with_retry_timeout_then_success(monkeypatch):
     class _FutureTimeout:
+        def __init__(self) -> None:
+            self.cancelled = False
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
         def result(self, timeout: int) -> bytes:
             raise TimeoutError()
 
@@ -72,26 +97,43 @@ def test_execute_with_retry_timeout_then_success(monkeypatch):
         def result(self, timeout: int) -> bytes:
             return b"ok"
 
+    class _Process:
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+
     class _Executor:
         def __init__(self, future: Any) -> None:
             self._future = future
+            self._processes = {"worker": _Process()}
+            self.shutdown_calls: List[Dict[str, Any]] = []
 
         def submit(self, func, *args, **kwargs):
             return self._future
 
-    executors = iter([_Executor(_FutureTimeout()), _Executor(_FutureSuccess())])
-    reset_calls: List[bool] = []
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+    timed_out_future = _FutureTimeout()
+    timed_out_executor = _Executor(timed_out_future)
+    success_executor = _Executor(_FutureSuccess())
+    executors = iter([timed_out_executor, success_executor])
     monkeypatch.setattr(
-        charts_module, "_get_chart_export_executor", lambda: next(executors)
-    )
-    monkeypatch.setattr(
-        charts_module, "_reset_chart_export_executor", lambda: reset_calls.append(True)
+        charts_module, "_create_chart_export_executor", lambda: next(executors)
     )
 
     result = charts_module._execute_with_retry(lambda: b"unused")
 
     assert result == b"ok"
-    assert reset_calls == [True]
+    assert timed_out_future.cancelled is True
+    assert timed_out_executor._processes["worker"].terminated is True
+    assert timed_out_executor.shutdown_calls == [
+        {"wait": False, "cancel_futures": True}
+    ]
+    assert success_executor._processes["worker"].terminated is False
+    assert success_executor.shutdown_calls == [{"wait": True, "cancel_futures": True}]
 
 
 def test_execute_with_retry_resets_and_reraises_non_timeout(monkeypatch):
@@ -100,44 +142,63 @@ def test_execute_with_retry_resets_and_reraises_non_timeout(monkeypatch):
             raise RuntimeError("boom")
 
     class _Executor:
+        def __init__(self) -> None:
+            self.shutdown_calls: List[Dict[str, Any]] = []
+
         def submit(self, func, *args, **kwargs):
             return _FutureError()
 
-    reset_calls: List[bool] = []
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+    executor = _Executor()
     monkeypatch.setattr(
-        charts_module, "_get_chart_export_executor", lambda: _Executor()
-    )
-    monkeypatch.setattr(
-        charts_module, "_reset_chart_export_executor", lambda: reset_calls.append(True)
+        charts_module, "_create_chart_export_executor", lambda: executor
     )
 
     with pytest.raises(RuntimeError, match="boom"):
         charts_module._execute_with_retry(lambda: b"unused")
 
-    assert reset_calls == [True]
+    assert executor.shutdown_calls == [{"wait": True, "cancel_futures": True}]
 
 
 def test_execute_with_retry_raises_after_all_timeouts(monkeypatch):
+    class _Process:
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+
     class _FutureTimeout:
         def result(self, timeout: int) -> bytes:
             raise TimeoutError()
 
     class _Executor:
+        def __init__(self) -> None:
+            self._processes = {"worker": _Process()}
+            self.shutdown_calls: List[Dict[str, Any]] = []
+
         def submit(self, func, *args, **kwargs):
             return _FutureTimeout()
 
-    reset_calls: List[bool] = []
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+    executors = [_Executor(), _Executor(), _Executor()]
+    executor_iter = iter(executors)
     monkeypatch.setattr(
-        charts_module, "_get_chart_export_executor", lambda: _Executor()
-    )
-    monkeypatch.setattr(
-        charts_module, "_reset_chart_export_executor", lambda: reset_calls.append(True)
+        charts_module, "_create_chart_export_executor", lambda: next(executor_iter)
     )
 
     with pytest.raises(ChartGenerationError, match="failed after all retries"):
         charts_module._execute_with_retry(lambda: b"unused")
 
-    assert reset_calls == [True, True, True]
+    assert all(executor._processes["worker"].terminated for executor in executors)
+    assert all(
+        executor.shutdown_calls == [{"wait": False, "cancel_futures": True}]
+        for executor in executors
+    )
 
 
 def test_execute_with_retry_uses_configured_timeout_sequence(monkeypatch):
@@ -152,21 +213,22 @@ def test_execute_with_retry_uses_configured_timeout_sequence(monkeypatch):
     class _Executor:
         def __init__(self, future: _FutureTimeout) -> None:
             self.future = future
+            self.shutdown_calls: List[Dict[str, Any]] = []
 
         def submit(self, func, *args, **kwargs):
             return self.future
 
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
     future = _FutureTimeout()
-    executor = _Executor(future)
-    reset_calls: List[bool] = []
+    executors = [_Executor(future), _Executor(future), _Executor(future)]
+    executor_iter = iter(executors)
 
     monkeypatch.setattr(
         charts_module,
-        "_get_chart_export_executor",
-        lambda: executor,
-    )
-    monkeypatch.setattr(
-        charts_module, "_reset_chart_export_executor", lambda: reset_calls.append(True)
+        "_create_chart_export_executor",
+        lambda: next(executor_iter),
     )
     monkeypatch.setattr(
         charts_module.Timing,
@@ -178,7 +240,171 @@ def test_execute_with_retry_uses_configured_timeout_sequence(monkeypatch):
         charts_module._execute_with_retry(lambda: b"unused")
 
     assert future.timeouts == [1, 2, 3]
-    assert reset_calls == [True, True, True]
+    assert all(
+        executor.shutdown_calls == [{"wait": False, "cancel_futures": True}]
+        for executor in executors
+    )
+
+
+def test_chart_export_executor_scope_reuses_executor_for_successful_exports(
+    monkeypatch,
+):
+    class _FutureSuccess:
+        def result(self, timeout: int) -> bytes:
+            return b"ok"
+
+    class _Executor:
+        def __init__(self) -> None:
+            self.submit_count = 0
+            self.shutdown_calls: List[Dict[str, Any]] = []
+
+        def submit(self, func, *args, **kwargs):
+            self.submit_count += 1
+            return _FutureSuccess()
+
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+    executor = _Executor()
+    create_calls: List[bool] = []
+
+    def _create_executor():
+        create_calls.append(True)
+        return executor
+
+    monkeypatch.setattr(
+        charts_module,
+        "_create_chart_export_executor",
+        _create_executor,
+    )
+
+    with charts_module.chart_export_executor_scope():
+        assert charts_module._execute_with_retry(lambda: b"first") == b"ok"
+        assert charts_module._execute_with_retry(lambda: b"second") == b"ok"
+
+    assert create_calls == [True]
+    assert executor.submit_count == 2
+    assert executor.shutdown_calls == [{"wait": True, "cancel_futures": True}]
+
+
+def test_chart_export_executor_scope_replaces_timed_out_executor(monkeypatch):
+    class _Process:
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+    class _FutureTimeout:
+        def result(self, timeout: int) -> bytes:
+            raise TimeoutError()
+
+    class _FutureSuccess:
+        def result(self, timeout: int) -> bytes:
+            return b"ok"
+
+    class _Executor:
+        def __init__(self, future: Any) -> None:
+            self.future = future
+            self._processes = {"worker": _Process()}
+            self.shutdown_calls: List[Dict[str, Any]] = []
+
+        def submit(self, func, *args, **kwargs):
+            return self.future
+
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+    timed_out_executor = _Executor(_FutureTimeout())
+    replacement_executor = _Executor(_FutureSuccess())
+    executors = iter([timed_out_executor, replacement_executor])
+
+    monkeypatch.setattr(
+        charts_module,
+        "_create_chart_export_executor",
+        lambda: next(executors),
+    )
+
+    with charts_module.chart_export_executor_scope():
+        assert charts_module._execute_with_retry(lambda: b"unused") == b"ok"
+
+    assert timed_out_executor._processes["worker"].terminated is True
+    assert timed_out_executor.shutdown_calls == [
+        {"wait": False, "cancel_futures": True}
+    ]
+    assert replacement_executor._processes["worker"].terminated is False
+    assert replacement_executor.shutdown_calls == [
+        {"wait": True, "cancel_futures": True}
+    ]
+
+
+def test_execute_with_retry_timeout_does_not_block_concurrent_export(monkeypatch):
+    monkeypatch.setattr(charts_module.Timing, "CHART_EXPORT_RETRY_TIMEOUTS_S", (1,))
+    barrier = threading.Barrier(2)
+
+    class _FutureTimeout:
+        def result(self, timeout: int) -> bytes:
+            barrier.wait(timeout=2)
+            raise TimeoutError()
+
+    class _FutureSuccess:
+        def result(self, timeout: int) -> bytes:
+            barrier.wait(timeout=2)
+            return b"ok"
+
+    class _Executor:
+        def submit(self, func, *args, **kwargs):
+            return _FutureTimeout() if func.__name__ == "_hang" else _FutureSuccess()
+
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            pass
+
+    monkeypatch.setattr(
+        charts_module, "_create_chart_export_executor", lambda: _Executor()
+    )
+
+    def _hang():
+        return b"hang"
+
+    def _ok():
+        return b"ok"
+
+    def _run(func):
+        with charts_module.chart_export_executor_scope():
+            return charts_module._execute_with_retry(func)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        timed_out = executor.submit(_run, _hang)
+        succeeded = executor.submit(_run, _ok)
+
+        assert succeeded.result(timeout=2) == b"ok"
+        with pytest.raises(ChartGenerationError, match="_hang"):
+            timed_out.result(timeout=2)
+
+
+def test_execute_with_retry_timeout_error_includes_chart_context(monkeypatch):
+    monkeypatch.setattr(charts_module.Timing, "CHART_EXPORT_RETRY_TIMEOUTS_S", (1,))
+
+    class _FutureTimeout:
+        def result(self, timeout: int) -> bytes:
+            raise TimeoutError()
+
+    class _Executor:
+        def submit(self, func, *args, **kwargs):
+            return _FutureTimeout()
+
+        def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+            pass
+
+    monkeypatch.setattr(
+        charts_module, "_create_chart_export_executor", lambda: _Executor()
+    )
+
+    with pytest.raises(ChartGenerationError, match="Revenue Trend"):
+        charts_module._execute_with_retry(
+            lambda: b"unused",
+            context="plotly_go chart title='Revenue Trend'",
+        )
 
 
 def test_plotly_to_image_without_scale_omits_scale_option(monkeypatch):
@@ -269,7 +495,7 @@ def test_plotly_generate_chart_image_evaluates_expressions_and_scale(monkeypatch
     monkeypatch.setattr(
         charts_module,
         "_execute_with_retry",
-        lambda func, fig, fmt, width, height, scale: retry_calls.append(
+        lambda func, fig, fmt, width, height, scale, **_kwargs: retry_calls.append(
             (func, fmt, width, height, scale)
         )
         or b"rendered",

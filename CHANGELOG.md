@@ -24,6 +24,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Data-source cache reads now return isolated `DataFrame` copies, table
   formatting avoids mutating shared source frames, and cache `clear()`/`disable()`
   wake in-flight waiters without allowing stale loads to refill the cache.
+- Plotly chart export timeouts now terminate only the timed-out export worker,
+  so one build cannot reset another build's in-flight chart export.
 - Release provenance checks now keep version metadata, changelog release headers,
   tag ancestry, and existing PyPI artifacts aligned with the artifact-producing
   commit.
