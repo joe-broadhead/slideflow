@@ -90,7 +90,7 @@ def test_concurrent_builds_keep_template_paths_isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(
         builder_module,
         "Presentation",
-        lambda **kwargs: SimpleNamespace(**kwargs),
+        SimpleNamespace,
     )
     monkeypatch.setattr(charts_module, "PlotlyGraphObjects", _ConcurrentFakePlotlyChart)
 
@@ -163,8 +163,8 @@ def test_custom_chart_get_template_engine_uses_build_scoped_engine(tmp_path):
             self.uploaded = image_data
             return ("https://example.com/chart.png", "file-1")
 
-        def insert_chart_to_slide(self, *args: Any) -> None:
-            del args
+        def insert_chart_to_slide(self, *_args: Any) -> None:
+            pass
 
     provider = _Provider()
     presentation = Presentation.model_construct(
