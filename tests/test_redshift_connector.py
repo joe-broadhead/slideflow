@@ -158,6 +158,79 @@ def test_redshift_connect_supports_iam_serverless(monkeypatch):
     assert "password" not in captured
 
 
+def test_redshift_iam_provisioned_host_derives_cluster_identifier(monkeypatch):
+    _clear_redshift_env(monkeypatch)
+    captured = {}
+
+    def _connect(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        redshift_module, "redshift_connector", _fake_redshift_module(_connect)
+    )
+
+    connector = redshift_module.RedshiftConnector(
+        "SELECT 1",
+        host="prod-analytics.abc123.us-east-1.redshift.amazonaws.com",
+        database="analytics",
+        iam=True,
+        region="us-east-1",
+        db_user="iam_user",
+    )
+    connector.connect()
+
+    assert captured["host"] == "prod-analytics.abc123.us-east-1.redshift.amazonaws.com"
+    assert captured["cluster_identifier"] == "prod-analytics"
+    assert captured["iam"] is True
+
+
+def test_redshift_iam_china_host_derives_cluster_identifier(monkeypatch):
+    _clear_redshift_env(monkeypatch)
+    captured = {}
+
+    def _connect(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        redshift_module, "redshift_connector", _fake_redshift_module(_connect)
+    )
+
+    connector = redshift_module.RedshiftConnector(
+        "SELECT 1",
+        host="prod-analytics.abc123.cn-north-1.redshift.amazonaws.com.cn",
+        database="analytics",
+        iam=True,
+        region="cn-north-1",
+        db_user="iam_user",
+    )
+    connector.connect()
+
+    assert captured["cluster_identifier"] == "prod-analytics"
+    assert captured["iam"] is True
+
+
+def test_redshift_iam_host_derivation_rejects_spoofed_suffix(monkeypatch):
+    _clear_redshift_env(monkeypatch)
+    monkeypatch.setattr(
+        redshift_module,
+        "redshift_connector",
+        _fake_redshift_module(lambda **_kwargs: object()),
+    )
+    connector = redshift_module.RedshiftConnector(
+        "SELECT 1",
+        host="prod-analytics.abc123.us-east-1.redshift.amazonaws.com.attacker.example",
+        database="analytics",
+        iam=True,
+        region="us-east-1",
+        db_user="iam_user",
+    )
+
+    with pytest.raises(DataSourceError, match="Invalid Redshift host"):
+        connector.connect()
+
+
 def test_redshift_connect_validates_required_fields(monkeypatch):
     _clear_redshift_env(monkeypatch)
     monkeypatch.setattr(

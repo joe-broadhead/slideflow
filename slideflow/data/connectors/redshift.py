@@ -1,6 +1,7 @@
 """Amazon Redshift connector and SQL executor utilities for Slideflow."""
 
 import os
+import re
 import time
 from importlib import import_module
 from typing import Any, ClassVar, Literal, Optional, Type
@@ -22,6 +23,19 @@ except ImportError:  # pragma: no cover - exercised in optional-dependency tests
 
 # Module-level symbol keeps optional dependency import lazy and testable.
 redshift_connector: Any = _imported_redshift_connector
+
+_PROVISIONED_REDSHIFT_HOST_RE = re.compile(
+    r"([^.]+)\.[^.]+\.[^.]+\.redshift(?:-dev)?\.amazonaws\.com(?:\.cn)?",
+    re.IGNORECASE,
+)
+_AWS_REDSHIFT_HOST_RE = re.compile(
+    r"(?:"
+    r"[^.]+\.[^.]+\.[^.]+\.redshift(?:-dev)?"
+    r"|"
+    r"[^.]+\.[^.]+(?:\.[^.]+)?\.redshift-serverless(?:-dev)?"
+    r")\.amazonaws\.com(?:\.cn)?",
+    re.IGNORECASE,
+)
 
 
 def _clean_optional_string(value: Optional[str]) -> Optional[str]:
@@ -73,6 +87,34 @@ def _resolve_int(
     except ValueError:
         return default
     return parsed if parsed > 0 else default
+
+
+def _derive_cluster_identifier_from_host(host: Optional[str]) -> Optional[str]:
+    """Extract cluster identifier from a standard provisioned Redshift endpoint."""
+    clean_host = _clean_optional_string(host)
+    if clean_host is None:
+        return None
+    match = _PROVISIONED_REDSHIFT_HOST_RE.fullmatch(clean_host)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _has_spoofed_redshift_suffix(host: Optional[str]) -> bool:
+    """Detect AWS Redshift-looking hosts with extra trailing labels."""
+    clean_host = _clean_optional_string(host)
+    if clean_host is None:
+        return False
+    lower_host = clean_host.lower()
+    aws_suffixes = (
+        ".redshift.amazonaws.com",
+        ".redshift-dev.amazonaws.com",
+        ".redshift-serverless.amazonaws.com",
+        ".redshift-serverless-dev.amazonaws.com",
+    )
+    return any(suffix in lower_host for suffix in aws_suffixes) and not bool(
+        _AWS_REDSHIFT_HOST_RE.fullmatch(clean_host)
+    )
 
 
 def _require_redshift_connector_module() -> Any:
@@ -202,8 +244,16 @@ class RedshiftConnector(DataConnector):
         if is_serverless is None:
             is_serverless = bool(serverless_acct_id or serverless_work_group)
 
+        host = _resolve_string(self.host, Environment.REDSHIFT_HOST)
+        cluster_identifier = _resolve_string(
+            self.cluster_identifier,
+            Environment.REDSHIFT_CLUSTER_IDENTIFIER,
+        )
+        if iam and cluster_identifier is None:
+            cluster_identifier = _derive_cluster_identifier_from_host(host)
+
         kwargs: dict[str, Any] = {
-            "host": _resolve_string(self.host, Environment.REDSHIFT_HOST),
+            "host": host,
             "port": _resolve_int(
                 self.port,
                 Environment.REDSHIFT_PORT,
@@ -214,10 +264,7 @@ class RedshiftConnector(DataConnector):
             "password": _resolve_string(self.password, Environment.REDSHIFT_PASSWORD),
             "iam": iam,
             "db_user": _resolve_string(self.db_user, Environment.REDSHIFT_DB_USER),
-            "cluster_identifier": _resolve_string(
-                self.cluster_identifier,
-                Environment.REDSHIFT_CLUSTER_IDENTIFIER,
-            ),
+            "cluster_identifier": cluster_identifier,
             "region": _resolve_string(
                 self.region,
                 Environment.REDSHIFT_REGION,
@@ -267,8 +314,15 @@ class RedshiftConnector(DataConnector):
             )
 
         if kwargs.get("iam"):
+            host = kwargs.get("host")
+            if isinstance(host, str) and _has_spoofed_redshift_suffix(host):
+                raise RedshiftConnectorError(
+                    "configuration",
+                    "Invalid Redshift host: AWS Redshift endpoints must end at "
+                    "redshift.amazonaws.com or redshift-serverless.amazonaws.com.",
+                )
             if not (
-                kwargs.get("host")
+                host
                 or kwargs.get("cluster_identifier")
                 or (
                     kwargs.get("serverless_acct_id")
