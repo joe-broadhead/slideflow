@@ -10,7 +10,11 @@ import slideflow.data.cache as data_cache_module
 import slideflow.presentations.rate_limiter as presentation_rate_limiter_module
 import slideflow.utilities.rate_limiter as rate_limiter_module
 from slideflow.constants import Environment
-from slideflow.utilities.auth import handle_google_credentials
+from slideflow.utilities.auth import (
+    describe_google_credentials_source,
+    handle_google_credentials,
+    load_google_credentials,
+)
 from slideflow.utilities.exceptions import AuthenticationError
 
 
@@ -483,6 +487,213 @@ def test_handle_google_credentials_validation_errors(tmp_path, monkeypatch):
         AuthenticationError, match="no supported credential environment variables"
     ):
         handle_google_credentials(None)
+
+
+def test_load_google_credentials_from_external_account_json(monkeypatch):
+    import google.auth
+
+    calls = {}
+
+    def _load_from_dict(info, scopes=None, **kwargs):
+        calls["info"] = info
+        calls["scopes"] = scopes
+        calls["kwargs"] = kwargs
+        return "credentials", "project-from-json"
+
+    monkeypatch.setattr(google.auth, "load_credentials_from_dict", _load_from_dict)
+
+    result = load_google_credentials(
+        json.dumps(
+            {
+                "type": "external_account",
+                "audience": "//iam.googleapis.com/projects/123/locations/global",
+                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+                "token_url": "https://sts.googleapis.com/v1/token",
+                "credential_source": {"file": "/tmp/token"},
+            }
+        ),
+        scopes=["scope-a"],
+    )
+
+    assert result.credentials == "credentials"
+    assert result.project_id == "project-from-json"
+    assert result.source_type == "explicit_json"
+    assert result.source_name == "provider.config.credentials"
+    assert calls["info"]["type"] == "external_account"
+    assert calls["scopes"] == ["scope-a"]
+
+
+def test_load_google_credentials_uses_service_account_specific_loader(monkeypatch):
+    import google.auth
+    from google.oauth2 import service_account
+
+    calls = {}
+
+    class FakeCredentials:
+        project_id = "project-from-credentials"
+
+    def _from_service_account_info(info, scopes=None):
+        calls["info"] = info
+        calls["scopes"] = scopes
+        return FakeCredentials()
+
+    monkeypatch.setattr(
+        service_account.Credentials,
+        "from_service_account_info",
+        staticmethod(_from_service_account_info),
+    )
+    monkeypatch.setattr(
+        google.auth,
+        "load_credentials_from_dict",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("generic loader should not be used for service accounts")
+        ),
+    )
+
+    result = load_google_credentials(
+        json.dumps(
+            {
+                "type": "service_account",
+                "client_email": "svc@example.com",
+                "project_id": "project-from-json",
+            }
+        ),
+        scopes=["scope-sa"],
+    )
+
+    assert isinstance(result.credentials, FakeCredentials)
+    assert result.project_id == "project-from-credentials"
+    assert result.source_type == "explicit_json"
+    assert calls["info"]["client_email"] == "svc@example.com"
+    assert calls["scopes"] == ["scope-sa"]
+
+
+def test_load_google_credentials_from_explicit_file(tmp_path, monkeypatch):
+    import google.auth
+
+    creds_path = tmp_path / "external-account.json"
+    creds_path.write_text('{"type":"external_account","audience":"file"}')
+    calls = {}
+
+    def _load_from_dict(info, scopes=None, **kwargs):
+        calls["info"] = info
+        calls["scopes"] = scopes
+        calls["kwargs"] = kwargs
+        return "credentials", None
+
+    monkeypatch.setattr(google.auth, "load_credentials_from_dict", _load_from_dict)
+
+    result = load_google_credentials(str(creds_path), scopes=["scope-b"])
+
+    assert result.credentials == "credentials"
+    assert result.source_type == "explicit_path"
+    assert result.source_name == "provider.config.credentials"
+    assert calls["info"]["audience"] == "file"
+    assert calls["scopes"] == ["scope-b"]
+
+
+def test_load_google_credentials_uses_provider_env_before_shared_env(monkeypatch):
+    import google.auth
+
+    docs_payload = {"type": "external_account", "audience": "docs"}
+    shared_payload = {"type": "external_account", "audience": "shared"}
+    calls = {}
+
+    monkeypatch.setenv(Environment.GOOGLE_DOCS_CREDENTIALS, json.dumps(docs_payload))
+    monkeypatch.setenv(
+        Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, json.dumps(shared_payload)
+    )
+
+    def _load_from_dict(info, scopes=None, **kwargs):
+        calls["info"] = info
+        calls["scopes"] = scopes
+        return "credentials", None
+
+    monkeypatch.setattr(google.auth, "load_credentials_from_dict", _load_from_dict)
+
+    result = load_google_credentials(
+        None,
+        scopes=["scope-c"],
+        env_var_names=[
+            Environment.GOOGLE_DOCS_CREDENTIALS,
+            Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
+        ],
+    )
+
+    assert calls["info"] == docs_payload
+    assert calls["scopes"] == ["scope-c"]
+    assert result.source_type == "env_google_docs_credentials"
+    assert result.source_name == Environment.GOOGLE_DOCS_CREDENTIALS
+
+
+def test_load_google_credentials_uses_google_application_credentials(
+    tmp_path, monkeypatch
+):
+    import google.auth
+
+    creds_path = tmp_path / "wif.json"
+    creds_path.write_text('{"type":"external_account","audience":"gac"}')
+    calls = {}
+    monkeypatch.delenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, raising=False)
+    monkeypatch.setenv(Environment.GOOGLE_APPLICATION_CREDENTIALS, str(creds_path))
+
+    def _load_from_dict(info, scopes=None, **kwargs):
+        calls["info"] = info
+        calls["scopes"] = scopes
+        return "credentials", "project-from-file"
+
+    monkeypatch.setattr(google.auth, "load_credentials_from_dict", _load_from_dict)
+
+    result = load_google_credentials(None, scopes=["scope-d"])
+
+    assert result.credentials == "credentials"
+    assert result.project_id == "project-from-file"
+    assert result.source_type == "env_google_application_credentials"
+    assert result.source_name == Environment.GOOGLE_APPLICATION_CREDENTIALS
+    assert calls["info"]["audience"] == "gac"
+    assert calls["scopes"] == ["scope-d"]
+
+
+def test_load_google_credentials_falls_back_to_adc_default(monkeypatch):
+    import google.auth
+
+    calls = {}
+    monkeypatch.delenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS, raising=False)
+    monkeypatch.delenv(Environment.GOOGLE_APPLICATION_CREDENTIALS, raising=False)
+
+    def _default(scopes=None, **kwargs):
+        calls["scopes"] = scopes
+        calls["kwargs"] = kwargs
+        return "credentials", "adc-project"
+
+    monkeypatch.setattr(google.auth, "default", _default)
+
+    result = load_google_credentials(None, scopes=["scope-e"])
+
+    assert result.credentials == "credentials"
+    assert result.project_id == "adc-project"
+    assert result.source_type == "adc_default"
+    assert result.source_name == "google.auth.default"
+    assert calls["scopes"] == ["scope-e"]
+
+
+def test_describe_google_credentials_source_reports_non_sensitive_source(
+    tmp_path, monkeypatch
+):
+    creds_path = tmp_path / "creds.json"
+    creds_path.write_text("{}")
+
+    assert describe_google_credentials_source(str(creds_path)) == "explicit_path"
+    assert describe_google_credentials_source("{}") == "explicit_json"
+
+    monkeypatch.setenv(Environment.GOOGLE_DOCS_CREDENTIALS, "{}")
+    assert (
+        describe_google_credentials_source(
+            None,
+            [Environment.GOOGLE_DOCS_CREDENTIALS],
+        )
+        == "env_google_docs_credentials"
+    )
 
 
 def test_rate_limiter_validates_rates():

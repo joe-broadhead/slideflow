@@ -42,6 +42,17 @@ def _stub_presentation_validation(monkeypatch):
     )
 
 
+def _force_readonly_auth_failure(monkeypatch):
+    def _raise_auth_failure(*_args, **_kwargs):
+        raise RuntimeError("readonly auth unavailable")
+
+    monkeypatch.setattr(
+        validate_command_module,
+        "load_google_credentials",
+        _raise_auth_failure,
+    )
+
+
 def test_validate_first_error_line_handles_carriage_return_separator():
     error = RuntimeError("first line\rsecond line")
     assert validate_command_module._first_error_line(error) == "first line"
@@ -55,23 +66,16 @@ def test_validate_first_error_line_falls_back_to_exception_type_when_empty():
 def test_build_readonly_google_contract_client_slides_uses_read_scope(monkeypatch):
     captured = {}
 
-    monkeypatch.setattr(
-        validate_command_module,
-        "handle_google_credentials",
-        lambda credentials_input, **_kwargs: {"credentials_input": credentials_input},
-    )
-
-    def _fake_from_service_account_info(info, scopes):
-        captured["info"] = info
+    def _fake_load_google_credentials(credentials_input, scopes, **kwargs):
+        captured["credentials_input"] = credentials_input
         captured["scopes"] = scopes
-        return "readonly-creds"
+        captured["loader_kwargs"] = kwargs
+        return types.SimpleNamespace(credentials="readonly-creds")
 
     monkeypatch.setattr(
         validate_command_module,
-        "Credentials",
-        types.SimpleNamespace(
-            from_service_account_info=staticmethod(_fake_from_service_account_info)
-        ),
+        "load_google_credentials",
+        _fake_load_google_credentials,
     )
 
     build_calls = []
@@ -96,6 +100,8 @@ def test_build_readonly_google_contract_client_slides_uses_read_scope(monkeypatc
     assert captured["scopes"] == list(
         validate_command_module._GOOGLE_SLIDES_CONTRACT_SCOPES
     )
+    assert captured["credentials_input"] == "inline-creds"
+    assert captured["loader_kwargs"] == {}
     assert build_calls == [("slides", "v1", "readonly-creds")]
     assert client.auth_mode == "readonly"
     assert client.slides_service == "slides-service"
@@ -104,23 +110,16 @@ def test_build_readonly_google_contract_client_slides_uses_read_scope(monkeypatc
 def test_build_readonly_google_contract_client_docs_uses_read_scope(monkeypatch):
     captured = {}
 
-    monkeypatch.setattr(
-        validate_command_module,
-        "handle_google_credentials",
-        lambda credentials_input, **_kwargs: {"credentials_input": credentials_input},
-    )
-
-    def _fake_from_service_account_info(info, scopes):
-        captured["info"] = info
+    def _fake_load_google_credentials(credentials_input, scopes, **kwargs):
+        captured["credentials_input"] = credentials_input
         captured["scopes"] = scopes
-        return "readonly-creds"
+        captured["loader_kwargs"] = kwargs
+        return types.SimpleNamespace(credentials="readonly-creds")
 
     monkeypatch.setattr(
         validate_command_module,
-        "Credentials",
-        types.SimpleNamespace(
-            from_service_account_info=staticmethod(_fake_from_service_account_info)
-        ),
+        "load_google_credentials",
+        _fake_load_google_credentials,
     )
 
     build_calls = []
@@ -149,6 +148,10 @@ def test_build_readonly_google_contract_client_docs_uses_read_scope(monkeypatch)
     assert captured["scopes"] == list(
         validate_command_module._GOOGLE_DOCS_CONTRACT_SCOPES
     )
+    assert captured["credentials_input"] == "inline-creds"
+    assert captured["loader_kwargs"] == {
+        "env_var_names": ["GOOGLE_DOCS_CREDENTIALS", "GOOGLE_SLIDEFLOW_CREDENTIALS"]
+    }
     assert build_calls == [("docs", "v1", "readonly-creds")]
     assert client.auth_mode == "readonly"
     assert client.docs_service == "docs-service"
@@ -843,6 +846,7 @@ def test_build_output_json_omits_params_and_redacts_errors(tmp_path, monkeypatch
 
 def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypatch):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="slide-contract",
@@ -969,6 +973,7 @@ def test_validate_provider_contract_check_writes_success_json(tmp_path, monkeypa
 
 def test_validate_provider_contract_check_writes_failure_json(tmp_path, monkeypatch):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="slide-contract",
@@ -1071,6 +1076,7 @@ def test_validate_provider_contract_check_requires_google_provider(
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     monkeypatch.setattr(
         validate_command_module,
@@ -1135,6 +1141,7 @@ def test_validate_provider_contract_check_merges_duplicate_slide_ids(
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     first_slide_spec = types.SimpleNamespace(
         id="slide-contract",
@@ -1255,6 +1262,7 @@ def test_validate_provider_contract_check_merges_duplicate_slide_ids(
 
 def test_validate_provider_contract_check_google_docs_success(tmp_path, monkeypatch):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1373,6 +1381,7 @@ def test_validate_provider_contract_check_google_docs_ignores_toc_markers(
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1498,6 +1507,7 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_mark
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1607,6 +1617,7 @@ def test_validate_provider_contract_check_google_docs_does_not_stitch_split_plac
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1716,6 +1727,7 @@ def test_validate_provider_contract_check_google_docs_missing_section_marker(
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1827,6 +1839,7 @@ def test_validate_provider_contract_check_google_docs_duplicate_marker(
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",
@@ -1940,6 +1953,7 @@ def test_validate_provider_contract_check_google_docs_missing_placeholder(
     tmp_path, monkeypatch
 ):
     stub_build_validate_cli_output(monkeypatch)
+    _force_readonly_auth_failure(monkeypatch)
 
     slide_spec = types.SimpleNamespace(
         id="intro",

@@ -40,7 +40,6 @@ from typing import Annotated, Any, Dict, List, Optional, Set
 
 import typer
 import yaml  # type: ignore[import-untyped]
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from slideflow.cli.commands._registry import resolve_registry_paths
@@ -55,7 +54,7 @@ from slideflow.cli.theme import (
 from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.utilities import ConfigLoader
-from slideflow.utilities.auth import handle_google_credentials
+from slideflow.utilities.auth import load_google_credentials
 from slideflow.utilities.error_messages import redacted_error_line
 
 _GOOGLE_SLIDES_CONTRACT_FIELDS = (
@@ -108,11 +107,11 @@ def _build_readonly_google_contract_client(
     )
 
     if provider_type == "google_slides":
-        loaded_credentials = handle_google_credentials(credentials_input)
-        credentials = Credentials.from_service_account_info(
-            loaded_credentials,
+        loaded_credentials = load_google_credentials(
+            credentials_input,
             scopes=list(_GOOGLE_SLIDES_CONTRACT_SCOPES),
         )
+        credentials = loaded_credentials.credentials
         slides_service = build("slides", "v1", credentials=credentials)
         return _GoogleContractCheckClient(
             provider_type="google_slides",
@@ -121,14 +120,12 @@ def _build_readonly_google_contract_client(
         )
 
     if provider_type == "google_docs":
-        loaded_credentials = handle_google_credentials(
+        loaded_credentials = load_google_credentials(
             credentials_input,
+            scopes=list(_GOOGLE_DOCS_CONTRACT_SCOPES),
             env_var_names=["GOOGLE_DOCS_CREDENTIALS", "GOOGLE_SLIDEFLOW_CREDENTIALS"],
         )
-        credentials = Credentials.from_service_account_info(
-            loaded_credentials,
-            scopes=list(_GOOGLE_DOCS_CONTRACT_SCOPES),
-        )
+        credentials = loaded_credentials.credentials
         docs_service = build("docs", "v1", credentials=credentials)
         marker_prefix = (
             provider_config.get("section_marker_prefix", "{{SECTION:")

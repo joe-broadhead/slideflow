@@ -35,10 +35,13 @@ SlideFlow accepts credentials via:
 2. `GOOGLE_DOCS_CREDENTIALS` environment variable (for `google_docs`)
 3. `GOOGLE_SHEETS_CREDENTIALS` environment variable (for `google_sheets`)
 4. `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable (shared fallback)
+5. `GOOGLE_APPLICATION_CREDENTIALS` for ADC / Workload Identity Federation files
+6. Runtime Application Default Credentials
 
 Environment credential values support either:
 
 - Path to service-account JSON file
+- Path to external-account / Workload Identity Federation JSON file
 - Raw JSON string content injected by a secret manager or GitHub Secrets
 
 Example:
@@ -47,12 +50,16 @@ Example:
 export GOOGLE_SLIDEFLOW_CREDENTIALS=/absolute/path/service-account.json
 export GOOGLE_DOCS_CREDENTIALS=/absolute/path/service-account.json
 export GOOGLE_SHEETS_CREDENTIALS=/absolute/path/service-account.json
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/external-account.json
 ```
 
 For production service-account and Shared Drive setup, follow the end-to-end
 guide: [Google Service Accounts & Shared Drives](google-service-accounts-shared-drives.md).
 Do not commit raw service-account JSON, OAuth client secrets, refresh tokens, or
 `.env` files.
+For keyless CI/CD, prefer a Google Workload Identity Federation auth step that
+sets `GOOGLE_APPLICATION_CREDENTIALS` or runtime ADC instead of storing a
+long-lived service-account key.
 
 ## Create a template deck
 

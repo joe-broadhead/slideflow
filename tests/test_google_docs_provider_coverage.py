@@ -148,20 +148,17 @@ def _append_toc_copy(document: Dict[str, Any], toc_text: str) -> Dict[str, Any]:
 def test_google_docs_provider_init_success(monkeypatch):
     captured: Dict[str, Any] = {}
 
-    def _handle_credentials(_credentials, env_var_names=None):
+    def _load_credentials(_credentials, scopes, env_var_names=None):
         captured["env_var_names"] = list(env_var_names or [])
-        return {"client_email": "svc@example.com"}
+        captured["scopes"] = scopes
+        return SimpleNamespace(
+            credentials="creds", source_type="env_google_docs_credentials"
+        )
 
     monkeypatch.setattr(
         google_docs_module,
-        "handle_google_credentials",
-        _handle_credentials,
-    )
-    monkeypatch.setattr(
-        google_docs_module.Credentials,
-        "from_service_account_info",
-        lambda info, scopes: captured.update({"info": info, "scopes": scopes})
-        or "creds",
+        "load_google_credentials",
+        _load_credentials,
     )
 
     def _fake_build(service, version, credentials, **kwargs):
@@ -189,12 +186,12 @@ def test_google_docs_provider_init_success(monkeypatch):
     assert provider.docs_service == "docs:v1:creds"
     assert provider.drive_service == "drive:v3:creds"
     assert provider.rate_limiter == "rl:2.0"
-    assert captured["info"] == {"client_email": "svc@example.com"}
     assert captured["scopes"] == google_docs_module.GoogleDocsProvider.SCOPES
     assert captured["env_var_names"] == [
         Environment.GOOGLE_DOCS_CREDENTIALS,
         Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
     ]
+    assert provider._google_credentials_source == "env_google_docs_credentials"
     assert len(captured["build_calls"]) == 2
     assert all(
         callable(call["kwargs"].get("requestBuilder"))
@@ -203,15 +200,11 @@ def test_google_docs_provider_init_success(monkeypatch):
 
 
 def test_google_docs_provider_init_authentication_failure(monkeypatch):
+    def _raise_auth_error(*_args, **_kwargs):
+        raise AuthenticationError("Credentials authentication failed: bad creds")
+
     monkeypatch.setattr(
-        google_docs_module,
-        "handle_google_credentials",
-        lambda _credentials, env_var_names=None: {"invalid": True},
-    )
-    monkeypatch.setattr(
-        google_docs_module.Credentials,
-        "from_service_account_info",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("bad creds")),
+        google_docs_module, "load_google_credentials", _raise_auth_error
     )
 
     with pytest.raises(AuthenticationError, match="Credentials authentication failed"):
@@ -232,7 +225,23 @@ def test_google_docs_config_validates_transfer_ownership_target():
     assert config.transfer_ownership_to == "owner@example.com"
 
 
-def test_google_docs_provider_factory_registration():
+def test_google_docs_provider_factory_registration(monkeypatch):
+    monkeypatch.setattr(
+        google_docs_module,
+        "load_google_credentials",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            credentials="creds", source_type="explicit_json"
+        ),
+    )
+    monkeypatch.setattr(
+        google_docs_module,
+        "build",
+        lambda service, version, credentials, **_kwargs: (
+            f"{service}:{version}:{credentials}"
+        ),
+    )
+    monkeypatch.setattr(google_docs_module, "_get_rate_limiter", lambda _rps: object())
+
     config = ProviderConfig(
         type="google_docs",
         config={"credentials": '{"type":"service_account"}'},

@@ -8,13 +8,19 @@ It can create a blank deck or copy a template, insert chart images, run text/tab
 1. Enable APIs in your Google Cloud project:
    - Google Slides API
    - Google Drive API
-2. Create a service account.
-3. Share the template deck (and destination Drive folder) with that service account email.
+2. Create or select the Google identity SlideFlow will run as. This can be a
+   service account key, Workload Identity Federation, or runtime ADC identity.
+3. Share the template deck (and destination Drive folder) with that identity.
 4. Supply credentials via either:
    - `provider.config.credentials` in YAML as a path to an untracked file, or
-   - `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable.
+   - `GOOGLE_SLIDEFLOW_CREDENTIALS` environment variable, or
+   - `GOOGLE_APPLICATION_CREDENTIALS`, or
+   - runtime Application Default Credentials.
 
-Do not commit raw service-account JSON or `.env` files.
+`provider.config.credentials` and `GOOGLE_SLIDEFLOW_CREDENTIALS` accept
+service-account JSON or external-account / Workload Identity Federation JSON as
+a file path or raw JSON payload. Do not commit raw credential JSON or `.env`
+files.
 
 For production Shared Drive setup and command-by-command service-account
 bootstrap, see [Google Service Accounts & Shared Drives](../google-service-accounts-shared-drives.md).
@@ -56,7 +62,8 @@ provider:
     strict_cleanup: false
 ```
 
-If you use `GOOGLE_SLIDEFLOW_CREDENTIALS`, you can omit `config.credentials`.
+If you use `GOOGLE_SLIDEFLOW_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or
+runtime ADC, you can omit `config.credentials`.
 
 Field behavior:
 

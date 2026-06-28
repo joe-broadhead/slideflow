@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-import os
 import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
-from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pydantic import Field, field_validator
 
 from slideflow.constants import Environment, GoogleSlides
-from slideflow.utilities.auth import handle_google_credentials
+from slideflow.utilities.auth import (
+    describe_google_credentials_source,
+    load_google_credentials,
+)
 from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.google_api import (
-    build_service_account_credentials,
     execute_rate_limited_request,
     slideflow_google_request_builder,
 )
@@ -91,17 +91,16 @@ class GoogleSheetsProvider(WorkbookProvider):
         super().__init__(config)
         self.config: GoogleSheetsProviderConfig = config
 
-        loaded_credentials = handle_google_credentials(
+        loaded_credentials = load_google_credentials(
             config.credentials,
+            scopes=self.SCOPES,
             env_var_names=[
                 Environment.GOOGLE_SHEETS_CREDENTIALS,
                 Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
             ],
         )
-
-        credentials = build_service_account_credentials(
-            loaded_credentials, self.SCOPES, credentials_cls=Credentials
-        )
+        self._google_credentials_source = loaded_credentials.source_type
+        credentials = loaded_credentials.credentials
 
         self._credentials = credentials
         self._thread_local_services = threading.local()
@@ -190,16 +189,25 @@ class GoogleSheetsProvider(WorkbookProvider):
         sheets_service = getattr(self, "sheets_service", None)
         drive_service = getattr(self, "drive_service", None)
         rate_limiter = getattr(self, "rate_limiter", None)
-        has_credentials = bool(self.config.credentials) or bool(
-            os.getenv(Environment.GOOGLE_SHEETS_CREDENTIALS)
-            or os.getenv(Environment.GOOGLE_SLIDEFLOW_CREDENTIALS)
+        credentials_source = getattr(
+            self,
+            "_google_credentials_source",
+            describe_google_credentials_source(
+                self.config.credentials,
+                [
+                    Environment.GOOGLE_SHEETS_CREDENTIALS,
+                    Environment.GOOGLE_SLIDEFLOW_CREDENTIALS,
+                ],
+                include_adc=False,
+            ),
         )
+        has_credentials = credentials_source != "missing"
         return [
             (
                 "google_sheets_credentials_present",
                 has_credentials,
                 (
-                    "Credentials found in config or supported environment variables"
+                    f"Credentials source: {credentials_source}"
                     if has_credentials
                     else "Missing credentials in config and environment"
                 ),

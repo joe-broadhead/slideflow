@@ -10,15 +10,21 @@ schema with tab-level write definitions and optional AI summary rules.
 1. Enable APIs in your Google Cloud project:
    - Google Sheets API
    - Google Drive API
-2. Create a service account.
+2. Create or select the Google identity SlideFlow will run as. This can be a
+   service account key, Workload Identity Federation, or runtime ADC identity.
 3. Share destination Drive folders (and existing target sheet, if reusing one)
-   with that service account.
+   with that identity.
 4. Provide credentials via:
    - `provider.config.credentials` as a path to an untracked file, or
    - `GOOGLE_SHEETS_CREDENTIALS`, or
-   - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback).
+   - `GOOGLE_SLIDEFLOW_CREDENTIALS` (fallback), or
+   - `GOOGLE_APPLICATION_CREDENTIALS`, or
+   - runtime Application Default Credentials.
 
-Do not commit raw service-account JSON or `.env` files.
+`provider.config.credentials`, `GOOGLE_SHEETS_CREDENTIALS`, and
+`GOOGLE_SLIDEFLOW_CREDENTIALS` accept service-account JSON or external-account /
+Workload Identity Federation JSON as a file path or raw JSON payload. Do not
+commit raw credential JSON or `.env` files.
 
 ## Provider Config
 

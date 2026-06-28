@@ -9,15 +9,52 @@ For Google provider auth, SlideFlow reads credentials from:
    - `GOOGLE_DOCS_CREDENTIALS` (`google_docs`)
    - `GOOGLE_SHEETS_CREDENTIALS` (`google_sheets`)
 3. `GOOGLE_SLIDEFLOW_CREDENTIALS` (shared fallback)
+4. `GOOGLE_APPLICATION_CREDENTIALS` (ADC file path)
+5. Application Default Credentials from the runtime environment
 
 Credential value can be:
 
 - Path to service-account JSON
+- Path to external-account / Workload Identity Federation JSON
 - Raw JSON payload
+- Runtime ADC credentials, when no explicit credential source is configured
 
 Recommended: use environment variables in CI and avoid storing secrets in repo
 files. If you use raw JSON, inject it through a secret manager or GitHub
 Secrets-backed environment variable; do not paste it into checked-in YAML.
+For keyless CI/CD, prefer Workload Identity Federation through
+`GOOGLE_APPLICATION_CREDENTIALS` or runtime ADC over long-lived key JSON.
+
+## Keyless CI/CD with Workload Identity Federation
+
+In GitHub Actions, use OIDC to obtain short-lived Google credentials and let
+SlideFlow discover them through ADC:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/<project-number>/locations/global/workloadIdentityPools/<pool-id>/providers/<provider-id>"
+          service_account: "slideflow-runtime@<project-id>.iam.gserviceaccount.com"
+          create_credentials_file: true
+
+      - run: slideflow build config.yml
+```
+
+The auth action exports `GOOGLE_APPLICATION_CREDENTIALS` for the generated
+external-account credentials file. The impersonated service account or ADC
+identity still needs normal Google Drive ACLs on templates, destination folders,
+Shared Drives, and any reused Sheets workbooks.
 
 ## Credential hygiene policy
 
