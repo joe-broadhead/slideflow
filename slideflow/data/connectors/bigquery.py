@@ -267,6 +267,7 @@ class BigQueryConnector(DataConnector):
             if self.timeout is None:
                 result_df = query_job.to_dataframe()
             else:
+                query_job.result(timeout=self.timeout)
                 result_df = query_job.to_dataframe(timeout=self.timeout)
             query_duration = time.time() - query_start
 

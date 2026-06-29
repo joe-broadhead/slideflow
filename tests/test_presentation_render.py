@@ -637,6 +637,44 @@ def test_render_partial_mode_records_chart_errors(monkeypatch):
     assert len(provider.insert_calls) == 1
 
 
+def test_render_partial_mode_records_chart_data_source_errors(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _delay: None)
+
+    class FailingSource:
+        type = "csv"
+        name = "broken-source"
+
+        @staticmethod
+        def fetch_data():
+            raise RuntimeError("source failed")
+
+    class SourceBackedChart(FakeChart):
+        def __init__(self):
+            super().__init__()
+            self.data_source = FailingSource()
+            self.title = "Source chart"
+
+    provider = FakeProvider(
+        strict_cleanup=False, fail_cleanup=False, allow_partial_render=True
+    )
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[SourceBackedChart()]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    result = presentation.render()
+
+    assert result.partial_render is True
+    assert result.content_error_count == 1
+    assert result.content_errors[0]["phase"] == "chart"
+    assert result.content_errors[0]["item_name"] == "Source chart"
+    assert "source failed" in result.content_errors[0]["error"]
+    assert result.charts_generated == 0
+    assert provider.abort_calls == []
+
+
 def test_render_raises_when_replacement_fails_by_default():
     class FailingReplacement:
         type = "text"

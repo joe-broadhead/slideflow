@@ -1165,7 +1165,8 @@ class Presentation(BaseModel):
         render_completed = False
         try:
             context = self._create_render_context(start_time=time.time())
-            self._prefetch_data_sources()
+            if not context.allow_partial_render:
+                self._prefetch_data_sources()
             self._collect_citations_for_slides(context)
             with chart_export_executor_scope():
                 self._process_slide_content(context)

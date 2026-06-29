@@ -176,6 +176,10 @@ def test_bigquery_connector_fetch_data_returns_dataframe(monkeypatch):
     captured = {}
 
     class FakeQueryJob:
+        def result(self, timeout=None):
+            captured["result_timeout"] = timeout
+            return object()
+
         def to_dataframe(self, timeout=None):
             captured["to_dataframe_timeout"] = timeout
             return pd.DataFrame({"value": [1]})
@@ -216,6 +220,7 @@ def test_bigquery_connector_fetch_data_returns_dataframe(monkeypatch):
     assert captured["query"] == "SELECT 1"
     assert captured["location"] == "EU"
     assert captured["query_timeout"] == 45
+    assert captured["result_timeout"] == 45
     assert captured["to_dataframe_timeout"] == 45
 
 
@@ -223,6 +228,10 @@ def test_bigquery_connector_omits_timeout_when_not_configured(monkeypatch):
     captured = {}
 
     class FakeQueryJob:
+        def result(self, timeout=None):
+            captured["result_timeout"] = timeout
+            return object()
+
         def to_dataframe(self, **kwargs):
             captured["to_dataframe_kwargs"] = kwargs
             return pd.DataFrame({"value": [1]})
@@ -253,6 +262,7 @@ def test_bigquery_connector_omits_timeout_when_not_configured(monkeypatch):
     assert result.to_dict(orient="records") == [{"value": 1}]
     assert captured["query"] == "SELECT 1"
     assert "timeout" not in captured["query_kwargs"]
+    assert "result_timeout" not in captured
     assert captured["to_dataframe_kwargs"] == {}
 
 
