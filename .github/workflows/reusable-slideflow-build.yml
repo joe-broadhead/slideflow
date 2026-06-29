@@ -145,6 +145,15 @@ on:
       REDSHIFT_PASSWORD:
         description: "Optional Redshift password for direct redshift/dbt warehouse env fallback"
         required: false
+      REDSHIFT_SSL:
+        description: "Optional Redshift SSL flag for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_SSLMODE:
+        description: "Optional Redshift sslmode for direct redshift/dbt warehouse env fallback"
+        required: false
+      REDSHIFT_TIMEOUT:
+        description: "Optional Redshift connection timeout for direct redshift/dbt warehouse env fallback"
+        required: false
       REDSHIFT_IAM:
         description: "Optional Redshift IAM auth flag for direct redshift/dbt warehouse env fallback"
         required: false
@@ -190,6 +199,9 @@ on:
       AWS_REGION:
         description: "Optional AWS region fallback for Redshift IAM auth"
         required: false
+      AWS_DEFAULT_REGION:
+        description: "Optional AWS default region fallback for Redshift IAM auth"
+        required: false
     outputs:
       presentation-urls:
         description: "Comma-separated presentation URLs extracted from build JSON output"
@@ -232,6 +244,9 @@ jobs:
       REDSHIFT_DATABASE: ${{ secrets.REDSHIFT_DATABASE }}
       REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
       REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
+      REDSHIFT_SSL: ${{ secrets.REDSHIFT_SSL }}
+      REDSHIFT_SSLMODE: ${{ secrets.REDSHIFT_SSLMODE }}
+      REDSHIFT_TIMEOUT: ${{ secrets.REDSHIFT_TIMEOUT }}
       REDSHIFT_IAM: ${{ secrets.REDSHIFT_IAM }}
       REDSHIFT_DB_USER: ${{ secrets.REDSHIFT_DB_USER }}
       REDSHIFT_CLUSTER_IDENTIFIER: ${{ secrets.REDSHIFT_CLUSTER_IDENTIFIER }}
@@ -247,6 +262,7 @@ jobs:
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN || secrets.REDSHIFT_SESSION_TOKEN }}
       AWS_PROFILE: ${{ secrets.AWS_PROFILE || secrets.REDSHIFT_PROFILE }}
       AWS_REGION: ${{ secrets.AWS_REGION || secrets.REDSHIFT_REGION }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION || secrets.AWS_REGION || secrets.REDSHIFT_REGION }}
     outputs:
       presentation_urls: ${{ steps.extract_urls.outputs.presentation_urls }}
       workbook_urls: ${{ steps.extract_urls.outputs.workbook_urls }}

@@ -730,6 +730,17 @@ def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
                 presentation_url="https://example.com/deck",
                 chart_image_cleanup_failed_count=1,
                 chart_image_cleanup_failed_ids=["file-1"],
+                partial_render=True,
+                content_error_count=1,
+                content_errors=[
+                    {
+                        "slide_id": "slide-1",
+                        "phase": "chart",
+                        "item_type": "bar",
+                        "item_name": "Revenue",
+                        "error": "chart failed",
+                    }
+                ],
                 citations_enabled=True,
                 citations_total_sources=3,
                 citations_emitted_sources=2,
@@ -773,8 +784,25 @@ def test_build_writes_citation_fields_in_output_json(tmp_path, monkeypatch):
     assert payload["citations_truncated"] is False
     assert payload["chart_image_cleanup_failed_count"] == 1
     assert payload["chart_image_cleanup_failed_ids"] == ["file-1"]
+    assert payload["partial_render"] is True
+    assert payload["partial_render_count"] == 1
+    assert payload["content_error_count"] == 1
+    assert payload["content_errors"] == [
+        {
+            "variant_index": 1,
+            "presentation_name": "Demo Deck",
+            "slide_id": "slide-1",
+            "phase": "chart",
+            "item_type": "bar",
+            "item_name": "Revenue",
+            "error": "chart failed",
+        }
+    ]
     assert payload["results"][0]["chart_image_cleanup_failed_count"] == 1
     assert payload["results"][0]["chart_image_cleanup_failed_ids"] == ["file-1"]
+    assert payload["results"][0]["partial_render"] is True
+    assert payload["results"][0]["content_error_count"] == 1
+    assert payload["results"][0]["content_errors"][0]["phase"] == "chart"
     assert payload["results"][0]["citations_enabled"] is True
     assert payload["results"][0]["citations_by_scope"] == {
         "slide-1": ["src-1", "src-2"]

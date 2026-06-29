@@ -170,6 +170,76 @@ def test_build_command_non_dry_run_processes_results_and_sorts(tmp_path, monkeyp
     assert all(row["ownership_transfer_succeeded"] is None for row in result)
 
 
+def test_build_command_shares_rps_override_limiter_across_variants(
+    tmp_path, monkeypatch
+):
+    _stub_build_cli_output(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    from slideflow.presentations.rate_limiter import reset_google_api_rate_limiter
+
+    reset_google_api_rate_limiter()
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n",
+        encoding="utf-8",
+    )
+    params_path = tmp_path / "params.csv"
+    params_path.write_text("region\nus\neu\n", encoding="utf-8")
+    presentations = []
+
+    class FakePresentation:
+        def __init__(self, name):
+            self.name = name
+            self.provider = SimpleNamespace(
+                config=SimpleNamespace(requests_per_second=1.0),
+                rate_limiter=None,
+            )
+
+        def render(self):
+            return SimpleNamespace(presentation_url=f"https://example.com/{self.name}")
+
+    def _from_yaml(yaml_path, registry_paths, params):
+        assert yaml_path == config_file
+        assert registry_paths == []
+        presentation = FakePresentation(f"deck-{params['region']}")
+        presentations.append(presentation)
+        return presentation
+
+    monkeypatch.setattr(
+        build_command_module.PresentationBuilder,
+        "from_yaml",
+        staticmethod(_from_yaml),
+    )
+
+    try:
+        build_command_module.build_command(
+            config_file=config_file,
+            registry_files=None,
+            params_path=params_path,
+            dry_run=False,
+            threads=2,
+            requests_per_second=2.5,
+        )
+    finally:
+        reset_google_api_rate_limiter()
+
+    assert len(presentations) == 2
+    assert (
+        presentations[0].provider.rate_limiter is presentations[1].provider.rate_limiter
+    )
+    assert presentations[0].provider.rate_limiter.rate == 2.5
+    assert all(
+        presentation.provider.config.requests_per_second == 2.5
+        for presentation in presentations
+    )
+
+
 def test_build_command_includes_ownership_transfer_metadata(tmp_path, monkeypatch):
     _stub_build_cli_output(monkeypatch)
     monkeypatch.chdir(tmp_path)

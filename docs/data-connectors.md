@@ -306,8 +306,9 @@ BigQuery runtime options:
   - `warehouse.credentials_path`, or
   - `warehouse.credentials_json`, or
   - Application Default Credentials (for example `GOOGLE_APPLICATION_CREDENTIALS`).
-- `warehouse.timeout` bounds BigQuery query submission and result download
-  waits. It defaults to SlideFlow's general request timeout when omitted.
+- `warehouse.timeout` optionally bounds BigQuery query submission and result
+  download waits. When omitted, SlideFlow leaves the BigQuery SDK timeout
+  behavior unchanged.
 - SlideFlow initializes the BigQuery client with `client_info.user_agent` set to
   `Slideflow` for request attribution in Google-side telemetry.
 

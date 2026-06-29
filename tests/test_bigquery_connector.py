@@ -219,6 +219,43 @@ def test_bigquery_connector_fetch_data_returns_dataframe(monkeypatch):
     assert captured["to_dataframe_timeout"] == 45
 
 
+def test_bigquery_connector_omits_timeout_when_not_configured(monkeypatch):
+    captured = {}
+
+    class FakeQueryJob:
+        def to_dataframe(self, **kwargs):
+            captured["to_dataframe_kwargs"] = kwargs
+            return pd.DataFrame({"value": [1]})
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["init_kwargs"] = kwargs
+
+        def query(self, query, **kwargs):
+            captured["query"] = query
+            captured["query_kwargs"] = kwargs
+            return FakeQueryJob()
+
+    monkeypatch.setattr(
+        bigquery_module.BigQueryConnector,
+        "_load_bigquery_client_class",
+        staticmethod(lambda: FakeClient),
+    )
+    monkeypatch.setattr(
+        bigquery_module.BigQueryConnector,
+        "_load_service_account_credentials_class",
+        staticmethod(lambda: object()),
+    )
+
+    connector = bigquery_module.BigQueryConnector("SELECT 1", project_id="project")
+    result = connector.fetch_data()
+
+    assert result.to_dict(orient="records") == [{"value": 1}]
+    assert captured["query"] == "SELECT 1"
+    assert "timeout" not in captured["query_kwargs"]
+    assert captured["to_dataframe_kwargs"] == {}
+
+
 def test_bigquery_sql_executor_delegates_to_connector(monkeypatch):
     captured = {}
 
