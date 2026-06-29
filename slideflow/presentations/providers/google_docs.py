@@ -45,19 +45,17 @@ from slideflow.utilities.logging import get_logger
 from slideflow.utilities.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
-_docs_rate_limiter: Optional[RateLimiter] = None
+_docs_rate_limiters: Dict[float, RateLimiter] = {}
 _rate_limiter_lock = threading.Lock()
 
 
 def _get_rate_limiter(rps: float, force_update: bool = False) -> RateLimiter:
-    """Get or create the global Google Docs API rate limiter."""
-    global _docs_rate_limiter
+    """Get or create a Google Docs API rate limiter keyed by configured rate."""
+    rps_key = float(rps)
     with _rate_limiter_lock:
-        if _docs_rate_limiter is None:
-            _docs_rate_limiter = RateLimiter(rps)
-        elif force_update:
-            _docs_rate_limiter.set_rate(rps)
-        return _docs_rate_limiter
+        if force_update or rps_key not in _docs_rate_limiters:
+            _docs_rate_limiters[rps_key] = RateLimiter(rps_key)
+        return _docs_rate_limiters[rps_key]
 
 
 class GoogleDocsProviderConfig(PresentationProviderConfig):
@@ -113,6 +111,15 @@ class GoogleDocsProviderConfig(PresentationProviderConfig):
     strict_cleanup: bool = Field(
         False,
         description="If true, fail rendering when chart image cleanup fails.",
+    )
+    strict_restricted_chart_cleanup: bool = Field(
+        True,
+        description=(
+            "When chart_image_sharing_mode is 'restricted', fail rendering if "
+            "temporary chart-image access cannot be revoked or uploaded chart "
+            "images cannot be cleaned up. Set false to return a result with "
+            "cleanup failure metadata instead."
+        ),
     )
     chart_image_sharing_mode: Literal["public", "restricted"] = Field(
         "restricted",

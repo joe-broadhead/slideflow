@@ -248,7 +248,7 @@ class DataSourceCache:
                 Common parameters include file_path, query, table_name, etc.
 
         Returns:
-            MD5 hash string representing the unique cache key.
+            Deterministic digest string representing the unique cache key.
 
         Example:
             >>> cache._generate_key("csv", file_path="/data/sales.csv")
@@ -264,7 +264,9 @@ class DataSourceCache:
         canonical_payload = json.dumps(
             payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
         )
-        return hashlib.md5(canonical_payload.encode("utf-8")).hexdigest()
+        return hashlib.md5(
+            canonical_payload.encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
 
     def get(self, source_type: str, **kwargs) -> Optional[pd.DataFrame]:
         """Retrieve a DataFrame from the cache if it exists.

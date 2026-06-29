@@ -135,20 +135,20 @@ def build_single_presentation(
             params=params,
         )
 
-        # Hard override if provider is google_slides
+        # Hard override provider rate limits from CLI while sharing one limiter
+        # across concurrent variants for a real global quota cap.
         if requests_per_second is not None and hasattr(presentation.provider, "config"):
             if hasattr(presentation.provider.config, "requests_per_second"):
                 presentation.provider.config.requests_per_second = requests_per_second
-                # Re-initialize rate limiter if it exists
-                from slideflow.presentations.providers.google_slides import (
-                    _get_rate_limiter,
+                from slideflow.presentations.rate_limiter import (
+                    get_google_api_rate_limiter,
                 )
 
                 if hasattr(presentation.provider, "rate_limiter"):
                     setattr(
                         presentation.provider,
                         "rate_limiter",
-                        _get_rate_limiter(requests_per_second, force_update=True),
+                        get_google_api_rate_limiter(requests_per_second),
                     )
 
         with print_lock:
@@ -395,6 +395,11 @@ def build_command(
                         "chart_image_cleanup_failed_ids": getattr(
                             result, "chart_image_cleanup_failed_ids", []
                         ),
+                        "partial_render": getattr(result, "partial_render", False),
+                        "content_error_count": getattr(
+                            result, "content_error_count", 0
+                        ),
+                        "content_errors": getattr(result, "content_errors", []),
                         "ownership_transfer_attempted": getattr(
                             result, "ownership_transfer_attempted", False
                         ),
@@ -471,6 +476,25 @@ def build_command(
             for res in results
             for file_id in res.get("chart_image_cleanup_failed_ids", [])
         ]
+        partial_render_any = any(
+            bool(res.get("partial_render", False)) for res in results
+        )
+        partial_render_count = sum(
+            1 for res in results if bool(res.get("partial_render", False))
+        )
+        content_error_count = sum(
+            int(res.get("content_error_count", 0)) for res in results
+        )
+        content_errors = [
+            {
+                "variant_index": res.get("variant_index"),
+                "presentation_name": res.get("presentation_name"),
+                **content_error,
+            }
+            for res in results
+            for content_error in res.get("content_errors", [])
+            if isinstance(content_error, dict)
+        ]
         write_output_json(
             output_json,
             {
@@ -489,6 +513,10 @@ def build_command(
                 "citations_truncated": citations_truncated_any,
                 "chart_image_cleanup_failed_count": chart_image_cleanup_failed_count,
                 "chart_image_cleanup_failed_ids": chart_image_cleanup_failed_ids,
+                "partial_render": partial_render_any,
+                "partial_render_count": partial_render_count,
+                "content_error_count": content_error_count,
+                "content_errors": content_errors,
                 "results": results,
             },
         )

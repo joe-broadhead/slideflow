@@ -142,6 +142,14 @@ class PresentationProviderConfig(BaseModel):
     """
 
     provider_type: str = Field(..., description="Type of presentation provider")
+    allow_partial_render: bool = Field(
+        False,
+        description=(
+            "Allow rendering to return a successful result when charts or "
+            "replacements fail. Partial results include machine-readable "
+            "content_errors; the default fails the render."
+        ),
+    )
 
 
 class PresentationProvider(ABC):

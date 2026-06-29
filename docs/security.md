@@ -116,6 +116,8 @@ Provider contract validation scopes:
   `https://www.googleapis.com/auth/presentations.readonly`
 - `slideflow validate --provider-contract-check` for `google_docs` uses
   `https://www.googleapis.com/auth/documents.readonly`
+- `slideflow validate --provider-contract-check` for `powerpoint` reads only
+  the configured local `.pptx` template and does not request Google scopes.
 - Validation does not fall back to the broader build-provider scopes unless
   `--provider-contract-full-auth-fallback` is passed explicitly.
 
@@ -136,7 +138,9 @@ environment variables or secret-manager injection for all credentials:
   `REDSHIFT_PASSWORD`
 - IAM auth: `REDSHIFT_IAM`, `REDSHIFT_CLUSTER_IDENTIFIER` or
   `REDSHIFT_SERVERLESS_ACCT_ID`/`REDSHIFT_SERVERLESS_WORK_GROUP`,
-  `REDSHIFT_REGION`/`AWS_REGION`, and AWS identity env vars/profile
+  `REDSHIFT_REGION`/`AWS_REGION`/`AWS_DEFAULT_REGION`, and AWS identity env vars/profile
+- connection controls: `REDSHIFT_SSL`, `REDSHIFT_SSLMODE`, and
+  `REDSHIFT_TIMEOUT`
 
 ## dbt Git access
 
@@ -185,7 +189,7 @@ The repository includes a dedicated `Audit` workflow that runs:
 
 - dependency audit (`pip-audit`) from a locked environment that includes the
   supported optional connector extras
-- static security scan (`bandit`)
+- static security scan (`bandit`) for medium/high severity findings
 
 Both reports are uploaded as artifacts for triage.
 
@@ -209,8 +213,8 @@ Audit enforcement policy:
 
 - Dependency vulnerabilities are blocking for pull requests, pushes, schedules,
   and manual runs.
-- Static Bandit findings remain advisory while existing low-signal findings are
-  triaged and converted into explicit suppressions or code changes.
+- Static Bandit medium/high severity findings are blocking. Low-signal findings
+  should be converted into explicit suppressions or code changes before merge.
 
 Default-branch dependency alert closure:
 

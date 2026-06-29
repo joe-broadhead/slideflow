@@ -5,11 +5,23 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slideflow-presentations"
 version = "0.0.7"
-description = "Automated Google Slides, Docs, and Sheets builder with charts, data replacements, and workbook automation."
+description = "Automated Google Slides, Docs, Sheets, and PowerPoint builder with charts, data replacements, and workbook automation."
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
     { name = "Joe Broadhead" },
     { name = "Tom Lovett" }
+]
+license = "MIT"
+keywords = ["presentations", "slides", "powerpoint", "google-slides", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "typer>=0.24,<1.0",
@@ -28,7 +40,14 @@ dependencies = [
     "google-auth-httplib2>=0.2,<1.0",
     "httplib2>=0.22,<1.0",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
+
+[project.urls]
+Homepage = "https://github.com/joe-broadhead/slideflow"
+Documentation = "https://joe-broadhead.github.io/slideflow/"
+Repository = "https://github.com/joe-broadhead/slideflow"
+Issues = "https://github.com/joe-broadhead/slideflow/issues"
+Changelog = "https://github.com/joe-broadhead/slideflow/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 ai = ["openai>=1.0,<3.0", "google-genai>=1.0,<3.0"]
@@ -51,7 +70,10 @@ dev = [
     "ruff",
     "mypy",
     "pip-audit",
+    "bandit",
+    "build",
     "pre-commit",
+    "twine",
     "pandas-stubs",
     "types-PyYAML",
 ]

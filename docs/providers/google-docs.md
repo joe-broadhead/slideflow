@@ -68,8 +68,10 @@ provider:
     transfer_ownership_to: "owner@example.com"
     transfer_ownership_strict: false
     chart_image_sharing_mode: "restricted" # restricted | public
+    strict_restricted_chart_cleanup: true
     requests_per_second: 1.0
     strict_cleanup: false
+    allow_partial_render: false
 ```
 
 Field behavior:
@@ -84,8 +86,15 @@ Field behavior:
 - `chart_image_sharing_mode`: uploaded chart-image ACL mode:
   - `restricted` (default): keeps uploaded Drive files private at rest, grants temporary non-discoverable access for chart insertion, then revokes it.
   - `public`: keeps `anyone:reader` access after insertion and logs a warning because generated chart images may contain sensitive data.
+- `strict_restricted_chart_cleanup`: with restricted chart images, fail the run
+  by default if temporary public access cannot be revoked or uploaded chart
+  images cannot be cleaned up. Set `false` only for explicitly reviewed
+  best-effort cleanup behavior.
 - `requests_per_second`: API pacing control.
 - `strict_cleanup`: fail run if chart-image cleanup fails.
+- `allow_partial_render`: defaults to `false`; chart/replacement failures fail
+  the render instead of silently producing incomplete docs. Set `true` to
+  continue and inspect `content_errors` in the build result.
 
 Current implementation notes:
 

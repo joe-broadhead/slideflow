@@ -29,14 +29,24 @@ class FakeChart:
 
 
 class FakeProvider:
-    def __init__(self, strict_cleanup=False, fail_cleanup=False):
+    def __init__(
+        self,
+        strict_cleanup=False,
+        fail_cleanup=False,
+        allow_partial_render=False,
+        chart_image_sharing_mode=None,
+        strict_restricted_chart_cleanup=False,
+    ):
         self.config = type(
             "Cfg",
             (),
             {
                 "strict_cleanup": strict_cleanup,
+                "allow_partial_render": allow_partial_render,
                 "share_with": [],
                 "share_role": "writer",
+                "chart_image_sharing_mode": chart_image_sharing_mode,
+                "strict_restricted_chart_cleanup": strict_restricted_chart_cleanup,
             },
         )()
         self.fail_cleanup = fail_cleanup
@@ -461,6 +471,34 @@ def test_create_render_context_initializes_phase_state():
     assert context.slides_app["pageSize"]["height"]["magnitude"] == 540
 
 
+def test_create_render_context_enforces_restricted_cleanup_by_default():
+    provider = FakeProvider(
+        strict_cleanup=False,
+        fail_cleanup=False,
+        chart_image_sharing_mode="restricted",
+        strict_restricted_chart_cleanup=True,
+    )
+    presentation, _chart = _build_presentation(provider)
+
+    context = presentation._create_render_context(start_time=123.0)
+
+    assert context.strict_cleanup is True
+
+
+def test_create_render_context_allows_restricted_cleanup_opt_out():
+    provider = FakeProvider(
+        strict_cleanup=False,
+        fail_cleanup=False,
+        chart_image_sharing_mode="restricted",
+        strict_restricted_chart_cleanup=False,
+    )
+    presentation, _chart = _build_presentation(provider)
+
+    context = presentation._create_render_context(start_time=123.0)
+
+    assert context.strict_cleanup is False
+
+
 def test_collect_citations_for_slides_populates_registry():
     class CitationSource:
         type = "stub"
@@ -547,6 +585,152 @@ def test_process_slide_content_updates_chart_and_replacement_counts():
     assert context.total_replacements == 2
     assert context.uploaded_file_ids == ["file-1"]
     assert len(provider.insert_calls) == 1
+
+
+def test_render_raises_and_aborts_when_chart_fails_by_default(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _delay: None)
+
+    class FailingChart(FakeChart):
+        def generate_chart_image(self, df):
+            del df
+            raise RuntimeError("chart failed")
+
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=False)
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[FailingChart()]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    with pytest.raises(RenderingError, match="Chart processing failed"):
+        presentation.render()
+
+    assert provider.abort_calls == ["presentation-1"]
+
+
+def test_render_partial_mode_records_chart_errors(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _delay: None)
+
+    class FailingChart(FakeChart):
+        def generate_chart_image(self, df):
+            del df
+            raise RuntimeError("chart failed")
+
+    provider = FakeProvider(
+        strict_cleanup=False, fail_cleanup=False, allow_partial_render=True
+    )
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[FailingChart()]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    result = presentation.render()
+
+    assert result.partial_render is True
+    assert result.content_error_count == 1
+    assert result.content_errors[0]["phase"] == "chart"
+    assert result.content_errors[0]["slide_id"] == "slide-1"
+    assert result.charts_generated == 0
+    assert len(provider.insert_calls) == 1
+
+
+def test_render_partial_mode_records_chart_data_source_errors(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _delay: None)
+
+    class FailingSource:
+        type = "csv"
+        name = "broken-source"
+
+        @staticmethod
+        def fetch_data():
+            raise RuntimeError("source failed")
+
+    class SourceBackedChart(FakeChart):
+        def __init__(self):
+            super().__init__()
+            self.data_source = FailingSource()
+            self.title = "Source chart"
+
+    provider = FakeProvider(
+        strict_cleanup=False, fail_cleanup=False, allow_partial_render=True
+    )
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[], charts=[SourceBackedChart()]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    result = presentation.render()
+
+    assert result.partial_render is True
+    assert result.content_error_count == 1
+    assert result.content_errors[0]["phase"] == "chart"
+    assert result.content_errors[0]["item_name"] == "Source chart"
+    assert "source failed" in result.content_errors[0]["error"]
+    assert result.charts_generated == 0
+    assert provider.abort_calls == []
+
+
+def test_render_raises_when_replacement_fails_by_default():
+    class FailingReplacement:
+        type = "text"
+        placeholder = "{{TITLE}}"
+
+        @staticmethod
+        def get_replacement():
+            raise RuntimeError("replacement failed")
+
+        @staticmethod
+        def get_referenced_data_sources():
+            return []
+
+    provider = FakeProvider(strict_cleanup=False, fail_cleanup=False)
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[FailingReplacement()], charts=[]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    with pytest.raises(RenderingError, match="Replacement processing failed"):
+        presentation.render()
+
+    assert provider.abort_calls == ["presentation-1"]
+
+
+def test_render_partial_mode_records_replacement_errors():
+    class FailingReplacement:
+        type = "text"
+        placeholder = "{{TITLE}}"
+
+        @staticmethod
+        def get_replacement():
+            raise RuntimeError("replacement failed")
+
+        @staticmethod
+        def get_referenced_data_sources():
+            return []
+
+    provider = FakeProvider(
+        strict_cleanup=False, fail_cleanup=False, allow_partial_render=True
+    )
+    slide = Slide.model_construct(
+        id="slide-1", title="S1", replacements=[FailingReplacement()], charts=[]
+    )
+    presentation = Presentation.model_construct(
+        name="Demo", name_fn=None, slides=[slide], provider=provider
+    )
+
+    result = presentation.render()
+
+    assert result.partial_render is True
+    assert result.content_error_count == 1
+    assert result.content_errors[0]["phase"] == "replacement"
+    assert result.replacements_made == 0
 
 
 def test_finalize_and_share_presentation_runs_provider_hooks():

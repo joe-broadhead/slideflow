@@ -8,8 +8,10 @@
 
 ## 2) Provider-specific contract checks
 
-- `slideflow validate --provider-contract-check` supports `google_slides` and `google_docs`.
+- `slideflow validate --provider-contract-check` supports `google_slides`, `google_docs`, and `powerpoint`.
 - For `google_sheets`, run `slideflow sheets doctor --strict` and `slideflow sheets validate`.
+- For `powerpoint`, ensure `provider.config.template_path` resolves locally
+  before contract checks; params CSV columns may render the template path.
 
 ## 3) dbt connector shape
 
@@ -50,4 +52,3 @@
 - Empty params CSV fails runtime.
 - Pandas coercion can convert blank strings to null-like values.
 - Quote/normalize values when strict string behavior is required.
-

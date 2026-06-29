@@ -67,13 +67,13 @@ jobs:
 - `working-directory` (optional): Command working directory. Default `.`.
 - `python-version` (optional): Python version. Default `3.12`.
 - `slideflow-package-spec` (optional): Package to install. Default `slideflow-presentations`.
-- `slideflow-install-extras` (optional): Comma-separated extras to install with `slideflow-package-spec`. Default `dbt,databricks,bigquery,duckdb,redshift`.
+- `slideflow-install-extras` (optional): Comma-separated extras to install with `slideflow-package-spec`. Default `dbt,databricks,bigquery,duckdb,redshift,powerpoint`.
 - `extra-pip-packages` (optional): Newline-separated additional packages.
 - `run-pip-check` (optional): Run `pip check`. Default `true`.
 - `run-doctor` (optional): Run preflight doctor before validate/build (`slideflow doctor` for `presentation`, `slideflow sheets doctor` for `sheets`). Default `true`.
 - `strict-doctor` (optional): Make doctor fail on error-severity findings. Default `false`.
 - `run-validate` (optional): Run validate before build (`slideflow validate` for `presentation`, `slideflow sheets validate` for `sheets`). Default `true`.
-- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate for `presentation` builds (`google_slides` and `google_docs`). Ignored for `sheets`. Default `false`.
+- `run-provider-contract-check` (optional): Add `--provider-contract-check` to validate for `presentation` builds (`google_slides`, `google_docs`, and `powerpoint`). Ignored for `sheets`. Default `false`.
 - `provider-contract-params-path` (optional): CSV path for validate contract checks; falls back to `params-path` when unset.
 - `dry-run` (optional): Run presentation builds with `--dry-run`. Default
   `false`. Unsupported for `artifact-kind: sheets`; the workflow fails fast
@@ -132,10 +132,12 @@ jobs:
 - `REDSHIFT_IAM`, `REDSHIFT_DB_USER`, `REDSHIFT_CLUSTER_IDENTIFIER`, `REDSHIFT_REGION`, `REDSHIFT_PROFILE` (optional; Redshift IAM fallbacks)
 - `REDSHIFT_ACCESS_KEY_ID`, `REDSHIFT_SECRET_ACCESS_KEY`, `REDSHIFT_SESSION_TOKEN` (optional; Redshift-specific AWS credential fallbacks)
 - `REDSHIFT_SERVERLESS_ACCT_ID`, `REDSHIFT_SERVERLESS_WORK_GROUP` (optional; Redshift Serverless IAM fallbacks)
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION` (optional; AWS fallbacks for Redshift IAM)
+- `REDSHIFT_SSL`, `REDSHIFT_SSLMODE`, `REDSHIFT_TIMEOUT` (optional; Redshift connection controls)
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION`, `AWS_DEFAULT_REGION` (optional; AWS fallbacks for Redshift IAM)
 - Callers can either pass those secrets explicitly or use `secrets: inherit` if the same names exist in the caller repository/org.
 - Your Slideflow config can continue to reference environment variables as usual.
 - For `google_slides` and `google_docs` builds, ensure credentials/folder IDs used by your config are available in the caller workflow environment.
+- For `powerpoint` builds, ensure `template_path` resolves inside the checked-out workspace or a prepared artifact directory, and ensure `output_dir` is writable.
 - `google_docs` provider can use `GOOGLE_SLIDEFLOW_CREDENTIALS` in this workflow (or `provider.config.credentials`).
 - Prefer pinning reusable workflow references to a commit SHA in production.
 

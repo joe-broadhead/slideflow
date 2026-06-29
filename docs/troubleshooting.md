@@ -29,6 +29,7 @@ Common causes:
 
 - missing Google credentials (`provider.config.credentials`, `GOOGLE_DOCS_CREDENTIALS`, `GOOGLE_SHEETS_CREDENTIALS`, or `GOOGLE_SLIDEFLOW_CREDENTIALS`)
 - invalid template ID or target IDs (`slide.id` for `google_slides`, section marker ids for `google_docs`, tab names/cells for `google_sheets`)
+- invalid local PowerPoint `template_path`, slide index/native slide ID, or unwritable `output_dir`
 - unreadable CSV/JSON input path
 - query/auth issues for Databricks or Redshift connectors
 
@@ -64,6 +65,28 @@ Helpful check:
 
 ```bash
 slideflow build config.yml --dry-run
+```
+
+SlideFlow fails presentation renders by default when chart or replacement
+content fails. Set `provider.config.allow_partial_render: true` only for
+best-effort artifacts; then inspect `partial_render`, `content_error_count`,
+and `content_errors` in build JSON.
+
+## PowerPoint output issues
+
+Common causes:
+
+- missing optional dependency (`slideflow-presentations[powerpoint]`)
+- `provider.config.template_path` does not exist or is not a `.pptx`
+- `provider.config.output_dir` does not exist or is not writable
+- output file already exists while `file_collision_strategy: fail`
+- `presentation.slides[*].id` does not match the configured `slide_id_mode`
+
+Helpful checks:
+
+```bash
+slideflow validate config.yml --provider-contract-check
+slideflow build config.yml --output-json build-result.json
 ```
 
 ## dbt connector issues
@@ -118,8 +141,8 @@ For Redshift DBT execution, ensure `warehouse.database` or
 `REDSHIFT_DATABASE` is set. Password auth also needs `warehouse.host` or
 `REDSHIFT_HOST`, plus `warehouse.user`/`REDSHIFT_USER` and
 `warehouse.password`/`REDSHIFT_PASSWORD`. IAM auth needs `warehouse.iam: true`,
-`warehouse.region` or `REDSHIFT_REGION`/`AWS_REGION`, and either a cluster
-identifier or Redshift Serverless account/workgroup settings.
+`warehouse.region` or `REDSHIFT_REGION`/`AWS_REGION`/`AWS_DEFAULT_REGION`, and
+either a cluster identifier or Redshift Serverless account/workgroup settings.
 
 ## NumPy binary-compatibility warnings
 
@@ -151,6 +174,8 @@ Common causes:
 - missing provider credentials/API keys
 - invalid provider name/model combination
 - upstream rate-limit or provider outage
+- request timeout; built-in AI providers default to a bounded timeout and accept
+  `provider_args.timeout` in seconds for longer reviewed generations
 
 ## CI failures
 

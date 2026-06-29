@@ -13,6 +13,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   including password auth, IAM/serverless env fallbacks, optional `redshift`
   packaging extra, reusable workflow secret mappings, and CI optional-connector
   coverage.
+- PowerPoint PPTX provider support (`provider.type: powerpoint`) with optional
+  `powerpoint` packaging extra, local `.pptx` template rendering, text/table-cell
+  replacements, chart insertion, `slide_id_mode` (`auto`, `index`, `native`),
+  local doctor checks, and provider contract validation for `.pptx` templates.
+- Machine-readable presentation content error reporting through
+  `partial_render`, `content_error_count`, and `content_errors` result fields.
 
 ### Changed
 
@@ -38,6 +44,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Workflow and configuration docs now clarify presentation-only dry-run
   behavior, release/docs workflow triggers, credential handling, and reserved
   Google Docs chart-width configuration.
+- Presentation renders now fail by default when chart or replacement content
+  processing fails. Set `provider.config.allow_partial_render: true` for
+  explicit best-effort output with recorded content errors.
+- Restricted Google Slides/Docs chart-image cleanup is strict by default through
+  `strict_restricted_chart_cleanup`, making temporary public-access revoke or
+  cleanup failures fail the render unless explicitly opted out.
+- Google Slides/Docs API rate limiters are keyed by configured rate instead of
+  first writer winning process-wide, and CLI `--rps` overrides now install a
+  provider-neutral limiter on the active provider.
+- BigQuery dbt execution now honors `warehouse.timeout` for query submission and
+  result download; built-in AI providers now apply bounded request timeouts with
+  `provider_args.timeout` overrides.
+- CI, audit, live-validation, and release workflows now use locked build/security
+  environments for build, `twine`, Bandit, and live Google test dependencies.
+- PyPI metadata now includes license, classifiers, keywords, project URLs, and a
+  tested Python range of `>=3.12,<3.14`.
 
 ### Fixed
 
@@ -49,6 +71,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Release provenance checks now keep version metadata, changelog release headers,
   tag ancestry, and existing PyPI artifacts aligned with the artifact-producing
   commit.
+- PowerPoint output handling reserves output paths before finalization, writes
+  through temporary files, supports `fail`, `overwrite`, and `suffix` collision
+  strategies, releases reservations on abort/template-load failures, and bounds
+  auxiliary lock/temp file names.
+- CodeQL now runs on `release/**` branches, Bandit medium/high findings are
+  blocking, and release publishing depends on static-security checks.
+- Documentation and the Slideflow YAML authoring skill now cover PowerPoint,
+  Redshift env fallbacks, BigQuery timeouts, partial-render semantics, and the
+  current reusable workflow defaults.
 
 ## [0.0.7] - 2026-05-25
 

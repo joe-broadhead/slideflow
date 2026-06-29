@@ -39,6 +39,7 @@ export OPENAI_API_KEY="<key>"
 Typical args in `provider_args`:
 
 - `model`
+- `timeout` (seconds; defaults to SlideFlow's built-in AI provider timeout)
 - `temperature`
 - `max_tokens`
 - `top_p`
@@ -64,6 +65,7 @@ variable.
 Typical `provider_args`:
 
 - `model` (serving endpoint name, required)
+- `timeout` (seconds; defaults to SlideFlow's built-in AI provider timeout)
 - `max_tokens`
 - `temperature`
 - `top_p`
@@ -120,9 +122,14 @@ provider_args:
   project: "my-gcp-project"
   location: "us-central1"
   model: "gemini-pro"
+  timeout: 120
 ```
 
 Credentials can be provided via `provider_args.credentials` (path or raw JSON) or `GOOGLE_SLIDEFLOW_CREDENTIALS`.
+
+Built-in AI providers use a bounded request timeout by default. Set
+`provider_args.timeout` to a larger value only for reviewed long-generation
+workflows.
 
 ## Provider Argument Routing
 

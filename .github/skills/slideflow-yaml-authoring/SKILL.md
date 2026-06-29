@@ -1,6 +1,6 @@
 ---
 name: slideflow-yaml-authoring
-description: Author and validate production-safe Slideflow YAML for Google Slides, Google Docs, and Google Sheets, including composable dbt connectors and AI providers.
+description: Author and validate production-safe Slideflow YAML for Google Slides, Google Docs, Google Sheets, and local PowerPoint, including composable dbt connectors and AI providers.
 version: 2.0.0
 spec: open-skill-v1
 ---
@@ -10,17 +10,18 @@ spec: open-skill-v1
 ## Purpose
 
 Use this skill to produce production-safe Slideflow YAML and deterministic run
-commands across artifact kinds (`slides`, `docs`, `sheets`).
+commands across artifact kinds (`slides`, `docs`, `sheets`, `powerpoint`).
 
 Supported provider ids:
 
 - `google_slides`
 - `google_docs`
+- `powerpoint`
 - `google_sheets`
 
 ## Use this skill when
 
-- creating or editing Slideflow config for Google Slides, Docs, or Sheets
+- creating or editing Slideflow config for Google Slides, Docs, Sheets, or PowerPoint
 - translating reporting intent into data sources, transforms, replacements, and charts
 - selecting between `template`, `plotly_go`, and `custom` charts
 - defining AI summaries/replacements across providers (OpenAI, Gemini, Databricks serving)
@@ -28,7 +29,7 @@ Supported provider ids:
 
 ## Required inputs
 
-- target artifact kind (`slides`, `docs`, or `sheets`)
+- target artifact kind (`slides`, `docs`, `sheets`, or `powerpoint`)
 - provider configuration (template id/folder ids/credentials behavior)
 - data source details (dbt/warehouse or direct sql/csv/json)
 - runtime parameter shape (`{param}` tokens and optional params CSV)

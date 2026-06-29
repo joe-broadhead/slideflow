@@ -172,6 +172,15 @@ class GoogleSlidesProviderConfig(PresentationProviderConfig):
         False,
         description="If true, fail rendering when uploaded chart images cannot be cleaned up.",
     )
+    strict_restricted_chart_cleanup: bool = Field(
+        True,
+        description=(
+            "When chart_image_sharing_mode is 'restricted', fail rendering if "
+            "temporary chart-image access cannot be revoked or uploaded chart "
+            "images cannot be cleaned up. Set false to return a result with "
+            "cleanup failure metadata instead."
+        ),
+    )
     chart_image_sharing_mode: Literal["public", "restricted"] = Field(
         "restricted",
         description=(

@@ -91,10 +91,12 @@ class _RenderContext:
     page_height_pt: int
     start_time: float
     strict_cleanup: bool
+    allow_partial_render: bool
     citations_enabled: bool
     citation_registry: CitationRegistry
     total_charts: int = 0
     total_replacements: int = 0
+    content_errors: List[Dict[str, str]] = field(default_factory=list)
     uploaded_file_ids: List[str] = field(default_factory=list)
     failed_cleanup_ids: List[str] = field(default_factory=list)
     original_error: Optional[BaseException] = None
@@ -163,6 +165,27 @@ class PresentationResult(BaseModel):
         Field(
             default_factory=list,
             description="Uploaded chart image file IDs that could not be cleaned up",
+        ),
+    ]
+    partial_render: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="Whether rendering completed with skipped or placeholder content",
+        ),
+    ]
+    content_error_count: Annotated[
+        int,
+        Field(
+            default=0,
+            description="Number of chart/replacement content errors recorded during render",
+        ),
+    ]
+    content_errors: Annotated[
+        List[Dict[str, str]],
+        Field(
+            default_factory=list,
+            description="Machine-readable chart/replacement render errors",
         ),
     ]
     render_time: Annotated[
@@ -602,6 +625,13 @@ class Presentation(BaseModel):
             self._abort_provider_presentation_id(presentation_id)
             raise
 
+        provider_config = getattr(self.provider, "config", None)
+        restricted_cleanup_strict = (
+            bool(getattr(provider_config, "strict_restricted_chart_cleanup", False))
+            and getattr(provider_config, "chart_image_sharing_mode", None)
+            == "restricted"
+        )
+
         return _RenderContext(
             presentation_id=presentation_id,
             slides_app=self._to_slides_app_dimensions(page_width_pt, page_height_pt),
@@ -609,7 +639,11 @@ class Presentation(BaseModel):
             page_height_pt=page_height_pt,
             start_time=start_time,
             strict_cleanup=bool(
-                getattr(getattr(self.provider, "config", None), "strict_cleanup", False)
+                getattr(provider_config, "strict_cleanup", False)
+                or restricted_cleanup_strict
+            ),
+            allow_partial_render=bool(
+                getattr(provider_config, "allow_partial_render", False)
             ),
             citations_enabled=bool(self.citations.enabled),
             citation_registry=CitationRegistry(
@@ -617,6 +651,50 @@ class Presentation(BaseModel):
                 dedupe=self.citations.dedupe,
             ),
         )
+
+    def _record_content_error(
+        self,
+        context: _RenderContext,
+        *,
+        slide: Slide,
+        phase: str,
+        item_type: str,
+        item_name: str,
+        error: BaseException,
+    ) -> None:
+        context.content_errors.append(
+            {
+                "slide_id": slide.id,
+                "phase": phase,
+                "item_type": item_type,
+                "item_name": item_name,
+                "error": redacted_error_line(error),
+            }
+        )
+
+    def _raise_or_continue_after_content_error(
+        self,
+        context: _RenderContext,
+        *,
+        slide: Slide,
+        phase: str,
+        item_type: str,
+        item_name: str,
+        error: BaseException,
+    ) -> None:
+        self._record_content_error(
+            context,
+            slide=slide,
+            phase=phase,
+            item_type=item_type,
+            item_name=item_name,
+            error=error,
+        )
+        if not context.allow_partial_render:
+            raise RenderingError(
+                f"{phase.title()} processing failed for {item_type} "
+                f"'{item_name}' on slide '{slide.id}': {redacted_error_line(error)}"
+            ) from error
 
     def _collect_citations_for_slides(self, context: _RenderContext) -> None:
         """Collect citation entries from slide data sources into the render registry."""
@@ -753,11 +831,19 @@ class Presentation(BaseModel):
                     continue
 
                 logger.error(
-                    "Chart processing failed for '%s' on slide '%s' after %d attempts. Inserting error placeholder. Error: %s",
+                    "Chart processing failed for '%s' on slide '%s' after %d attempts. Error: %s",
                     chart.title or chart.type,
                     slide.id,
                     max_retries,
                     error,
+                )
+                self._raise_or_continue_after_content_error(
+                    context,
+                    slide=slide,
+                    phase="chart",
+                    item_type=str(getattr(chart, "type", type(chart).__name__)),
+                    item_name=str(chart.title or chart.type),
+                    error=error,
                 )
                 try:
                     x_pt, y_pt, width_pt, height_pt = compute_chart_dimensions(
@@ -831,6 +917,14 @@ class Presentation(BaseModel):
                     replacement_type,
                     placeholder,
                     error,
+                )
+                self._raise_or_continue_after_content_error(
+                    context,
+                    slide=slide,
+                    phase="replacement",
+                    item_type=str(replacement_type),
+                    item_name=str(placeholder),
+                    error=error,
                 )
                 continue
 
@@ -990,6 +1084,9 @@ class Presentation(BaseModel):
             replacements_made=context.total_replacements,
             chart_image_cleanup_failed_count=len(context.failed_cleanup_ids),
             chart_image_cleanup_failed_ids=list(context.failed_cleanup_ids),
+            partial_render=bool(context.content_errors),
+            content_error_count=len(context.content_errors),
+            content_errors=list(context.content_errors),
             render_time=render_time,
             created_at=datetime.now(),
             ownership_transfer_attempted=context.ownership_transfer_attempted,
@@ -1068,7 +1165,8 @@ class Presentation(BaseModel):
         render_completed = False
         try:
             context = self._create_render_context(start_time=time.time())
-            self._prefetch_data_sources()
+            if not context.allow_partial_render:
+                self._prefetch_data_sources()
             self._collect_citations_for_slides(context)
             with chart_export_executor_scope():
                 self._process_slide_content(context)

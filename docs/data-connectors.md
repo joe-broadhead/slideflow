@@ -198,13 +198,17 @@ Useful Redshift env fallbacks:
 - `REDSHIFT_IAM`
 - `REDSHIFT_DB_USER`
 - `REDSHIFT_CLUSTER_IDENTIFIER`
-- `REDSHIFT_REGION` or `AWS_REGION`
+- `REDSHIFT_REGION`, `AWS_REGION`, or `AWS_DEFAULT_REGION`
+- `AWS_DEFAULT_REGION`
 - `REDSHIFT_PROFILE` or `AWS_PROFILE`
 - `REDSHIFT_ACCESS_KEY_ID` or `AWS_ACCESS_KEY_ID`
 - `REDSHIFT_SECRET_ACCESS_KEY` or `AWS_SECRET_ACCESS_KEY`
 - `REDSHIFT_SESSION_TOKEN` or `AWS_SESSION_TOKEN`
 - `REDSHIFT_SERVERLESS_ACCT_ID`
 - `REDSHIFT_SERVERLESS_WORK_GROUP`
+- `REDSHIFT_SSL`
+- `REDSHIFT_SSLMODE`
+- `REDSHIFT_TIMEOUT`
 
 Notes:
 
@@ -285,6 +289,7 @@ data_source:
     type: "bigquery"
     project_id: "my-gcp-project" # optional if BIGQUERY_PROJECT/GOOGLE_CLOUD_PROJECT set
     location: "US" # optional
+    timeout: 120 # optional query/result timeout in seconds
     credentials_path: "/path/to/service-account.json" # optional
     # credentials_json: '{"type":"service_account",...}' # optional alternative
 ```
@@ -301,6 +306,9 @@ BigQuery runtime options:
   - `warehouse.credentials_path`, or
   - `warehouse.credentials_json`, or
   - Application Default Credentials (for example `GOOGLE_APPLICATION_CREDENTIALS`).
+- `warehouse.timeout` optionally bounds BigQuery query submission and result
+  download waits. When omitted, SlideFlow leaves the BigQuery SDK timeout
+  behavior unchanged.
 - SlideFlow initializes the BigQuery client with `client_info.user_agent` set to
   `Slideflow` for request attribution in Google-side telemetry.
 

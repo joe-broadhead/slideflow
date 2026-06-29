@@ -647,7 +647,8 @@ def _build_clone_identity_key(
         "profile_name": profile_name or "",
     }
     return hashlib.sha1(
-        json.dumps(payload, sort_keys=True).encode("utf-8")
+        json.dumps(payload, sort_keys=True).encode("utf-8"),
+        usedforsecurity=False,
     ).hexdigest()[:16]
 
 
@@ -1262,6 +1263,7 @@ class DBTBigQueryConnector(_DBTWarehouseConnectorBase):
     location: Optional[str] = None
     credentials_json: Optional[str] = None
     credentials_path: Optional[str] = None
+    timeout: Optional[int] = None
 
     def _create_sql_executor(self) -> SQLExecutor:
         return BigQuerySQLExecutor(
@@ -1269,6 +1271,7 @@ class DBTBigQueryConnector(_DBTWarehouseConnectorBase):
             location=self.location,
             credentials_json=self.credentials_json,
             credentials_path=self.credentials_path,
+            timeout=self.timeout,
         )
 
 
@@ -1661,7 +1664,12 @@ class DBTWarehouseConfig(BaseModel):
     )
     sslmode: Optional[str] = Field(None, description="Redshift SSL mode.")
     timeout: Optional[int] = Field(
-        None, gt=0, description="Redshift connection timeout seconds."
+        None,
+        gt=0,
+        description=(
+            "Warehouse timeout seconds. For BigQuery this bounds query and "
+            "result waits; for Redshift this controls connection timeout."
+        ),
     )
     application_name: Optional[str] = Field(
         None, description="Redshift application_name; defaults to Slideflow."
@@ -1744,6 +1752,7 @@ class DBTSourceConfig(BaseSourceConfig):
                 location=self.warehouse.location,
                 credentials_json=self.warehouse.credentials_json,
                 credentials_path=self.warehouse.credentials_path,
+                timeout=self.warehouse.timeout,
             )
         if self.warehouse.type == "duckdb":
             return DBTDuckDBConnector(

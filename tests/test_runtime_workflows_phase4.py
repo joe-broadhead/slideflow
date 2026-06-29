@@ -8,7 +8,6 @@ import pytest
 import slideflow.cli.commands.build as build_command_module
 import slideflow.presentations.base as base_module
 import slideflow.presentations.builder as builder_module
-import slideflow.presentations.providers.google_slides as google_provider_module
 from slideflow.presentations.config import PresentationConfig
 
 
@@ -36,7 +35,6 @@ def _presentation_namespace(**kwargs):
 
 def test_build_single_presentation_applies_rps_override_and_returns_result(monkeypatch):
     captured = {}
-    limiter = object()
 
     class FakePresentation:
         def __init__(self):
@@ -62,12 +60,6 @@ def test_build_single_presentation_applies_rps_override_and_returns_result(monke
         "from_yaml",
         staticmethod(_from_yaml),
     )
-    monkeypatch.setattr(
-        google_provider_module,
-        "_get_rate_limiter",
-        lambda rps, force_update=False: limiter,
-    )
-
     name, result, index, params = build_command_module.build_single_presentation(
         config_file=Path("config.yml"),
         registry_files=[Path("registry.py")],
@@ -82,7 +74,7 @@ def test_build_single_presentation_applies_rps_override_and_returns_result(monke
     assert captured["registry_paths"] == [Path("registry.py")]
     assert captured["params"] == {"region": "us"}
     assert fake_presentation.provider.config.requests_per_second == 4.5
-    assert fake_presentation.provider.rate_limiter is limiter
+    assert fake_presentation.provider.rate_limiter.rate == 4.5
     assert (name, index, params) == ("Deck", 1, {"region": "us"})
     assert result.presentation_url == "https://example.com/deck"
 
@@ -176,6 +168,76 @@ def test_build_command_non_dry_run_processes_results_and_sorts(tmp_path, monkeyp
     assert sorted(row["variant_index"] for row in result) == [1, 2]
     assert all(row["ownership_transfer_attempted"] is False for row in result)
     assert all(row["ownership_transfer_succeeded"] is None for row in result)
+
+
+def test_build_command_shares_rps_override_limiter_across_variants(
+    tmp_path, monkeypatch
+):
+    _stub_build_cli_output(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    from slideflow.presentations.rate_limiter import reset_google_api_rate_limiter
+
+    reset_google_api_rate_limiter()
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider:\n"
+        "  type: google_slides\n"
+        "  config: {}\n"
+        "presentation:\n"
+        "  name: Demo\n"
+        "  slides: []\n",
+        encoding="utf-8",
+    )
+    params_path = tmp_path / "params.csv"
+    params_path.write_text("region\nus\neu\n", encoding="utf-8")
+    presentations = []
+
+    class FakePresentation:
+        def __init__(self, name):
+            self.name = name
+            self.provider = SimpleNamespace(
+                config=SimpleNamespace(requests_per_second=1.0),
+                rate_limiter=None,
+            )
+
+        def render(self):
+            return SimpleNamespace(presentation_url=f"https://example.com/{self.name}")
+
+    def _from_yaml(yaml_path, registry_paths, params):
+        assert yaml_path == config_file
+        assert registry_paths == []
+        presentation = FakePresentation(f"deck-{params['region']}")
+        presentations.append(presentation)
+        return presentation
+
+    monkeypatch.setattr(
+        build_command_module.PresentationBuilder,
+        "from_yaml",
+        staticmethod(_from_yaml),
+    )
+
+    try:
+        build_command_module.build_command(
+            config_file=config_file,
+            registry_files=None,
+            params_path=params_path,
+            dry_run=False,
+            threads=2,
+            requests_per_second=2.5,
+        )
+    finally:
+        reset_google_api_rate_limiter()
+
+    assert len(presentations) == 2
+    assert (
+        presentations[0].provider.rate_limiter is presentations[1].provider.rate_limiter
+    )
+    assert presentations[0].provider.rate_limiter.rate == 2.5
+    assert all(
+        presentation.provider.config.requests_per_second == 2.5
+        for presentation in presentations
+    )
 
 
 def test_build_command_includes_ownership_transfer_metadata(tmp_path, monkeypatch):
@@ -654,7 +716,10 @@ def test_render_inserts_error_placeholder_after_chart_retries(monkeypatch):
     class FakeProvider:
         def __init__(self):
             self.config = SimpleNamespace(
-                strict_cleanup=False, share_with=[], share_role="writer"
+                strict_cleanup=False,
+                allow_partial_render=True,
+                share_with=[],
+                share_role="writer",
             )
             self.insert_calls = []
 
@@ -697,6 +762,8 @@ def test_render_inserts_error_placeholder_after_chart_retries(monkeypatch):
     result = presentation.render()
 
     assert result.presentation_id == "pres-err"
+    assert result.partial_render is True
+    assert result.content_error_count == 1
     assert result.charts_generated == 0
     assert len(provider.insert_calls) == 1
     assert (

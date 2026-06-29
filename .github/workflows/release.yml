@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -111,7 +111,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -160,7 +160,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -186,7 +186,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -216,6 +216,40 @@ jobs:
         run: |
           uv run pip-audit --progress-spinner off
 
+  static-security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install locked static analysis environment
+        run: |
+          uv lock --check
+          uv sync --extra dev --locked
+
+      - name: Run Bandit
+        run: |
+          uv run bandit -r slideflow -f json -o bandit-report.json -ll
+
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          if-no-files-found: ignore
+
   live-google-validation:
     runs-on: ubuntu-latest
     environment: google-live-validation
@@ -225,7 +259,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate live Google workflow evidence
         shell: bash
@@ -257,6 +291,7 @@ jobs:
       - optional-connectors
       - docs
       - dependency-audit
+      - static-security
       - live-google-validation
     environment: pypi
     permissions:
@@ -300,14 +335,17 @@ jobs:
 
       - name: Build distribution artifacts
         run: |
-          uv pip install build twine
           uv run python -m build
+
+      - name: Validate distribution metadata
+        run: |
+          uv run twine check dist/*
 
       - name: Smoke test built wheel
         run: |
           python -m venv .venv-smoke
           . .venv-smoke/bin/activate
-          python -m pip install --upgrade pip twine
+          python -m pip install --upgrade pip
           python -m pip install dist/*.whl
           bash scripts/ci/smoke_installed_wheel.sh dist docs/quickstart/smoke
 
