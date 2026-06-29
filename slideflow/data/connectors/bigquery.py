@@ -19,7 +19,7 @@ from typing import Any, Optional
 import pandas as pd
 from google.auth.exceptions import DefaultCredentialsError
 
-from slideflow.constants import Defaults, Environment
+from slideflow.constants import Concurrency, Defaults, Environment
 from slideflow.data.connectors.base import DataConnector, SQLExecutor
 from slideflow.utilities.error_messages import redacted_error_line, safe_error_line
 from slideflow.utilities.exceptions import DataSourceError
@@ -50,12 +50,14 @@ class BigQueryConnector(DataConnector):
         location: Optional[str] = None,
         credentials_json: Optional[str] = None,
         credentials_path: Optional[str] = None,
+        timeout: Optional[int] = None,
     ) -> None:
         self.query = query
         self.project_id = project_id
         self.location = location or os.getenv(Environment.BIGQUERY_LOCATION)
         self.credentials_json = credentials_json
         self.credentials_path = credentials_path
+        self.timeout = timeout or Concurrency.DEFAULT_TIMEOUT_SECONDS
         self._client: Optional[Any] = None
 
     @staticmethod
@@ -256,11 +258,11 @@ class BigQueryConnector(DataConnector):
         try:
             client = self.connect()
             query_start = time.time()
+            query_kwargs: dict[str, Any] = {"timeout": self.timeout}
             if self.location:
-                query_job = client.query(self.query, location=self.location)
-            else:
-                query_job = client.query(self.query)
-            result_df = query_job.to_dataframe()
+                query_kwargs["location"] = self.location
+            query_job = client.query(self.query, **query_kwargs)
+            result_df = query_job.to_dataframe(timeout=self.timeout)
             query_duration = time.time() - query_start
 
             total_duration = time.time() - start_time
@@ -311,11 +313,13 @@ class BigQuerySQLExecutor(SQLExecutor):
         location: Optional[str] = None,
         credentials_json: Optional[str] = None,
         credentials_path: Optional[str] = None,
+        timeout: Optional[int] = None,
     ):
         self.project_id = project_id
         self.location = location
         self.credentials_json = credentials_json
         self.credentials_path = credentials_path
+        self.timeout = timeout
 
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL via BigQueryConnector and return DataFrame results."""
@@ -325,4 +329,5 @@ class BigQuerySQLExecutor(SQLExecutor):
             location=self.location,
             credentials_json=self.credentials_json,
             credentials_path=self.credentials_path,
+            timeout=self.timeout,
         ).fetch_data()

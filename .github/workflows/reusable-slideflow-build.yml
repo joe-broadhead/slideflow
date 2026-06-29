@@ -40,7 +40,7 @@ on:
       slideflow-install-extras:
         description: "Optional comma-separated extras to install with slideflow-package-spec"
         required: false
-        default: "dbt,databricks,bigquery,duckdb,redshift"
+        default: "dbt,databricks,bigquery,duckdb,redshift,powerpoint"
         type: string
       extra-pip-packages:
         description: "Optional newline-separated pip packages"
@@ -68,12 +68,12 @@ on:
         default: true
         type: boolean
       run-provider-contract-check:
-        description: "Run provider contract checks during validate (Google Slides/Docs)"
+        description: "Run provider contract checks during validate (Google Slides/Docs/PowerPoint)"
         required: false
         default: false
         type: boolean
       provider-contract-params-path:
-        description: "Optional CSV for provider contract check template IDs; falls back to params-path when unset"
+        description: "Optional CSV for provider contract check template IDs/paths; falls back to params-path when unset"
         required: false
         default: ""
         type: string

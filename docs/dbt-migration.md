@@ -123,8 +123,8 @@ Redshift execution (`warehouse.type: redshift`):
 - password auth from config or `REDSHIFT_HOST`, `REDSHIFT_DATABASE`,
   `REDSHIFT_USER`, and `REDSHIFT_PASSWORD`
 - IAM auth from `warehouse.iam: true`, `warehouse.region` or
-  `REDSHIFT_REGION`/`AWS_REGION`, plus cluster/serverless settings and AWS
-  identity env vars/profile
+  `REDSHIFT_REGION`/`AWS_REGION`/`AWS_DEFAULT_REGION`, plus cluster/serverless
+  settings and AWS identity env vars/profile
 
 ## Common Migration Errors
 

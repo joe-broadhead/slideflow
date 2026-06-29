@@ -92,7 +92,7 @@ Security notes:
 - Prefer pinning reusable workflow refs to a commit SHA.
 - Treat inherited or explicitly-mapped secrets as privileged; only call trusted workflows.
 - Keep secrets out of YAML files.
-- The reusable workflow installs `slideflow-install-extras` by default (`dbt,databricks,bigquery,duckdb,redshift`). Override this input if you need a narrower runtime footprint.
+- The reusable workflow installs `slideflow-install-extras` by default (`dbt,databricks,bigquery,duckdb,redshift,powerpoint`). Override this input if you need a narrower runtime footprint.
 
 Supported reusable-workflow secret mappings:
 
@@ -109,7 +109,8 @@ Supported reusable-workflow secret mappings:
 - `REDSHIFT_IAM`, `REDSHIFT_DB_USER`, `REDSHIFT_CLUSTER_IDENTIFIER`, `REDSHIFT_REGION`, `REDSHIFT_PROFILE` (optional; Redshift IAM fallbacks)
 - `REDSHIFT_ACCESS_KEY_ID`, `REDSHIFT_SECRET_ACCESS_KEY`, `REDSHIFT_SESSION_TOKEN` (optional; Redshift-specific AWS credential fallbacks)
 - `REDSHIFT_SERVERLESS_ACCT_ID`, `REDSHIFT_SERVERLESS_WORK_GROUP` (optional; Redshift Serverless IAM fallbacks)
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION` (optional; AWS fallbacks for Redshift IAM)
+- `REDSHIFT_SSL`, `REDSHIFT_SSLMODE`, `REDSHIFT_TIMEOUT` (optional; Redshift connection controls)
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION`, `AWS_DEFAULT_REGION` (optional; AWS fallbacks for Redshift IAM)
 
 For `google_docs` provider runs with the reusable workflow, use `GOOGLE_SLIDEFLOW_CREDENTIALS`
 as the credentials secret mapping (or set `provider.config.credentials` directly in config).
@@ -200,8 +201,8 @@ If using `redshift` or `dbt` with `warehouse.type: redshift`, also ensure:
 - password auth settings (`REDSHIFT_HOST`, `REDSHIFT_DATABASE`,
   `REDSHIFT_USER`, `REDSHIFT_PASSWORD`) or IAM/serverless settings
   (`REDSHIFT_IAM`, `REDSHIFT_CLUSTER_IDENTIFIER` or
-  `REDSHIFT_SERVERLESS_*`, `REDSHIFT_REGION`/`AWS_REGION`, and AWS identity
-  env vars/profile) are available.
+  `REDSHIFT_SERVERLESS_*`, `REDSHIFT_REGION`/`AWS_REGION`/`AWS_DEFAULT_REGION`,
+  and AWS identity env vars/profile) are available.
 
 Private dbt repo example:
 
@@ -270,6 +271,7 @@ Operational notes:
 - provider contract checks enabled where template compatibility guarantees matter (`slideflow validate --provider-contract-check`)
   - `google_slides`: slide-id + placeholder checks
   - `google_docs`: section-marker + placeholder checks
+  - `powerpoint`: local `.pptx` slide-id + placeholder checks
 - Secrets managed by platform secret manager (not committed)
 - API quotas/rate limits measured and tuned (`--rps`, `--threads`)
 - Failure notifications wired to orchestration platform

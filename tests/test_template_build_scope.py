@@ -176,6 +176,9 @@ def test_custom_chart_get_template_engine_uses_build_scoped_engine(tmp_path):
     context = SimpleNamespace(
         presentation_id="presentation-1",
         uploaded_file_ids=[],
+        content_errors=[],
+        total_charts=0,
+        allow_partial_render=False,
         slides_app=Presentation._to_slides_app_dimensions(720, 540),
         page_width_pt=720,
         page_height_pt=540,

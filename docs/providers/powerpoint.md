@@ -40,6 +40,7 @@ provider:
     read_only_template: true
     file_collision_strategy: "fail" # fail | overwrite | suffix
     strict_cleanup: false
+    allow_partial_render: false
 ```
 
 Field behavior:
@@ -58,6 +59,9 @@ Field behavior:
   - `overwrite`: replace an existing output file.
   - `suffix`: write `Deck-1.pptx`, `Deck-2.pptx`, etc. when needed.
 - `strict_cleanup`: applies to temporary in-memory chart image cleanup.
+- `allow_partial_render`: defaults to `false`; chart/replacement failures fail
+  the render instead of silently producing incomplete `.pptx` files. Set
+  `true` only for best-effort output and inspect `content_errors`.
 
 ## Example
 
@@ -106,7 +110,8 @@ Contract checks open the local `.pptx` template and validate:
 - configured replacement placeholders in slide text boxes
 - configured replacement placeholders in table cells
 
-For variant builds, pass a params CSV with a `template_path` column:
+For variant builds, pass a params CSV column that renders
+`provider.config.template_path` (for example a `{template_path}` token):
 
 ```bash
 slideflow validate config.yml --provider-contract-check --params-path variants.csv

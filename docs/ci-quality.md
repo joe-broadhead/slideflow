@@ -27,16 +27,18 @@
   - validates branch/version consistency
   - validates NumPy/Pandas ABI compatibility
   - runs format/lint/type/test/build checks
+  - runs locked dependency audit and blocking Bandit static-security checks
   - verifies distribution identity (`slideflow-presentations`)
-  - publishes to PyPI first
-  - creates tag + GitHub release only after publish succeeds
+  - creates the release tag, publishes to PyPI with OIDC trusted publishing,
+    then creates the GitHub release
 - `Audit` (`.github/workflows/audit.yml`)
   - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, `duckdb`, `redshift`, and `powerpoint` extras
   - runs blocking `pip-audit` from that locked environment
-  - runs `bandit`
+  - runs blocking `bandit` medium/high severity scan from the locked dev environment
   - uploads audit reports as artifacts
 - `Live Google Slides` (`.github/workflows/live-google-slides.yml`)
   - runs on manual dispatch (`workflow_dispatch`) only
+  - installs the locked live test environment with `uv sync --extra dev --extra ai --locked`
   - executes `pytest -q tests/live_tests -m live_google`
   - uses dedicated secrets/folders to create real template-based presentations
   - validates full feature matrix behavior (all built-in chart templates, direct Plotly charts, custom chart function, AI text, dynamic function replacements)
@@ -46,6 +48,7 @@
   - workflow pins `SLIDEFLOW_LIVE_KEEP_ARTIFACTS=0` to avoid leaving artifacts in CI runs
 - `Live Google Docs` (`.github/workflows/live-google-docs.yml`)
   - runs on manual dispatch (`workflow_dispatch`) only
+  - installs the locked live test environment with `uv sync --extra dev --extra ai --locked`
   - executes `pytest -q tests/live_tests -m live_google_docs`
   - uses dedicated secrets/folders to create real template-based documents
   - validates marker-scoped replacements and inline chart insertion behavior
@@ -55,6 +58,7 @@
   - workflow pins `SLIDEFLOW_LIVE_KEEP_ARTIFACTS=0` to avoid leaving artifacts in CI runs
 - `Live Google Sheets` (`.github/workflows/live-google-sheets.yml`)
   - runs on manual dispatch (`workflow_dispatch`) only
+  - installs the locked live test environment with `uv sync --extra dev --extra ai --locked`
   - executes `pytest -q tests/live_tests -m live_google_sheets`
   - uses dedicated secrets/folders to create real workbook artifacts
   - validates replace + append idempotency behavior against Google Sheets APIs
@@ -69,8 +73,8 @@
   - leaves major updates ungrouped for explicit review
 - `CodeQL` (`.github/workflows/codeql.yml`)
   - runs static security analysis for Python on:
-    - pull requests to `master`/`main`
-    - pushes to `master`/`main`
+    - pull requests to `master`/`main`/`release/**`
+    - pushes to `master`/`main`/`release/**`
     - weekly scheduled scan
     - manual dispatch
   - uploads SARIF findings to GitHub code scanning

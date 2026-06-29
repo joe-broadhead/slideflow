@@ -399,6 +399,7 @@ def _validate_markdown_contracts(root: Path, errors: list[str]) -> None:
         "sheets-modes.md",
         "google_slides",
         "google_docs",
+        "powerpoint",
         "google_sheets",
     ]:
         _expect(
@@ -411,6 +412,7 @@ def _validate_markdown_contracts(root: Path, errors: list[str]) -> None:
     for token in [
         "slideflow doctor --config-file",
         "slideflow validate config.yml --provider-contract-check",
+        "PowerPoint",
         "slideflow sheets doctor config.yml --strict",
         "slideflow sheets validate config.yml",
         "slideflow sheets build config.yml --threads 10",

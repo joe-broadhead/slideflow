@@ -139,16 +139,13 @@ def build_single_presentation(
         if requests_per_second is not None and hasattr(presentation.provider, "config"):
             if hasattr(presentation.provider.config, "requests_per_second"):
                 presentation.provider.config.requests_per_second = requests_per_second
-                # Re-initialize rate limiter if it exists
-                from slideflow.presentations.providers.google_slides import (
-                    _get_rate_limiter,
-                )
+                from slideflow.utilities.rate_limiter import RateLimiter
 
                 if hasattr(presentation.provider, "rate_limiter"):
                     setattr(
                         presentation.provider,
                         "rate_limiter",
-                        _get_rate_limiter(requests_per_second, force_update=True),
+                        RateLimiter(requests_per_second),
                     )
 
         with print_lock:

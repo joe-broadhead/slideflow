@@ -176,16 +176,18 @@ def test_bigquery_connector_fetch_data_returns_dataframe(monkeypatch):
     captured = {}
 
     class FakeQueryJob:
-        def to_dataframe(self):
+        def to_dataframe(self, timeout=None):
+            captured["to_dataframe_timeout"] = timeout
             return pd.DataFrame({"value": [1]})
 
     class FakeClient:
         def __init__(self, **kwargs):
             captured["init_kwargs"] = kwargs
 
-        def query(self, query, location=None):
+        def query(self, query, location=None, timeout=None):
             captured["query"] = query
             captured["location"] = location
+            captured["query_timeout"] = timeout
             return FakeQueryJob()
 
     def _client_class():
@@ -206,13 +208,15 @@ def test_bigquery_connector_fetch_data_returns_dataframe(monkeypatch):
     )
 
     connector = bigquery_module.BigQueryConnector(
-        "SELECT 1", project_id="project", location="EU"
+        "SELECT 1", project_id="project", location="EU", timeout=45
     )
     result = connector.fetch_data()
 
     assert result.to_dict(orient="records") == [{"value": 1}]
     assert captured["query"] == "SELECT 1"
     assert captured["location"] == "EU"
+    assert captured["query_timeout"] == 45
+    assert captured["to_dataframe_timeout"] == 45
 
 
 def test_bigquery_sql_executor_delegates_to_connector(monkeypatch):
@@ -226,12 +230,14 @@ def test_bigquery_sql_executor_delegates_to_connector(monkeypatch):
             location=None,
             credentials_json=None,
             credentials_path=None,
+            timeout=None,
         ):
             captured["query"] = query
             captured["project_id"] = project_id
             captured["location"] = location
             captured["credentials_json"] = credentials_json
             captured["credentials_path"] = credentials_path
+            captured["timeout"] = timeout
 
         def fetch_data(self):
             return pd.DataFrame({"value": [42]})
@@ -239,7 +245,10 @@ def test_bigquery_sql_executor_delegates_to_connector(monkeypatch):
     monkeypatch.setattr(bigquery_module, "BigQueryConnector", ConnectorStub)
 
     executor = bigquery_module.BigQuerySQLExecutor(
-        project_id="project", location="US", credentials_path="/tmp/key.json"
+        project_id="project",
+        location="US",
+        credentials_path="/tmp/key.json",
+        timeout=60,
     )
     result = executor.execute("SELECT 42")
 
@@ -248,6 +257,7 @@ def test_bigquery_sql_executor_delegates_to_connector(monkeypatch):
     assert captured["location"] == "US"
     assert captured["credentials_json"] is None
     assert captured["credentials_path"] == "/tmp/key.json"
+    assert captured["timeout"] == 60
     assert result.to_dict(orient="records") == [{"value": 42}]
 
 
@@ -265,6 +275,7 @@ def test_dbt_source_config_resolves_to_bigquery_connector():
             "project_id": "project",
             "location": "US",
             "credentials_path": "/tmp/key.json",
+            "timeout": 75,
         },
     )
 
@@ -273,6 +284,7 @@ def test_dbt_source_config_resolves_to_bigquery_connector():
     assert connector.project_id == "project"
     assert connector.location == "US"
     assert connector.credentials_path == "/tmp/key.json"
+    assert connector.timeout == 75
 
 
 def test_dbt_source_config_rejects_unsupported_warehouse():
@@ -307,6 +319,7 @@ def test_dbt_bigquery_connector_executes_compiled_sql(monkeypatch):
             captured["location"] = location
             captured["credentials_json"] = kwargs.get("credentials_json")
             captured["credentials_path"] = kwargs.get("credentials_path")
+            captured["timeout"] = kwargs.get("timeout")
 
         def execute(self, sql_query):
             captured["sql_query"] = sql_query
@@ -325,6 +338,7 @@ def test_dbt_bigquery_connector_executes_compiled_sql(monkeypatch):
         project_id="project",
         location="US",
         credentials_path="/tmp/key.json",
+        timeout=90,
     )
 
     result = connector.fetch_data()
@@ -339,4 +353,5 @@ def test_dbt_bigquery_connector_executes_compiled_sql(monkeypatch):
     assert captured["project_id"] == "project"
     assert captured["location"] == "US"
     assert captured["credentials_path"] == "/tmp/key.json"
+    assert captured["timeout"] == 90
     assert captured["sql_query"] == "SELECT 7 AS answer"

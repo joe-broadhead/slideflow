@@ -29,19 +29,19 @@ On push to a `release/vX.Y.Z` branch, the `Release` workflow:
 
 1. validates branch naming
 2. blocks publishing on workflow lint, full CI-style tests, optional connector
-   tests, docs build, dependency audit, and live Google validation evidence for
-   the same commit
+   tests, docs build, dependency audit, static security scan, and live Google
+   validation evidence for the same commit
 3. validates project version consistency
 4. builds wheel and source distributions
-5. installs built wheel and runs package smoke validation:
-   - `twine check`
+5. validates distribution metadata with `twine check`
+6. installs built wheel and runs package smoke validation:
    - `pip check`
    - CLI entrypoint import/help
    - packaged built-in template discovery and render
    - quickstart `validate` + `build --dry-run`
-6. creates and pushes Git tag `vX.Y.Z`
-7. publishes package to PyPI (OIDC trusted publishing)
-8. creates GitHub release with artifacts
+7. creates and pushes Git tag `vX.Y.Z`
+8. publishes package to PyPI (OIDC trusted publishing)
+9. creates GitHub release with artifacts
 
 The protected `google-live-validation` environment must define these variables
 with successful GitHub Actions run IDs for the current release commit:
@@ -90,7 +90,7 @@ PyPI package identity:
 3. Ensure docs build cleanly:
 
 ```bash
-uv sync --extra docs --extra dev --extra ai --locked
+uv sync --extra docs --extra dev --extra ai --extra powerpoint --locked
 source .venv/bin/activate
 uv lock --check
 uv pip check

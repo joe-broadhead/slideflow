@@ -13,7 +13,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python -m twine check "${DIST_PATH}"/*
 python -m pip check
 
 slideflow --help >/dev/null

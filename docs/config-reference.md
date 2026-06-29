@@ -68,8 +68,10 @@ Supported values:
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
 | `chart_image_sharing_mode` | `str` | no | `restricted` (default) or explicit `public` for uploaded chart-image ACL behavior |
+| `strict_restricted_chart_cleanup` | `bool` | no | Defaults to `true`; with restricted chart images, fail if temporary access revoke or cleanup fails |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
+| `allow_partial_render` | `bool` | no | Defaults to `false`; if `true`, chart/replacement failures are recorded in `content_errors` and rendering continues where possible |
 
 Credential precedence for `google_slides`:
 
@@ -102,8 +104,10 @@ For provider setup and operational behavior, see [Google Slides Provider](provid
 | `transfer_ownership_to` | `str` | no | Optional owner handoff target email (Google My Drive only) |
 | `transfer_ownership_strict` | `bool` | no | If `true`, fail build when ownership transfer fails |
 | `chart_image_sharing_mode` | `str` | no | `restricted` (default) or explicit `public` for uploaded chart-image ACL behavior |
+| `strict_restricted_chart_cleanup` | `bool` | no | Defaults to `true`; with restricted chart images, fail if temporary access revoke or cleanup fails |
 | `requests_per_second` | `float` | no | API rate limit override |
 | `strict_cleanup` | `bool` | no | Fail if temporary chart image cleanup fails |
+| `allow_partial_render` | `bool` | no | Defaults to `false`; if `true`, chart/replacement failures are recorded in `content_errors` and rendering continues where possible |
 
 Credential precedence for `google_docs`:
 
@@ -136,6 +140,7 @@ pip install "slideflow-presentations[powerpoint]"
 | `read_only_template` | `bool` | no | Defaults to `true`; prevents writes to `template_path` |
 | `file_collision_strategy` | `str` | no | `fail` (default), `overwrite`, or `suffix` |
 | `strict_cleanup` | `bool` | no | Fail if temporary in-memory chart image cleanup fails |
+| `allow_partial_render` | `bool` | no | Defaults to `false`; if `true`, chart/replacement failures are recorded in `content_errors` and rendering continues where possible |
 
 For provider setup and behavior, see [PowerPoint Provider](providers/powerpoint.md).
 
@@ -239,6 +244,8 @@ Rendering behavior by provider:
 - `google_docs`: citations are added as section footnotes or appended document-end block.
   - `per_slide`/`per_section`: rendered as section footnotes (section marker based).
   - `document_end`: appended to the end of the document.
+- `powerpoint`: citations are collected in build JSON but are not rendered into
+  speaker notes in the current local `.pptx` provider.
 
 Build JSON output includes:
 
@@ -250,6 +257,19 @@ Build JSON output includes:
 - Per-result fields:
   - `citations`
   - `citations_by_scope`
+
+## Render Failure Semantics
+
+Presentation renders fail by default when chart generation/insertion or
+replacement processing fails. This prevents CI and batch jobs from silently
+shipping incomplete artifacts.
+
+Set `provider.config.allow_partial_render: true` only when you intentionally
+want best-effort output. Partial runs return these result fields:
+
+- `partial_render`
+- `content_error_count`
+- `content_errors`
 
 ## Replacements
 

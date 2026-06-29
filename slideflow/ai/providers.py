@@ -29,6 +29,11 @@ from slideflow.utilities.logging import get_logger, log_api_operation
 logger = get_logger(__name__)
 
 
+def _resolve_provider_timeout(timeout: Any) -> Any:
+    """Use Slideflow's bounded default when callers leave timeout unset."""
+    return Defaults.AI_PROVIDER_TIMEOUT_S if timeout is None else timeout
+
+
 def _apply_slideflow_extra_headers(
     headers: Optional[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -145,8 +150,11 @@ class OpenAIProvider:
 
         start_time = time.time()
         try:
-            client = openai.OpenAI()
             params = {**self.defaults, **kwargs}
+            timeout = _resolve_provider_timeout(
+                params.pop("timeout", Defaults.AI_PROVIDER_TIMEOUT_S)
+            )
+            client = openai.OpenAI(timeout=timeout)
             params["extra_headers"] = _apply_slideflow_extra_headers(
                 params.get("extra_headers")
             )
@@ -280,9 +288,13 @@ class DatabricksProvider:
 
         start_time = time.time()
         try:
+            timeout = _resolve_provider_timeout(
+                params.pop("timeout", Defaults.AI_PROVIDER_TIMEOUT_S)
+            )
             client = openai.OpenAI(
                 api_key=resolved_api_key,
                 base_url=resolved_base_url,
+                timeout=timeout,
             )
             response = client.chat.completions.create(
                 model=self.model,
@@ -398,6 +410,12 @@ class GeminiProvider:
             APIError: For all other errors.
         """
         params = {**self.defaults, **kwargs}
+        timeout_s = float(
+            _resolve_provider_timeout(
+                params.pop("timeout", Defaults.AI_PROVIDER_TIMEOUT_S)
+            )
+        )
+        timeout_ms = int(timeout_s * 1000)
         invalid_params = {"model", "vertex", "project", "location", "credentials"}
         generation_config = {}
         valid_generation_params = {"max_output_tokens", "temperature", "top_p", "top_k"}
@@ -439,7 +457,8 @@ class GeminiProvider:
                     location=self.location,
                     credentials=credentials,
                     http_options={
-                        "headers": {"User-Agent": Defaults.CLIENT_USER_AGENT}
+                        "headers": {"User-Agent": Defaults.CLIENT_USER_AGENT},
+                        "timeout": timeout_ms,
                     },
                 )
 
@@ -475,7 +494,8 @@ class GeminiProvider:
                 client = genai.Client(
                     api_key=api_key,
                     http_options={
-                        "headers": {"User-Agent": Defaults.CLIENT_USER_AGENT}
+                        "headers": {"User-Agent": Defaults.CLIENT_USER_AGENT},
+                        "timeout": timeout_ms,
                     },
                 )
                 config = (

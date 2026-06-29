@@ -113,6 +113,7 @@ def test_google_slides_config_defaults_chart_images_to_restricted():
     config = google_provider_module.GoogleSlidesProviderConfig()
 
     assert config.chart_image_sharing_mode == "restricted"
+    assert config.strict_restricted_chart_cleanup is True
 
 
 def test_google_slides_config_defaults_share_role_to_reader():

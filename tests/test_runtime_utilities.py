@@ -767,14 +767,19 @@ def test_rate_limiter_wait_sleeps_only_when_needed(monkeypatch):
     assert sleep_calls == [0.5, 0.4]
 
 
-def test_google_api_rate_limiter_shared_singleton_update():
+def test_google_api_rate_limiter_caches_by_configured_rate():
     presentation_rate_limiter_module.reset_google_api_rate_limiter()
 
     rl1 = presentation_rate_limiter_module.get_google_api_rate_limiter(1.0)
-    rl2 = presentation_rate_limiter_module.get_google_api_rate_limiter(3.0)
+    rl2 = presentation_rate_limiter_module.get_google_api_rate_limiter(1.0)
     rl3 = presentation_rate_limiter_module.get_google_api_rate_limiter(
+        3.0,
+    )
+    rl4 = presentation_rate_limiter_module.get_google_api_rate_limiter(
         3.0, force_update=True
     )
 
-    assert rl1 is rl2 is rl3
-    assert rl3.rate == 3.0
+    assert rl1 is rl2
+    assert rl1 is not rl3
+    assert rl3 is not rl4
+    assert rl4.rate == 3.0

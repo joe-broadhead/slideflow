@@ -85,9 +85,9 @@ SlideFlow was built to solve a simple problem: automating the tedious process of
 
 SlideFlow works in three simple steps:
 
-1.  **Define:** You create a YAML file that defines your build target. This includes a Google Slides template, Google Docs template, or Google Sheets workbook schema, plus data sources and per-section/tab content.
+1.  **Define:** You create a YAML file that defines your build target. This includes a Google Slides template, Google Docs template, local PowerPoint template, or Google Sheets workbook schema, plus data sources and per-section/tab content.
 2.  **Connect & Transform:** SlideFlow connects to your specified data sources, fetches the data, and applies any transformations you\'ve defined.
-3.  **Build:** SlideFlow creates a new deck/document/workbook, populates it with your data and charts, and saves it to Google Drive.
+3.  **Build:** SlideFlow creates a new deck/document/workbook, or writes a local `.pptx`, then populates it with your data and charts.
 
 ---
 
@@ -124,6 +124,7 @@ To create your first output, you\'ll need:
 1.  **A Template/Target:** Use either:
     - Google Slides template with slide IDs for target slides, or
     - Google Docs template with section markers like `{{SECTION:intro}}`, or
+    - Local PowerPoint `.pptx` template with slide indexes/native IDs, or
     - Google Sheets target (`spreadsheet_id`) or destination folder for workbook creation.
 2.  **Your Data:** Have your data ready in a CSV file, or have your Databricks credentials configured.
 3.  **A YAML Configuration File:** This is where you\'ll define your output artifact. See the [Configuration](#-configuration) section for more details.
@@ -197,7 +198,7 @@ presentation:
         # ... chart definitions
 
 provider:
-  type: "google_slides" # or "google_docs"
+  type: "google_slides" # or "google_docs" / "powerpoint" (use "google_sheets" with workbook schema)
   config:
     credentials: null # set GOOGLE_SLIDEFLOW_CREDENTIALS or use an untracked local path
     template_id: "your_google_slides_template_id"
@@ -218,6 +219,7 @@ For provider-specific behavior, see:
 - [Google Sheets Provider](https://joe-broadhead.github.io/slideflow/providers/google-sheets/)
 - [Google Slides Provider](https://joe-broadhead.github.io/slideflow/providers/google-slides/)
 - [Google Docs Provider](https://joe-broadhead.github.io/slideflow/providers/google-docs/)
+- [PowerPoint Provider](https://joe-broadhead.github.io/slideflow/providers/powerpoint/)
 
 ---
 

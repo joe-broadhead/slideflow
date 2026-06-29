@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide gives you a copy-paste runnable sample first, then shows how to switch to real Google Slides, Google Docs, or Google Sheets builds.
+This guide gives you a copy-paste runnable sample first, then shows how to switch to real Google Slides, Google Docs, Google Sheets, or local PowerPoint builds.
 
 ## 1. Run the smoke sample (no credentials required)
 
@@ -85,7 +85,34 @@ Expected outcome:
 - Append-mode tabs use run-key metadata to avoid duplicate writes
 - Optional tab-local AI summaries are written to same-sheet or summary-tab placements
 
-## 5. Batch mode (multi-deck or multi-doc)
+## 5. Switch to a local PowerPoint build
+
+Install the optional extra and use a config with `provider.type: powerpoint`:
+
+```bash
+uv sync --extra dev --extra ai --extra powerpoint --locked
+```
+
+Set:
+
+- `provider.config.template_path` to a local `.pptx` template
+- `provider.config.output_dir` to a writable output directory
+- `presentation.slides[*].id` to one-based slide indexes such as `"1"` and `"2"`, or native slide IDs when `slide_id_mode: native`
+
+Then run:
+
+```bash
+slideflow validate path/to/powerpoint.yml --provider-contract-check
+slideflow build path/to/powerpoint.yml
+```
+
+Expected outcome:
+
+- A new `.pptx` is written to `output_dir`
+- Replacements run in text boxes and table cells
+- Charts are inserted into the configured slide regions
+
+## 6. Batch mode (multi-deck or multi-doc)
 
 Create `variants.csv`:
 
@@ -109,7 +136,7 @@ Rules:
 - Empty CSV rows are rejected at runtime
 - Use `--dry-run` to validate all variants without building
 
-## 6. Control concurrency and rate limits
+## 7. Control concurrency and rate limits
 
 ```bash
 slideflow build docs/quickstart/config.yml \
@@ -121,18 +148,19 @@ slideflow build docs/quickstart/config.yml \
 Use conservative `--threads` and `--rps` when Google API quotas are tight.
 For workbook pipelines, the same controls are available through `slideflow sheets build`.
 
-## 7. Troubleshoot fast
+## 8. Troubleshoot fast
 
 If anything fails:
 
 - `slideflow validate ...` first
 - verify template and slide IDs
 - verify workbook tab names and target cells for Sheets builds
+- verify local `.pptx` template paths and writable output directories for PowerPoint builds
 - verify credentials source
 - verify connector credentials for your runtime target
 - check [Troubleshooting](troubleshooting.md)
 
-## 8. CI-parity local gate (recommended before PR)
+## 9. CI-parity local gate (recommended before PR)
 
 ```bash
 source .venv/bin/activate

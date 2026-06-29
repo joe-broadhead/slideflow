@@ -605,14 +605,17 @@ def test_google_provider_upload_image_uses_configured_propagation_delay(monkeypa
     assert len(executed) == 2
 
 
-def test_google_rate_limiter_singleton_update():
+def test_google_rate_limiter_caches_by_configured_rate():
     presentation_rate_limiter_module.reset_google_api_rate_limiter()
     rl1 = google_provider_module._get_rate_limiter(1.0)
-    rl2 = google_provider_module._get_rate_limiter(5.0)
-    rl3 = google_provider_module._get_rate_limiter(5.0, force_update=True)
+    rl2 = google_provider_module._get_rate_limiter(1.0)
+    rl3 = google_provider_module._get_rate_limiter(5.0)
+    rl4 = google_provider_module._get_rate_limiter(5.0, force_update=True)
 
-    assert rl1 is rl2 is rl3
-    assert rl3.rate == 5.0
+    assert rl1 is rl2
+    assert rl1 is not rl3
+    assert rl3 is not rl4
+    assert rl4.rate == 5.0
 
 
 def test_google_provider_page_size_and_preflight(monkeypatch):

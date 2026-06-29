@@ -58,8 +58,10 @@ provider:
     transfer_ownership_to: "owner@example.com"
     transfer_ownership_strict: false
     chart_image_sharing_mode: "restricted" # restricted | public
+    strict_restricted_chart_cleanup: true
     requests_per_second: 1.0
     strict_cleanup: false
+    allow_partial_render: false
 ```
 
 If you use `GOOGLE_SLIDEFLOW_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS`, or
@@ -78,8 +80,15 @@ Field behavior:
 - `chart_image_sharing_mode`: uploaded chart-image ACL mode:
   - `restricted` (default): keeps uploaded Drive files private at rest, grants temporary non-discoverable access for chart insertion, then revokes it.
   - `public`: keeps `anyone:reader` access after insertion and logs a warning because generated chart images may contain sensitive data.
+- `strict_restricted_chart_cleanup`: with restricted chart images, fail the run
+  by default if temporary public access cannot be revoked or uploaded chart
+  images cannot be cleaned up. Set `false` only for explicitly reviewed
+  best-effort cleanup behavior.
 - `requests_per_second`: throttles API calls.
 - `strict_cleanup`: if `true`, cleanup failures (chart image trash) fail the render.
+- `allow_partial_render`: defaults to `false`; chart/replacement failures fail
+  the render instead of silently producing incomplete decks. Set `true` to
+  continue and inspect `content_errors` in the build result.
 
 ## Sharing and Permissions
 
@@ -111,8 +120,10 @@ auth initialization fails, validation fails closed unless you explicitly pass
 Chart images are uploaded to Drive so Slides can reference them.
 After render, SlideFlow attempts to trash those images.
 
-- Default behavior: cleanup issues are logged but do not fail the run.
-- With `strict_cleanup: true`: cleanup failure raises an error and fails the run.
+- Default restricted-mode behavior: temporary-access revoke or cleanup failure
+  raises an error and fails the run.
+- With `chart_image_sharing_mode: public`, cleanup issues are logged unless
+  `strict_cleanup: true` is set.
 - Cleanup emits a summary log and build-result fields with deleted/failed counts and failed file IDs when applicable.
 
 ## Citation Rendering

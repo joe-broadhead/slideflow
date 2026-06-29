@@ -31,6 +31,23 @@ presentation:
 registry: []
 ```
 
+### PowerPoint
+
+```yaml
+provider:
+  type: powerpoint
+  config:
+    template_path: ./templates/report.pptx
+    output_dir: ./dist
+    slide_id_mode: auto
+
+presentation:
+  name: "Deck Name"
+  slides: []         # one-based slide indexes or native PowerPoint slide IDs
+
+registry: []
+```
+
 ### Google Sheets
 
 ```yaml

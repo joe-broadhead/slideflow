@@ -163,6 +163,7 @@ class Defaults:
     # AI provider defaults
     OPENAI_MODEL = "gpt-4o"
     GEMINI_MODEL = "gemini-pro"
+    AI_PROVIDER_TIMEOUT_S = 120.0
     CLIENT_USER_AGENT = "Slideflow"
 
     # Cache defaults

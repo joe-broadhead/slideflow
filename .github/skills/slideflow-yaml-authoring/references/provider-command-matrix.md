@@ -16,6 +16,14 @@ slideflow validate config.yml --provider-contract-check
 slideflow build config.yml --threads 10
 ```
 
+## PowerPoint
+
+```bash
+slideflow doctor --config-file config.yml --strict
+slideflow validate config.yml --provider-contract-check
+slideflow build config.yml --threads 10
+```
+
 ## Google Sheets
 
 ```bash
