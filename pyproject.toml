@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "typer>=0.24,<1.0",
+    "typer>=0.26.8,<1.0",
     "pydantic>=2.0,<3.0",
     "pydantic[email]>=2.0,<3.0",
     "pyyaml>=6.0.3,<7.0",
