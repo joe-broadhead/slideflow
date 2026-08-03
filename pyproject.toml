@@ -59,7 +59,7 @@ redshift = ["redshift-connector>=2.1.15,<2.2", "dbt-redshift>=1.10,<1.12"]
 powerpoint = ["python-pptx>=1.0.0,<2.0"]
 docs = [
     "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.6",
+    "mkdocs-material>=9.7.7",
     "mkdocs-minify-plugin>=0.8",
     "pymdown-extensions>=11.0",
 ]
