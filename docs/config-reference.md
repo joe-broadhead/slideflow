@@ -490,15 +490,15 @@ warehouse:
   type: "databricks"
 ```
 
-`dbt.compile: true` clones the repository, runs `dbt deps`, parses the project,
-resolves requested aliases to exact dbt nodes, and compiles the required nodes
-with one bounded `dbt compile --select` invocation per project batch. dbt still
-parses the full project; scoped compilation does not build or refresh upstream
-relations and does not add ancestor `+` selectors. Set `dbt.compile: false` only
-when `dbt.project_dir` already
-points at a compiled dbt project with `target/manifest.json` and the compiled
-SQL files referenced by that manifest; SlideFlow will not clone or invoke dbt in
-that mode.
+`dbt.compile: true` clones the repository and runs `dbt deps` once for sources
+sharing the same repository, branch, workspace, and profile inputs. Every unique
+`target`/`vars` combination gets an isolated artifact directory, is parsed once,
+and compiles its requested aliases as one exact `dbt compile --select` batch.
+dbt still parses the full project; scoped compilation does not build or refresh
+upstream relations and does not add ancestor `+` selectors. Set
+`dbt.compile: false` only when `dbt.project_dir` already points at a compiled dbt
+project with `target/manifest.json` and the compiled SQL files referenced by that
+manifest; SlideFlow will not clone or invoke dbt in that mode.
 
 Optional alias disambiguation fields for `dbt`:
 

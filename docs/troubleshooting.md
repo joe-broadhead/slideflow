@@ -99,6 +99,8 @@ Common causes:
   region/cluster/serverless identity settings when using `warehouse.type: redshift`
 - invalid `package_url` or missing token env var used in URL
 - profile/target mismatch during dbt compile
+- a stale or externally deleted directory under `.slideflow_dbt_clones` or
+  `.slideflow_dbt_targets`
 
 Frequent CI symptom:
 
@@ -119,6 +121,9 @@ Fixes:
   `target/manifest.json` references an existing compiled SQL file.
 - use `model_unique_id`, `model_package_name`, or `model_selector_name` when an
   alias is ambiguous; SlideFlow converts the resolved node to an exact selector.
+- keep sources that should share clone/dependency work on the same `project_dir`,
+  `package_url`, branch, profiles path, and profile name. Different `vars` and
+  targets are isolated automatically and do not require separate workspaces.
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.

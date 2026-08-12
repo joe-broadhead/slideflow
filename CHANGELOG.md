@@ -27,8 +27,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - dbt-backed builds now parse project metadata and compile only the exact,
-  deduplicated models required by an artifact, while reusing one clone and
-  dependency installation per project identity.
+  deduplicated models required by an artifact. Sources that differ only by
+  `target` or `vars` now reuse one clone and dependency installation while
+  writing manifests, compiled SQL, and logs to isolated variant directories.
 - Pandas compatibility now spans `>=2.2,<4.0`, with CI coverage for the oldest
   supported 2.2 release and the latest supported 3.x release.
 

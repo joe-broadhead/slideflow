@@ -100,6 +100,12 @@ dbtRunner = _dbt_runner_cls
 Repo = _git_repo_cls
 
 # Global cache for compiled DBT projects
+_prepared_workspaces_cache: dict[tuple, Path] = {}
+_prepared_workspaces_last_access: dict[tuple, float] = {}
+_workspace_preparation_inflight: dict[tuple, threading.Event] = {}
+_prepared_workspaces_in_use: dict[Path, int] = {}
+_pending_workspace_cleanup_dirs: set[Path] = set()
+_dbt_invocation_lock = threading.Lock()
 _compiled_projects_cache: dict[tuple, Path] = {}
 _compiled_projects_last_access: dict[tuple, float] = {}
 _compilation_inflight: dict[tuple, threading.Event] = {}
@@ -194,6 +200,23 @@ def _drop_manifest_index_locked(clone_dir: Path) -> None:
     pending = _manifest_index_inflight.pop(key, None)
     if pending is not None:
         pending.set()
+
+
+def _drop_manifest_indexes_under_locked(project_dir: Path) -> None:
+    """Remove manifest indexes rooted in a managed project directory."""
+    project_dir = project_dir.resolve()
+    cached_keys = [
+        key for key in _manifest_index_cache if _is_path_within(key, project_dir)
+    ]
+    inflight_keys = [
+        key for key in _manifest_index_inflight if _is_path_within(key, project_dir)
+    ]
+    for key in cached_keys:
+        _manifest_index_cache.pop(key, None)
+    for key in inflight_keys:
+        pending = _manifest_index_inflight.pop(key, None)
+        if pending is not None:
+            pending.set()
 
 
 def _drop_manifest_index(clone_dir: Path) -> None:
@@ -481,7 +504,8 @@ def _resolve_dbt_failure_cache_max_entries() -> int:
 
 def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
     """Best-effort removal of managed clone directories during cache eviction."""
-    _drop_manifest_index(clone_dir)
+    with _cache_lock:
+        _drop_manifest_indexes_under_locked(clone_dir)
     managed_root = clone_dir.parent
     if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
         clone_dir, managed_root
@@ -496,59 +520,153 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
 
     try:
         shutil.rmtree(clone_dir)
+        workspace_log_dir = (
+            clone_dir.parent.parent / ".slideflow_dbt_logs" / clone_dir.name
+        )
+        if workspace_log_dir.exists() and _is_path_within(
+            workspace_log_dir, clone_dir.parent.parent / ".slideflow_dbt_logs"
+        ):
+            shutil.rmtree(workspace_log_dir)
     except Exception as error:
         logger.warning(
             "Failed to remove evicted DBT clone directory '%s': %s", clone_dir, error
         )
 
 
-def _acquire_compiled_project_lease_locked(clone_dir: Path) -> None:
-    """Mark a compiled clone directory as actively in use.
+def _cleanup_managed_compile_dir(compiled_dir: Path) -> None:
+    """Best-effort removal of one managed dbt compile variant."""
+    _drop_manifest_index(compiled_dir)
+    managed_root = compiled_dir.parent
+    clone_dir = managed_root.parent
+    if (
+        managed_root.name != ".slideflow_dbt_targets"
+        or clone_dir.parent.name != ".slideflow_dbt_clones"
+        or not _is_path_within(compiled_dir, managed_root)
+    ):
+        logger.warning(
+            "Refusing to delete unmanaged DBT compile directory: %s", compiled_dir
+        )
+        return
+    if not compiled_dir.exists():
+        return
+    try:
+        shutil.rmtree(compiled_dir)
+    except Exception as error:
+        logger.warning(
+            "Failed to remove evicted DBT compile directory '%s': %s",
+            compiled_dir,
+            error,
+        )
+
+
+def _source_clone_dir(compiled_dir: Path) -> Path:
+    """Resolve the source clone for a managed compile variant."""
+    if (
+        compiled_dir.parent.name == ".slideflow_dbt_targets"
+        and compiled_dir.parent.parent.parent.name == ".slideflow_dbt_clones"
+    ):
+        return compiled_dir.parent.parent
+    return compiled_dir
+
+
+def _acquire_compiled_project_lease_locked(compiled_dir: Path) -> None:
+    """Mark a compiled output directory as actively in use.
 
     Requires caller to hold _cache_lock.
     """
-    _compiled_projects_in_use[clone_dir] = (
-        _compiled_projects_in_use.get(clone_dir, 0) + 1
+    _compiled_projects_in_use[compiled_dir] = (
+        _compiled_projects_in_use.get(compiled_dir, 0) + 1
     )
 
 
-def _collect_ready_cleanup_dirs_locked() -> list[Path]:
-    """Collect pending cleanup directories that are safe to remove.
+def _acquire_prepared_workspace_lease_locked(clone_dir: Path) -> None:
+    """Mark a prepared clone as actively used by compilation."""
+    _prepared_workspaces_in_use[clone_dir] = (
+        _prepared_workspaces_in_use.get(clone_dir, 0) + 1
+    )
+
+
+def _release_prepared_workspace_lease_locked(clone_dir: Path) -> None:
+    """Release one prepared-workspace usage lease."""
+    current = _prepared_workspaces_in_use.get(clone_dir, 0)
+    if current <= 1:
+        _prepared_workspaces_in_use.pop(clone_dir, None)
+    else:
+        _prepared_workspaces_in_use[clone_dir] = current - 1
+
+
+def _workspace_has_compiled_references_locked(clone_dir: Path) -> bool:
+    """Return whether cached or leased compile variants use a workspace."""
+    for compiled_dir in _compiled_projects_cache.values():
+        if _source_clone_dir(compiled_dir) == clone_dir:
+            return True
+    for compiled_dir, count in _compiled_projects_in_use.items():
+        if count > 0 and _source_clone_dir(compiled_dir) == clone_dir:
+            return True
+    return False
+
+
+def _collect_ready_cleanup_dirs_locked() -> tuple[list[Path], list[Path]]:
+    """Collect safe compile and workspace cleanup directories.
 
     Requires caller to hold _cache_lock.
     """
     cached_dirs = set(_compiled_projects_cache.values())
-    ready: list[Path] = []
-    for clone_dir in list(_pending_cleanup_dirs):
-        if _compiled_projects_in_use.get(clone_dir, 0) > 0:
+    ready_compiles: list[Path] = []
+    for compiled_dir in list(_pending_cleanup_dirs):
+        if _compiled_projects_in_use.get(compiled_dir, 0) > 0:
             continue
-        if clone_dir in cached_dirs:
+        if compiled_dir in cached_dirs:
             continue
-        _pending_cleanup_dirs.discard(clone_dir)
-        ready.append(clone_dir)
-    return ready
+        _pending_cleanup_dirs.discard(compiled_dir)
+        ready_compiles.append(compiled_dir)
+
+    cached_workspaces = set(_prepared_workspaces_cache.values())
+    ready_workspaces: list[Path] = []
+    for clone_dir in list(_pending_workspace_cleanup_dirs):
+        if clone_dir in cached_workspaces:
+            continue
+        if _prepared_workspaces_in_use.get(clone_dir, 0) > 0:
+            continue
+        if _workspace_has_compiled_references_locked(clone_dir):
+            continue
+        _pending_workspace_cleanup_dirs.discard(clone_dir)
+        for compiled_dir in list(_pending_cleanup_dirs):
+            if _is_path_within(compiled_dir, clone_dir):
+                _pending_cleanup_dirs.discard(compiled_dir)
+        ready_workspaces.append(clone_dir)
+    return ready_compiles, ready_workspaces
 
 
-def _cleanup_ready_managed_clone_dirs() -> None:
-    """Best-effort cleanup for pending evicted clone directories."""
+def _cleanup_ready_managed_dirs() -> None:
+    """Best-effort cleanup for pending compile and workspace directories."""
     with _cache_lock:
-        ready_dirs = _collect_ready_cleanup_dirs_locked()
-    for directory in ready_dirs:
+        ready_compiles, ready_workspaces = _collect_ready_cleanup_dirs_locked()
+    for directory in ready_compiles:
+        _cleanup_managed_compile_dir(directory)
+    for directory in ready_workspaces:
         _cleanup_managed_clone_dir(directory)
 
 
-def _release_compiled_project_lease(clone_dir: Path) -> None:
+def _cleanup_ready_managed_clone_dirs() -> None:
+    """Backward-compatible wrapper for all managed dbt cleanup."""
+    _cleanup_ready_managed_dirs()
+
+
+def _release_compiled_project_lease(compiled_dir: Path) -> None:
     """Release a compiled project lease and cleanup any newly-safe evictions."""
     with _cache_lock:
-        current = _compiled_projects_in_use.get(clone_dir, 0)
+        current = _compiled_projects_in_use.get(compiled_dir, 0)
         if current <= 1:
-            _compiled_projects_in_use.pop(clone_dir, None)
+            _compiled_projects_in_use.pop(compiled_dir, None)
         else:
-            _compiled_projects_in_use[clone_dir] = current - 1
+            _compiled_projects_in_use[compiled_dir] = current - 1
 
-        ready_dirs = _collect_ready_cleanup_dirs_locked()
+        ready_compiles, ready_workspaces = _collect_ready_cleanup_dirs_locked()
 
-    for directory in ready_dirs:
+    for directory in ready_compiles:
+        _cleanup_managed_compile_dir(directory)
+    for directory in ready_workspaces:
         _cleanup_managed_clone_dir(directory)
 
 
@@ -561,22 +679,47 @@ def _prune_compiled_projects_cache_locked(max_entries: int) -> None:
         )
         evicted = False
         for oldest_key in ordered_keys:
-            clone_dir = _compiled_projects_cache.get(oldest_key)
-            if clone_dir is None:
+            compiled_dir = _compiled_projects_cache.get(oldest_key)
+            if compiled_dir is None:
                 continue
-            if _compiled_projects_in_use.get(clone_dir, 0) > 0:
+            if _compiled_projects_in_use.get(compiled_dir, 0) > 0:
                 continue
 
             _compiled_projects_cache.pop(oldest_key, None)
             _compiled_projects_last_access.pop(oldest_key, None)
             _compiled_project_coverage.pop(oldest_key, None)
             _selection_locks.pop(oldest_key, None)
-            _pending_cleanup_dirs.add(clone_dir)
+            _pending_cleanup_dirs.add(compiled_dir)
             evicted = True
             break
 
         if not evicted:
             # All cache entries are actively in use. Temporarily exceed max_entries.
+            break
+
+
+def _prune_prepared_workspaces_cache_locked(max_entries: int) -> None:
+    """Prune unused prepared workspaces to the shared cache bound."""
+    while len(_prepared_workspaces_cache) > max_entries:
+        ordered_keys = sorted(
+            _prepared_workspaces_cache,
+            key=lambda key: _prepared_workspaces_last_access.get(key, 0.0),
+        )
+        evicted = False
+        for oldest_key in ordered_keys:
+            clone_dir = _prepared_workspaces_cache.get(oldest_key)
+            if clone_dir is None:
+                continue
+            if _prepared_workspaces_in_use.get(clone_dir, 0) > 0:
+                continue
+            if _workspace_has_compiled_references_locked(clone_dir):
+                continue
+            _prepared_workspaces_cache.pop(oldest_key, None)
+            _prepared_workspaces_last_access.pop(oldest_key, None)
+            _pending_workspace_cleanup_dirs.add(clone_dir)
+            evicted = True
+            break
+        if not evicted:
             break
 
 
@@ -641,12 +784,15 @@ def _build_clone_identity_key(
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
 ) -> str:
-    """Build a deterministic identity key for managed DBT clone directories."""
+    """Build a deterministic identity key for shared DBT workspaces.
+
+    ``target`` and ``vars`` remain accepted for internal compatibility but are
+    deliberately excluded: they affect compilation artifacts, not repository
+    checkout or dependency installation.
+    """
     payload = {
         "package_url": package_url,
         "branch": branch or "default",
-        "target": target or "",
-        "vars": vars or {},
         "profiles_dir": profiles_dir or "",
         "profile_name": profile_name or "",
     }
@@ -654,6 +800,23 @@ def _build_clone_identity_key(
         json.dumps(payload, sort_keys=True).encode("utf-8"),
         usedforsecurity=False,
     ).hexdigest()[:16]
+
+
+def _workspace_cache_key(
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    profiles_dir: Optional[str],
+    profile_name: Optional[str],
+) -> tuple:
+    """Return the identity for clone and dependency preparation."""
+    return (
+        package_url,
+        _canonical_project_dir(project_dir),
+        branch,
+        _canonical_profiles_dir(profiles_dir),
+        profile_name,
+    )
 
 
 def _project_cache_key(
@@ -665,15 +828,26 @@ def _project_cache_key(
     profiles_dir: Optional[str],
     profile_name: Optional[str],
 ) -> tuple:
-    return (
+    """Return the identity for one isolated compiled artifact variant."""
+    return _workspace_cache_key(
         package_url,
-        _canonical_project_dir(project_dir),
+        project_dir,
         branch,
+        profiles_dir,
+        profile_name,
+    ) + (
         target,
         json.dumps(vars or {}, sort_keys=True),
-        _canonical_profiles_dir(profiles_dir),
-        profile_name,
     )
+
+
+def _build_compile_identity_key(target: str, vars: Optional[dict[str, Any]]) -> str:
+    """Build a deterministic directory key for one compile variant."""
+    payload = {"target": target, "vars": vars or {}}
+    return hashlib.sha1(
+        json.dumps(payload, sort_keys=True).encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()[:16]
 
 
 def _resolve_managed_clone_dir(
@@ -704,11 +878,26 @@ def _resolve_managed_clone_dir(
     key = _build_clone_identity_key(
         package_url=package_url,
         branch=branch,
-        target=target,
-        vars=vars,
         profiles_dir=profiles_dir,
         profile_name=profile_name,
     )
+    return managed_root / key
+
+
+def _resolve_managed_compile_dir(
+    clone_dir: Path,
+    target: str,
+    vars: Optional[dict[str, Any]],
+) -> Path:
+    """Resolve the isolated artifact root for one target/vars combination."""
+    managed_root = clone_dir / ".slideflow_dbt_targets"
+    if managed_root.is_symlink() or (
+        managed_root.exists() and not managed_root.is_dir()
+    ):
+        raise DataSourceError(
+            "Reserved DBT compile path must be a real directory: " f"{managed_root}"
+        )
+    key = _build_compile_identity_key(target, vars)
     return managed_root / key
 
 
@@ -734,6 +923,159 @@ def _resolve_existing_compiled_project_dir(
     return compiled_project_dir
 
 
+def _prepare_profiles(clone_dir: Path, profiles_dir: Optional[str]) -> None:
+    """Copy configured profiles into a prepared clone once."""
+    if not profiles_dir:
+        return
+    try:
+        src = Path(profiles_dir)
+        if src.is_dir():
+            candidate = src / "profiles.yml"
+            if candidate.exists():
+                shutil.copy2(candidate, clone_dir / "profiles.yml")
+            else:
+                for profile_file in src.glob("*.y*ml"):
+                    shutil.copy2(profile_file, clone_dir / profile_file.name)
+        elif src.is_file():
+            destination = clone_dir / (
+                "profiles.yml" if src.name != "profiles.yml" else src.name
+            )
+            shutil.copy2(src, destination)
+        else:
+            logger.warning("profiles_dir path not found: %s", profiles_dir)
+    except Exception as error:
+        logger.warning(
+            "Failed to prepare dbt profiles from %s: %s",
+            profiles_dir,
+            error,
+            exc_info=True,
+        )
+
+
+def _get_prepared_workspace(
+    *,
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    profiles_dir: Optional[str],
+    profile_name: Optional[str],
+    acquire_lease: bool = False,
+) -> Path:
+    """Clone a dbt repository and install dependencies once per workspace."""
+    cache_key = _workspace_cache_key(
+        package_url, project_dir, branch, profiles_dir, profile_name
+    )
+    failure_key = ("workspace",) + cache_key
+    max_cache_entries = _resolve_dbt_cache_max_entries()
+    failure_backoff_s = _resolve_dbt_compile_failure_backoff_seconds()
+    failure_cache_max_entries = _resolve_dbt_failure_cache_max_entries()
+
+    while True:
+        with _cache_lock:
+            _prune_compilation_failures_locked(
+                max_entries=failure_cache_max_entries,
+                failure_backoff_s=failure_backoff_s,
+            )
+            cached_dir = _prepared_workspaces_cache.get(cache_key)
+            if cached_dir is not None:
+                if cached_dir.exists():
+                    _prepared_workspaces_last_access[cache_key] = time.time()
+                    if acquire_lease:
+                        _acquire_prepared_workspace_lease_locked(cached_dir)
+                    return cached_dir
+                _drop_manifest_indexes_under_locked(cached_dir)
+                _prepared_workspaces_cache.pop(cache_key, None)
+                _prepared_workspaces_last_access.pop(cache_key, None)
+
+            failure_entry = _compilation_failures.get(failure_key)
+            if failure_entry is not None:
+                raise DataSourceError(failure_entry[1])
+
+            pending = _workspace_preparation_inflight.get(cache_key)
+            if pending is None:
+                pending = threading.Event()
+                _workspace_preparation_inflight[cache_key] = pending
+                is_owner = True
+            else:
+                is_owner = False
+
+        if not is_owner:
+            pending.wait()
+            continue
+
+        clone_dir: Optional[Path] = None
+        try:
+            clone_dir = _resolve_managed_clone_dir(
+                project_dir=project_dir,
+                package_url=package_url,
+                branch=branch,
+                profiles_dir=profiles_dir,
+                profile_name=profile_name,
+            )
+            with _cache_lock:
+                _pending_workspace_cleanup_dirs.discard(clone_dir)
+            _clone_repo(package_url, clone_dir, branch)
+            reserved_targets = clone_dir / ".slideflow_dbt_targets"
+            if reserved_targets.exists() or reserved_targets.is_symlink():
+                raise DataSourceError(
+                    "DBT repository contains reserved Slideflow path "
+                    f"{reserved_targets}. Remove it from the repository."
+                )
+            _prepare_profiles(clone_dir, profiles_dir)
+
+            runner = _require_dbt_runner_class()()
+            deps_args = [
+                "deps",
+                "--project-dir",
+                str(clone_dir),
+                "--log-path",
+                str(
+                    clone_dir.parent.parent
+                    / ".slideflow_dbt_logs"
+                    / clone_dir.name
+                    / "deps"
+                ),
+            ]
+            if profile_name:
+                deps_args.extend(["--profile", profile_name])
+            if profiles_dir or (clone_dir / "profiles.yml").exists():
+                deps_args.extend(["--profiles-dir", str(clone_dir)])
+
+            deps_started = time.time()
+            with _dbt_invocation_lock:
+                deps_result = runner.invoke(deps_args)
+            _ensure_dbt_invoke_success("deps", deps_result)
+            log_performance("dbt_deps", time.time() - deps_started, project=package_url)
+        except BaseException as error:
+            failure_message = str(error) or type(error).__name__
+            with _cache_lock:
+                _compilation_failures[failure_key] = (time.time(), failure_message)
+                _prune_compilation_failures_locked(
+                    max_entries=failure_cache_max_entries,
+                    failure_backoff_s=failure_backoff_s,
+                )
+                event = _workspace_preparation_inflight.pop(cache_key, None)
+                if event is not None:
+                    event.set()
+            if clone_dir is not None:
+                _cleanup_managed_clone_dir(clone_dir)
+            raise
+
+        assert clone_dir is not None
+        with _cache_lock:
+            _prepared_workspaces_cache[cache_key] = clone_dir
+            _prepared_workspaces_last_access[cache_key] = time.time()
+            _compilation_failures.pop(failure_key, None)
+            if acquire_lease:
+                _acquire_prepared_workspace_lease_locked(clone_dir)
+            event = _workspace_preparation_inflight.pop(cache_key, None)
+            if event is not None:
+                event.set()
+            _prune_prepared_workspaces_cache_locked(max_cache_entries)
+        _cleanup_ready_managed_dirs()
+        return clone_dir
+
+
 def _get_compiled_project(
     package_url: str,
     project_dir: str,
@@ -746,41 +1088,7 @@ def _get_compiled_project(
     acquire_lease: bool = False,
     parse_only: bool = False,
 ) -> Path:
-    """Get or create a compiled DBT project with caching.
-
-    Retrieves a compiled DBT project from cache if available, or compiles
-    a new project by cloning the repository and running DBT compilation.
-    Projects are cached by their unique parameter combination to avoid
-    redundant compilation operations.
-
-    The function is thread-safe and handles concurrent access to the
-    compilation cache. It logs performance metrics for both dependency
-    installation and compilation phases.
-
-    Args:
-        package_url: Git URL of the DBT project repository.
-        project_dir: Local directory path for the cloned project.
-        branch: Optional Git branch to checkout.
-        target: DBT target environment (e.g., 'dev', 'prod').
-        vars: Optional DBT variables dictionary.
-        profiles_dir: Optional path to a dbt profiles directory or profiles.yml.
-        profile_name: Optional dbt profile name to override the one in dbt_project.yml.
-
-    Returns:
-        Path to the compiled DBT project directory.
-
-    Raises:
-        DataSourceError: If Git cloning or DBT compilation fails.
-
-    Example:
-        >>> project_path = _get_compiled_project(
-        ...     "https://github.com/company/dbt-project.git",
-        ...     "/tmp/dbt_project",
-        ...     "main",
-        ...     "prod",
-        ...     {"start_date": "2024-01-01"}
-        ... )
-    """
+    """Return isolated artifacts backed by a shared prepared DBT workspace."""
     canonical_project_dir = _canonical_project_dir(project_dir)
     if not compile:
         return _resolve_existing_compiled_project_dir(
@@ -798,6 +1106,7 @@ def _get_compiled_project(
         canonical_profiles_dir,
         profile_name,
     )
+    failure_key = ("compile",) + cache_key
 
     max_cache_entries = _resolve_dbt_cache_max_entries()
     failure_backoff_s = _resolve_dbt_compile_failure_backoff_seconds()
@@ -821,7 +1130,7 @@ def _get_compiled_project(
                 _compiled_projects_last_access.pop(cache_key, None)
                 _compiled_project_coverage.pop(cache_key, None)
 
-            failure_entry = _compilation_failures.get(cache_key)
+            failure_entry = _compilation_failures.get(failure_key)
             if failure_entry is not None:
                 _failed_at, failure_message = failure_entry
                 raise DataSourceError(failure_message)
@@ -838,84 +1147,50 @@ def _get_compiled_project(
             pending.wait()
             continue
 
+        compiled_dir: Optional[Path] = None
+        clone_dir: Optional[Path] = None
+        workspace_leased = False
         try:
-            clone_dir = _resolve_managed_clone_dir(
-                project_dir=canonical_project_dir,
+            clone_dir = _get_prepared_workspace(
                 package_url=package_url,
+                project_dir=canonical_project_dir,
                 branch=branch,
-                target=target,
-                vars=vars,
                 profiles_dir=canonical_profiles_dir,
                 profile_name=profile_name,
+                acquire_lease=True,
             )
+            workspace_leased = True
+            compiled_dir = _resolve_managed_compile_dir(clone_dir, target, vars)
             with _cache_lock:
-                _pending_cleanup_dirs.discard(clone_dir)
-            _clone_repo(package_url, clone_dir, branch)
+                _pending_cleanup_dirs.discard(compiled_dir)
+            if compiled_dir.exists():
+                _cleanup_managed_compile_dir(compiled_dir)
+            compiled_dir.mkdir(parents=True, exist_ok=True)
 
-            # If provided, copy profiles directory or file into cloned project root
-            if profiles_dir:
-                try:
-                    src = Path(profiles_dir)
-                    if src.is_dir():
-                        # Prefer a direct profiles.yml in the given directory
-                        candidate = src / "profiles.yml"
-                        if candidate.exists():
-                            shutil.copy2(candidate, clone_dir / "profiles.yml")
-                        else:
-                            # Fallback: copy all yml/yaml files from directory
-                            for p in src.glob("*.y*ml"):
-                                shutil.copy2(p, clone_dir / p.name)
-                    elif src.is_file():
-                        # If a file is passed, copy to profiles.yml in clone_dir
-                        dest = clone_dir / (
-                            "profiles.yml" if src.name != "profiles.yml" else src.name
-                        )
-                        shutil.copy2(src, dest)
-                    else:
-                        logger.warning("profiles_dir path not found: %s", profiles_dir)
-                except Exception as error:
-                    logger.warning(
-                        "Failed to prepare dbt profiles from %s: %s",
-                        profiles_dir,
-                        error,
-                        exc_info=True,
-                    )
-
-            runner_class = _require_dbt_runner_class()
-            runner = runner_class()
-            project_profiles_path = clone_dir / "profiles.yml"
-            use_project_profiles_dir = (
-                bool(profiles_dir) or project_profiles_path.exists()
-            )
-
-            # Log dependencies install
-            deps_start = time.time()
-            deps_args = ["deps", "--project-dir", str(clone_dir)]
-            if profile_name:
-                deps_args.extend(["--profile", profile_name])
-            if use_project_profiles_dir:
-                deps_args.extend(["--profiles-dir", str(clone_dir)])
-            deps_result = runner.invoke(deps_args)
-            _ensure_dbt_invoke_success("deps", deps_result)
-            deps_duration = time.time() - deps_start
-            log_performance(
-                "dbt_deps", deps_duration, project=package_url, target=target
-            )
-
-            # Parse for scoped compilation discovery, or retain the legacy
-            # full-project compile path for internal/backward compatibility.
+            runner = _require_dbt_runner_class()()
             compile_start = time.time()
             command = "parse" if parse_only else "compile"
-            args = [command, "--project-dir", str(clone_dir), "--target", target]
-            if use_project_profiles_dir:
+            args = [
+                command,
+                "--project-dir",
+                str(clone_dir),
+                "--target",
+                target,
+                "--target-path",
+                str(compiled_dir / "target"),
+                "--log-path",
+                str(compiled_dir / "logs"),
+            ]
+            if profiles_dir or (clone_dir / "profiles.yml").exists():
                 args.extend(["--profiles-dir", str(clone_dir)])
             if profile_name:
                 args.extend(["--profile", profile_name])
             if vars:
                 args += ["--vars", json.dumps(vars)]
-            compile_result = runner.invoke(args)
+            with _dbt_invocation_lock:
+                compile_result = runner.invoke(args)
             _ensure_dbt_invoke_success(command, compile_result)
-            _drop_manifest_index(clone_dir)
+            _drop_manifest_index(compiled_dir)
             compile_duration = time.time() - compile_start
             log_performance(
                 f"dbt_{command}",
@@ -927,7 +1202,7 @@ def _get_compiled_project(
         except BaseException as error:
             failure_message = str(error) or type(error).__name__
             with _cache_lock:
-                _compilation_failures[cache_key] = (time.time(), failure_message)
+                _compilation_failures[failure_key] = (time.time(), failure_message)
                 _prune_compilation_failures_locked(
                     max_entries=failure_cache_max_entries,
                     failure_backoff_s=failure_backoff_s,
@@ -935,24 +1210,34 @@ def _get_compiled_project(
                 event = _compilation_inflight.pop(cache_key, None)
                 if event is not None:
                     event.set()
+                if workspace_leased and clone_dir is not None:
+                    _release_prepared_workspace_lease_locked(clone_dir)
+                _prune_prepared_workspaces_cache_locked(max_cache_entries)
+            if compiled_dir is not None:
+                _cleanup_managed_compile_dir(compiled_dir)
+            _cleanup_ready_managed_dirs()
             raise
 
+        assert compiled_dir is not None
         with _cache_lock:
-            _compiled_projects_cache[cache_key] = clone_dir
+            _compiled_projects_cache[cache_key] = compiled_dir
             _compiled_project_coverage[cache_key] = (
                 frozenset() if parse_only else frozenset({"*"})
             )
             _compiled_projects_last_access[cache_key] = time.time()
-            _compilation_failures.pop(cache_key, None)
+            _compilation_failures.pop(failure_key, None)
             _prune_compiled_projects_cache_locked(max_cache_entries)
             if acquire_lease:
-                _acquire_compiled_project_lease_locked(clone_dir)
+                _acquire_compiled_project_lease_locked(compiled_dir)
+            if workspace_leased and clone_dir is not None:
+                _release_prepared_workspace_lease_locked(clone_dir)
+            _prune_prepared_workspaces_cache_locked(max_cache_entries)
             event = _compilation_inflight.pop(cache_key, None)
             if event is not None:
                 event.set()
-        _cleanup_ready_managed_clone_dirs()
+        _cleanup_ready_managed_dirs()
 
-        return clone_dir
+        return compiled_dir
 
 
 def _ensure_selected_compilation(
@@ -990,7 +1275,7 @@ def _ensure_selected_compilation(
             return
 
         union = tuple(sorted(set(coverage).union(normalized)))
-        failure_key = cache_key + ("selected", union)
+        failure_key = ("selected",) + cache_key + (union,)
         failure_backoff_s = _resolve_dbt_compile_failure_backoff_seconds()
         failure_cache_max_entries = _resolve_dbt_failure_cache_max_entries()
         with _cache_lock:
@@ -1002,19 +1287,25 @@ def _ensure_selected_compilation(
         if failure_entry is not None:
             raise DataSourceError(failure_entry[1])
 
+        compiled_dir = clone_dir
+        source_dir = _source_clone_dir(compiled_dir)
         runner = _require_dbt_runner_class()()
         args = [
             "compile",
             "--project-dir",
-            str(clone_dir),
+            str(source_dir),
             "--target",
             target,
+            "--target-path",
+            str(compiled_dir / "target"),
+            "--log-path",
+            str(compiled_dir / "logs"),
             "--select",
             " ".join(union),
         ]
-        project_profiles_path = clone_dir / "profiles.yml"
+        project_profiles_path = source_dir / "profiles.yml"
         if profiles_dir or project_profiles_path.exists():
-            args.extend(["--profiles-dir", str(clone_dir)])
+            args.extend(["--profiles-dir", str(source_dir)])
         if profile_name:
             args.extend(["--profile", profile_name])
         if vars:
@@ -1022,9 +1313,10 @@ def _ensure_selected_compilation(
 
         started = time.time()
         try:
-            result = runner.invoke(args)
+            with _dbt_invocation_lock:
+                result = runner.invoke(args)
             _ensure_dbt_invoke_success("compile", result)
-            _drop_manifest_index(clone_dir)
+            _drop_manifest_index(compiled_dir)
         except BaseException as error:
             failure_message = str(error) or type(error).__name__
             with _cache_lock:
@@ -1333,7 +1625,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
             if full and full.exists():
                 sql_text = full.read_text()
                 repo_url = canonical_repo_web_url(self.package_url)
-                ref = _resolve_repo_ref(clone_dir, self.branch)
+                ref = _resolve_repo_ref(_source_clone_dir(clone_dir), self.branch)
                 file_url = build_repo_file_url(
                     repo_web_url=repo_url,
                     ref=ref,

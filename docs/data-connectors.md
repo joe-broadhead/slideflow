@@ -246,6 +246,11 @@ data_source:
 Behavior highlights:
 
 - Repositories are cloned under `project_dir/.slideflow_dbt_clones/<key>`.
+- The clone key covers repository, branch, and profile inputs. `target` and
+  `vars` do not trigger another clone or `dbt deps` run.
+- Each unique `target`/`vars` combination writes to an isolated
+  `.slideflow_dbt_targets/<key>` directory inside the shared clone, preventing
+  one compile from overwriting another variant's manifest or compiled SQL.
 - `project_dir` is treated as a workspace root, not a direct clone target.
 - Default `compile: true` runs `dbt deps`, parses the full project, resolves
   exact requested nodes, and runs one scoped `dbt compile --select` for the
@@ -258,9 +263,12 @@ Behavior highlights:
   workspace and runs dbt with `--profiles-dir <clone_dir>`.
 - If `profiles_dir` is omitted but the cloned repo contains `profiles.yml` at
   project root, SlideFlow auto-uses that project-root profiles file.
-- Clone/dependency/parse work for identical project identities is deduplicated.
-  Compiled selector coverage expands as a sorted union, so cached supersets
-  satisfy later subset requests without recompiling.
+- Clone/dependency work is single-flight across variants. Each variant is parsed
+  once, and all requested analyses/models for that variant are compiled as one
+  sorted, deduplicated selector batch. Cached supersets satisfy later subset
+  requests without recompiling.
+- In-process dbt invocations are serialized because dbt-core maintains process
+  globals; warehouse queries remain governed separately by `query_threads`.
 - If multiple dbt nodes share `model_alias`, set one of:
   - `model_unique_id`
   - `model_package_name`
@@ -404,7 +412,8 @@ disabled.
 Cache/compile tuning env vars:
 
 - `SLIDEFLOW_DATA_CACHE_MAX_ENTRIES` (global source cache cap)
-- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (default from built-in constants)
+- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (bounds compiled variants and inactive
+  prepared workspaces; default from built-in constants)
 - `SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S`
 - `SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES`
 
