@@ -660,6 +660,7 @@ def test_build_dry_run_writes_output_json(tmp_path, monkeypatch):
         registry_files=None,
         params_path=None,
         dry_run=True,
+        query_threads=3,
         output_json=output_file,
     )
 
@@ -667,6 +668,12 @@ def test_build_dry_run_writes_output_json(tmp_path, monkeypatch):
     assert payload["command"] == "build"
     assert payload["status"] == "success"
     assert payload["dry_run"] is True
+    assert payload["runtime"]["query_threads"] == {
+        "requested": 3,
+        "applied": 3,
+        "source": "cli_override",
+        "scope": "process",
+    }
 
 
 def test_build_error_writes_output_json_with_error_code(tmp_path, monkeypatch):

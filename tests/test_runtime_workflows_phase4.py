@@ -9,6 +9,7 @@ import slideflow.cli.commands.build as build_command_module
 import slideflow.presentations.base as base_module
 import slideflow.presentations.builder as builder_module
 from slideflow.presentations.config import PresentationConfig
+from slideflow.runtime import BuildRuntimeContext
 
 
 def _stub_build_cli_output(monkeypatch):
@@ -530,14 +531,17 @@ def test_prefetch_data_sources_deduplicates_sources(monkeypatch):
         name_fn=None,
         slides=[slide],
         provider=SimpleNamespace(),
+        runtime_context=BuildRuntimeContext.from_query_threads(13),
     )
 
     captured_items = []
+    captured_workers = []
 
     def _execute(
         self, items, task_func, task_name, max_workers=10, collect_results=False
     ):
         captured_items.extend(items)
+        captured_workers.append(max_workers)
         for _, source in items:
             task_func(source)
         return []
@@ -552,6 +556,7 @@ def test_prefetch_data_sources_deduplicates_sources(monkeypatch):
     ]
     assert shared.calls == 1
     assert unique.calls == 1
+    assert captured_workers == [13]
 
 
 def test_execute_concurrent_tasks_collects_results_and_reraises_errors():

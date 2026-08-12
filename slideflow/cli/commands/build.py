@@ -29,6 +29,7 @@ Example:
         slideflow build config.yaml --dry-run
 """
 
+import inspect
 import sys
 import threading
 import time
@@ -53,6 +54,7 @@ from slideflow.constants import Timing
 from slideflow.presentations import PresentationBuilder
 from slideflow.presentations.config import PresentationConfig
 from slideflow.presentations.providers.factory import ProviderFactory
+from slideflow.runtime import BuildRuntimeContext, RuntimeConfig
 from slideflow.utilities import ConfigLoader
 from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.redaction import redact_value
@@ -75,6 +77,7 @@ def build_single_presentation(
     total: int,
     print_lock: threading.Lock,
     requests_per_second: Optional[float] = None,
+    runtime_context: Optional[BuildRuntimeContext] = None,
 ) -> Tuple[str, Any, int, dict[str, Any]]:
     """Build and render a single artifact with thread-safe logging.
 
@@ -129,11 +132,18 @@ def build_single_presentation(
         - All exceptions are re-raised to allow proper error handling
     """
     try:
-        presentation = PresentationBuilder.from_yaml(
-            yaml_path=config_file,
-            registry_paths=list(registry_files) or [],
-            params=params,
-        )
+        builder_kwargs: dict[str, Any] = {
+            "yaml_path": config_file,
+            "registry_paths": list(registry_files) or [],
+            "params": params,
+        }
+        if (
+            runtime_context is not None
+            and "runtime_context"
+            in inspect.signature(PresentationBuilder.from_yaml).parameters
+        ):
+            builder_kwargs["runtime_context"] = runtime_context
+        presentation = PresentationBuilder.from_yaml(**builder_kwargs)
 
         # Hard override provider rate limits from CLI while sharing one limiter
         # across concurrent variants for a real global quota cap.
@@ -191,6 +201,14 @@ def build_command(
     threads: Annotated[
         Optional[int],
         typer.Option("--threads", "-t", help="Number of concurrent threads to use"),
+    ] = None,
+    query_threads: Annotated[
+        Optional[int],
+        typer.Option(
+            "--query-threads",
+            min=1,
+            help="Process-wide maximum number of active warehouse queries",
+        ),
     ] = None,
     requests_per_second: Annotated[
         Optional[float],
@@ -276,6 +294,7 @@ def build_command(
 
     print_build_header(str(config_file))
     run_started_at = now_iso8601_utc()
+    runtime_payload: dict[str, Any] = {}
 
     try:
         print_build_progress(1, 6, "Loading configuration...")
@@ -301,16 +320,66 @@ def build_command(
             raise ValueError(
                 "Parameter CSV is empty. Provide at least one row or omit --params-path."
             )
+        if query_threads is not None and (
+            isinstance(query_threads, bool)
+            or not isinstance(query_threads, int)
+            or query_threads < 1
+        ):
+            raise ValueError("--query-threads must be a positive integer")
+
+        validated_configs = [
+            PresentationConfig(
+                **ConfigLoader(
+                    yaml_path=config_file,
+                    registry_paths=registry_files,
+                    params=params,
+                ).config
+            )
+            for params in param_configs
+        ]
+        resolved_runtime_configs = [
+            getattr(config, "runtime", RuntimeConfig()) for config in validated_configs
+        ]
+        configured_query_threads = {
+            runtime.query_threads for runtime in resolved_runtime_configs
+        }
+        if query_threads is None and len(configured_query_threads) != 1:
+            raise ValueError(
+                "Parameterized builds must resolve one runtime.query_threads value; "
+                "use --query-threads to provide a process-wide override."
+            )
+        config_query_threads = resolved_runtime_configs[0].query_threads
+        config_is_explicit = any(
+            "query_threads" in runtime.model_fields_set
+            for runtime in resolved_runtime_configs
+        )
+        applied_query_threads = (
+            query_threads if query_threads is not None else config_query_threads
+        )
+        query_source = (
+            "cli_override"
+            if query_threads is not None
+            else "config" if config_is_explicit else "default"
+        )
+        runtime_payload = {
+            "query_threads": {
+                "requested": (
+                    query_threads
+                    if query_threads is not None
+                    else config_query_threads if config_is_explicit else None
+                ),
+                "applied": applied_query_threads,
+                "source": query_source,
+                "scope": "process",
+            }
+        }
+        runtime_context = BuildRuntimeContext.from_query_threads(applied_query_threads)
 
         if dry_run:
             print_build_progress(
                 2, 6, f"Validating {total_presentations} configuration variant(s)..."
             )
-            for params in param_configs:
-                loader = ConfigLoader(
-                    yaml_path=config_file, registry_paths=registry_files, params=params
-                )
-                presentation_config = PresentationConfig(**loader.config)
+            for presentation_config in validated_configs:
                 ProviderFactory.get_config_class(presentation_config.provider.type)(
                     **presentation_config.provider.config
                 )
@@ -329,6 +398,7 @@ def build_command(
                     "config_file": str(config_file),
                     "registry_files": [str(path) for path in registry_files],
                     "total_presentations": total_presentations,
+                    "runtime": runtime_payload,
                     "results": [],
                 },
             )
@@ -364,6 +434,10 @@ def build_command(
         )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            supports_runtime_context = (
+                "runtime_context"
+                in inspect.signature(build_single_presentation).parameters
+            )
             # Submit all artifact tasks
             future_to_params = {
                 executor.submit(
@@ -375,6 +449,7 @@ def build_command(
                     total_presentations,
                     print_lock,
                     requests_per_second,
+                    *([runtime_context] if supports_runtime_context else []),
                 ): (i, params)
                 for i, params in enumerate(param_configs, 1)
             }
@@ -517,6 +592,7 @@ def build_command(
                 "partial_render_count": partial_render_count,
                 "content_error_count": content_error_count,
                 "content_errors": content_errors,
+                "runtime": runtime_payload,
                 "results": results,
             },
         )
@@ -534,6 +610,7 @@ def build_command(
                 "started_at": run_started_at,
                 "completed_at": now_iso8601_utc(),
                 "config_file": str(config_file),
+                "runtime": runtime_payload,
                 "error": {"code": error_code, "message": redacted_error_line(e)},
             },
         )

@@ -9,6 +9,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from slideflow.data.connectors import DataSourceConfig
+from slideflow.runtime import RuntimeConfig
 
 RESERVED_METADATA_TAB = "_slideflow_meta"
 _CELL_REF_PATTERN = re.compile(r"^[A-Z]+[1-9][0-9]*$")
@@ -454,6 +455,10 @@ class WorkbookConfig(BaseModel):
     registry: Annotated[
         Optional[List[str]],
         Field(None, description="Paths to custom function registry files"),
+    ]
+    runtime: Annotated[
+        RuntimeConfig,
+        Field(default_factory=RuntimeConfig, description="Build runtime controls"),
     ]
 
     @field_validator("registry", mode="before")

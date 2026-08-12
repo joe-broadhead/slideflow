@@ -142,10 +142,13 @@ Rules:
 slideflow build docs/quickstart/config.yml \
   --registry docs/quickstart/registry.py \
   --threads 2 \
+  --query-threads 4 \
   --rps 1.0
 ```
 
-Use conservative `--threads` and `--rps` when Google API quotas are tight.
+`--threads` controls concurrent artifacts, `--query-threads` independently
+controls active warehouse SQL, and `--rps` paces provider API calls. Tune each
+for its downstream resource.
 For workbook pipelines, the same controls are available through `slideflow sheets build`.
 
 ## 8. Troubleshoot fast

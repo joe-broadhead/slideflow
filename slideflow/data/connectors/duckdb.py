@@ -148,18 +148,19 @@ class DuckDBConnector(DataConnector):
 
     def fetch_data(self) -> pd.DataFrame:
         """Execute SQL against DuckDB and return a DataFrame."""
-        connection = self.connect()
-        self._apply_file_search_path(connection)
-        try:
-            cursor = connection.execute(self.query)
-            return self._cursor_to_dataframe(cursor)
-        except DuckDBConnectorError:
-            raise
-        except Exception as error:
-            raise DuckDBConnectorError(
-                "query",
-                f"Failed to execute DuckDB query ({redacted_error_line(error)})",
-            ) from error
+        with self.warehouse_query_permit("duckdb"):
+            connection = self.connect()
+            self._apply_file_search_path(connection)
+            try:
+                cursor = connection.execute(self.query)
+                return self._cursor_to_dataframe(cursor)
+            except DuckDBConnectorError:
+                raise
+            except Exception as error:
+                raise DuckDBConnectorError(
+                    "query",
+                    f"Failed to execute DuckDB query ({redacted_error_line(error)})",
+                ) from error
 
 
 class DuckDBSQLExecutor(SQLExecutor):
@@ -177,11 +178,13 @@ class DuckDBSQLExecutor(SQLExecutor):
 
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL query text against DuckDB."""
-        connector = DuckDBConnector(
-            query=sql_query,
-            database=self.database,
-            read_only=self.read_only,
-            file_search_path=self.file_search_path,
+        connector = self.configure_connector(
+            DuckDBConnector(
+                query=sql_query,
+                database=self.database,
+                read_only=self.read_only,
+                file_search_path=self.file_search_path,
+            )
         )
         return connector.fetch_data()
 

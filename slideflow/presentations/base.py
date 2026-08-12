@@ -66,11 +66,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from slideflow.builtins.template_engine import use_template_engine
 from slideflow.citations import CitationEntry, CitationRegistry, CitationSummary
 from slideflow.constants import GoogleSlides, Timing
+from slideflow.data.connectors.dbt import prepare_dbt_sources
 from slideflow.presentations.charts import chart_export_executor_scope
 from slideflow.presentations.config import CitationConfig
 from slideflow.presentations.positioning import compute_chart_dimensions
 from slideflow.presentations.providers.base import PresentationProvider
 from slideflow.replacements.base import BaseReplacement
+from slideflow.runtime import BuildRuntimeContext
 from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.utilities.exceptions import RenderingError
 from slideflow.utilities.logging import get_logger
@@ -554,6 +556,10 @@ class Presentation(BaseModel):
         CitationConfig,
         Field(default_factory=CitationConfig, description="Citation configuration"),
     ]
+    runtime_context: Annotated[
+        BuildRuntimeContext,
+        Field(exclude=True, description="Build-scoped runtime controls"),
+    ] = Field(default_factory=lambda: BuildRuntimeContext.from_query_threads(10))
 
     @model_validator(mode="after")
     def apply_name_fn(self):
@@ -1164,6 +1170,7 @@ class Presentation(BaseModel):
         cleanup_attempted = False
         render_completed = False
         try:
+            self._bind_runtime_context_to_sources()
             context = self._create_render_context(start_time=time.time())
             if not context.allow_partial_render:
                 self._prefetch_data_sources()
@@ -1353,10 +1360,20 @@ class Presentation(BaseModel):
                             (chart.data_source.name, chart.data_source)
                         )
 
+        prepare_dbt_sources([source for _name, source in unique_sources])
+
         self._execute_concurrent_tasks(
             items=unique_sources,
             task_func=lambda source: source.fetch_data(),
             task_name="data source fetch",
-            max_workers=10,
+            max_workers=self.runtime_context.query_threads,
             collect_results=False,
         )
+
+    def _bind_runtime_context_to_sources(self) -> None:
+        """Bind one runtime context to every source used by this artifact."""
+        for slide in self.slides:
+            for source in self._collect_slide_sources(slide):
+                bind_runtime = getattr(source, "bind_runtime_context", None)
+                if callable(bind_runtime):
+                    bind_runtime(self.runtime_context)

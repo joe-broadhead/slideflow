@@ -167,6 +167,10 @@ uv run pytest -q tests/live_tests -m live_google_sheets
 
 ## Compatibility matrix
 
+CI runs the deterministic unit suite against pandas 2.2.3 and the latest
+available pandas 3.x release on Python 3.12 and 3.13. Runtime metadata permits
+`pandas>=2.2,<4.0`.
+
 Compatibility tests assert support remains in place for:
 
 - CLI commands/options (`slideflow build`, `slideflow validate`)

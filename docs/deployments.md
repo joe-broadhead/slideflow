@@ -73,19 +73,22 @@ jobs:
       run-validate: true
       run-provider-contract-check: true
       threads: "2"
+      query-threads: "4"
       requests-per-second: "1.0"
 ```
 
 Runtime control note:
 
-- The reusable workflow forwards `threads` and `requests-per-second` to both
-  `slideflow build` and `slideflow sheets build`.
+- The reusable workflow forwards `threads`, `query-threads`, and
+  `requests-per-second` to both build commands.
 - The reusable workflow `dry-run` input applies only to `artifact-kind:
   presentation`. It fails fast for `artifact-kind: sheets` because
   `slideflow sheets build` performs workbook writes and has no dry-run mode.
 - Sheets runs tab writes with bounded parallelism based on `--threads` and tab
   count; requested/applied/supported/effective/workload values are reported in
   build JSON.
+- `--query-threads` independently caps active Databricks, BigQuery, DuckDB, and
+  Redshift SQL operations across all workers in one process.
 
 Security notes:
 

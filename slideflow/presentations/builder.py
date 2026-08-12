@@ -54,6 +54,7 @@ from slideflow.presentations.config import PresentationConfig
 from slideflow.presentations.providers import ProviderFactory
 from slideflow.replacements import ReplacementUnion
 from slideflow.replacements.base import BaseReplacement
+from slideflow.runtime import BuildRuntimeContext
 from slideflow.utilities.config import ConfigLoader
 from slideflow.utilities.logging import get_logger
 
@@ -114,6 +115,7 @@ class PresentationBuilder:
         yaml_path: Path,
         registry_paths: Optional[List[Path]] = None,
         params: Optional[Dict[str, str]] = None,
+        runtime_context: Optional[BuildRuntimeContext] = None,
     ) -> Presentation:
         """Build a presentation from YAML configuration file.
 
@@ -181,10 +183,16 @@ class PresentationBuilder:
         resolved_config = loader.config
         config = PresentationConfig.model_validate(resolved_config)
 
-        return cls.from_config(config)
+        if runtime_context is None:
+            return cls.from_config(config)
+        return cls.from_config(config, runtime_context=runtime_context)
 
     @classmethod
-    def from_config(cls, config: PresentationConfig) -> Presentation:
+    def from_config(
+        cls,
+        config: PresentationConfig,
+        runtime_context: Optional[BuildRuntimeContext] = None,
+    ) -> Presentation:
         """Build a presentation from a validated configuration object.
 
         Constructs a complete Presentation object from a pre-validated
@@ -256,6 +264,8 @@ class PresentationBuilder:
             slides=slides,
             provider=provider,
             citations=config.citations,
+            runtime_context=runtime_context
+            or BuildRuntimeContext.from_query_threads(config.runtime.query_threads),
         )
 
         return presentation

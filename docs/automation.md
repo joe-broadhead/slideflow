@@ -53,6 +53,7 @@ jobs:
       run-validate: true
       run-provider-contract-check: true
       threads: "2"
+      query-threads: "4"
       requests-per-second: "1.0"
       upload-log-artifact: true
       artifact-name: weekly-slideflow-logs
@@ -80,6 +81,8 @@ jobs:
   rather than performing a real Sheets write after a caller requested dry-run.
 - `threads` (optional): Value passed to `--threads` for both `presentation`
   and `sheets` builds.
+- `query-threads` (optional): Process-wide warehouse query limit passed to
+  `--query-threads` for both artifact kinds.
 - `requests-per-second` (optional): Value passed to `--rps` for both
   `presentation` and `sheets` builds.
 - `upload-log-artifact` (optional): Upload logs and discovered URLs. Default `true`.

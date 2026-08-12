@@ -79,6 +79,7 @@ Options:
 | `-f`, `--params-path` | CSV file for batch generation |
 | `--dry-run` | Validate all variants without rendering |
 | `-t`, `--threads` | Number of concurrent artifact workers |
+| `--query-threads` | Process-wide maximum active warehouse queries |
 | `--rps` | Override provider requests/second |
 | `--output-json` | Write machine-readable build summary JSON |
 
@@ -88,6 +89,12 @@ Google credential fields, authorization headers, bearer/basic tokens, URL
 userinfo, and sensitive URL query parameters.
 
 Build JSON highlights (`--output-json`):
+
+- runtime:
+  - `query_threads.requested`
+  - `query_threads.applied`
+  - `query_threads.source` (`cli_override`, `config`, or `default`)
+  - `query_threads.scope` (`process`)
 
 - top-level:
   - `generated_presentations`
@@ -194,6 +201,7 @@ Options:
 | --- | --- |
 | `-r`, `--registry` | One or more Python registry files |
 | `-t`, `--threads` | Workbook tab worker count |
+| `--query-threads` | Process-wide maximum active warehouse queries |
 | `--rps`, `--requests-per-second` | Override provider `requests_per_second` for this run |
 | `--output-json` | Write machine-readable build summary JSON |
 
@@ -203,6 +211,7 @@ Examples:
 slideflow sheets build workbook.yml
 slideflow sheets build workbook.yml --rps 1.5
 slideflow sheets build workbook.yml --threads 4 --output-json sheets-build.json
+slideflow sheets build workbook.yml --threads 4 --query-threads 2
 slideflow sheets build workbook.yml --registry registry.py --output-json sheets-build.json
 ```
 
@@ -215,6 +224,10 @@ Notes:
   - `threads.supported_values`
   - `threads.effective_workers`
   - `threads.workload_size`
+  - `query_threads.requested`
+  - `query_threads.applied`
+  - `query_threads.source`
+  - `query_threads.scope`
   - `requests_per_second.requested`
   - `requests_per_second.applied`
   - `requests_per_second.source`

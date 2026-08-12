@@ -247,8 +247,9 @@ Behavior highlights:
 
 - Repositories are cloned under `project_dir/.slideflow_dbt_clones/<key>`.
 - `project_dir` is treated as a workspace root, not a direct clone target.
-- Default `compile: true` runs `dbt deps` and `dbt compile`; dbt packages and
-  macros can execute during that step.
+- Default `compile: true` runs `dbt deps`, parses the full project, resolves
+  exact requested nodes, and runs one scoped `dbt compile --select` for the
+  normalized model batch. It does not prepend `+` or build upstream relations.
 - `compile: false` never clones and never runs dbt. In that mode,
   `project_dir` must already be a compiled dbt project containing
   `target/manifest.json` and the compiled SQL files referenced by the manifest.
@@ -257,8 +258,9 @@ Behavior highlights:
   workspace and runs dbt with `--profiles-dir <clone_dir>`.
 - If `profiles_dir` is omitted but the cloned repo contains `profiles.yml` at
   project root, SlideFlow auto-uses that project-root profiles file.
-- Compile/dependency work for identical manifest cache keys is deduplicated
-  across concurrent presentation threads in a single run.
+- Clone/dependency/parse work for identical project identities is deduplicated.
+  Compiled selector coverage expands as a sorted union, so cached supersets
+  satisfy later subset requests without recompiling.
 - If multiple dbt nodes share `model_alias`, set one of:
   - `model_unique_id`
   - `model_package_name`

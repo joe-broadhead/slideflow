@@ -412,17 +412,18 @@ class RedshiftConnector(DataConnector):
         """Execute SQL against Redshift and return a DataFrame."""
         start_time = time.time()
         try:
-            connection = self.connect()
-            cursor = connection.cursor()
-            try:
-                query_start = time.time()
-                cursor.execute(self.query)
-                result_df = self._cursor_to_dataframe(cursor)
-                query_duration = time.time() - query_start
-            finally:
-                close_cursor = getattr(cursor, "close", None)
-                if callable(close_cursor):
-                    close_cursor()
+            with self.warehouse_query_permit("redshift"):
+                connection = self.connect()
+                cursor = connection.cursor()
+                try:
+                    query_start = time.time()
+                    cursor.execute(self.query)
+                    result_df = self._cursor_to_dataframe(cursor)
+                    query_duration = time.time() - query_start
+                finally:
+                    close_cursor = getattr(cursor, "close", None)
+                    if callable(close_cursor):
+                        close_cursor()
 
             total_duration = time.time() - start_time
             log_api_operation(
@@ -516,7 +517,10 @@ class RedshiftSQLExecutor(SQLExecutor):
 
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL via RedshiftConnector and return DataFrame results."""
-        return RedshiftConnector(sql_query, **self.connection_kwargs).fetch_data()
+        connector = self.configure_connector(
+            RedshiftConnector(sql_query, **self.connection_kwargs)
+        )
+        return connector.fetch_data()
 
 
 class RedshiftSourceConfig(BaseSourceConfig):

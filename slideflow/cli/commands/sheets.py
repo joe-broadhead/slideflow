@@ -1,5 +1,6 @@
 """CLI commands for sheet-oriented workbook workflows."""
 
+import inspect
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
@@ -11,6 +12,7 @@ from slideflow.cli.commands._registry import resolve_registry_paths
 from slideflow.cli.error_codes import CliErrorCode, resolve_cli_error_code
 from slideflow.cli.json_output import now_iso8601_utc, write_output_json
 from slideflow.cli.theme import print_error, print_success, print_validation_header
+from slideflow.runtime import BuildRuntimeContext
 from slideflow.utilities import ConfigLoader
 from slideflow.utilities.error_messages import redacted_error_line
 from slideflow.workbooks import WorkbookBuilder, WorkbookConfig
@@ -78,6 +80,7 @@ def _runtime_controls_payload(
     workbook_config: WorkbookConfig,
     threads: Optional[int],
     requests_per_second: Optional[float],
+    query_threads: Optional[int] = None,
 ) -> tuple[Dict[str, Any], List[str]]:
     """Apply CLI runtime overrides and return machine-readable runtime metadata."""
     warnings: List[str] = []
@@ -102,6 +105,22 @@ def _runtime_controls_payload(
         rps_source = "provider_config"
 
     applied_rps = provider_config.get("requests_per_second", 1.0)
+    if query_threads is not None and (
+        isinstance(query_threads, bool)
+        or not isinstance(query_threads, int)
+        or query_threads < 1
+    ):
+        raise ValueError("--query-threads must be a positive integer")
+    config_query_threads = workbook_config.runtime.query_threads
+    config_is_explicit = "query_threads" in workbook_config.runtime.model_fields_set
+    applied_query_threads = (
+        query_threads if query_threads is not None else config_query_threads
+    )
+    query_source = (
+        "cli_override"
+        if query_threads is not None
+        else "config" if config_is_explicit else "default"
+    )
     runtime_payload = {
         "threads": {
             "requested": requested_threads,
@@ -114,6 +133,16 @@ def _runtime_controls_payload(
             "requested": requested_rps,
             "applied": applied_rps,
             "source": rps_source,
+        },
+        "query_threads": {
+            "requested": (
+                query_threads
+                if query_threads is not None
+                else config_query_threads if config_is_explicit else None
+            ),
+            "applied": applied_query_threads,
+            "source": query_source,
+            "scope": "process",
         },
     }
     return runtime_payload, warnings
@@ -207,6 +236,14 @@ def sheets_build_command(
             help="Workbook tab worker count (parallel tab execution).",
         ),
     ] = None,
+    query_threads: Annotated[
+        Optional[int],
+        typer.Option(
+            "--query-threads",
+            min=1,
+            help="Process-wide maximum number of active warehouse queries.",
+        ),
+    ] = None,
     requests_per_second: Annotated[
         Optional[float],
         typer.Option(
@@ -238,13 +275,20 @@ def sheets_build_command(
             workbook_config=workbook_config,
             threads=threads,
             requests_per_second=requests_per_second,
+            query_threads=query_threads,
         )
         for warning in runtime_warnings:
             typer.echo(f"⚠ {warning}")
 
-        builder = WorkbookBuilder.from_config(
-            config=workbook_config,
-        )
+        builder_kwargs: Dict[str, Any] = {"config": workbook_config}
+        if (
+            "runtime_context"
+            in inspect.signature(WorkbookBuilder.from_config).parameters
+        ):
+            builder_kwargs["runtime_context"] = BuildRuntimeContext.from_query_threads(
+                int(runtime_controls["query_threads"]["applied"])
+            )
+        builder = WorkbookBuilder.from_config(**builder_kwargs)
         result = builder.build(threads=int(runtime_controls["threads"]["applied"]))
         summary = {
             "workbook_id": result.workbook_id,
@@ -496,6 +540,14 @@ def sheets_build(
             help="Workbook tab worker count (parallel tab execution).",
         ),
     ] = None,
+    query_threads: Annotated[
+        Optional[int],
+        typer.Option(
+            "--query-threads",
+            min=1,
+            help="Process-wide maximum number of active warehouse queries.",
+        ),
+    ] = None,
     requests_per_second: Annotated[
         Optional[float],
         typer.Option(
@@ -518,6 +570,7 @@ def sheets_build(
         config_file=config_file,
         registry_paths=registry_paths,
         threads=threads,
+        query_threads=query_threads,
         requests_per_second=requests_per_second,
         output_json=output_json,
     )

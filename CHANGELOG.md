@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Process-wide warehouse query concurrency controls through top-level
+  `runtime.query_threads` and `--query-threads` for presentation and Sheets
+  builds, including reusable-workflow forwarding and build JSON reporting.
+
 - Redshift SQL data connector and composable `dbt` Redshift warehouse support,
   including password auth, IAM/serverless env fallbacks, optional `redshift`
   packaging extra, reusable workflow secret mappings, and CI optional-connector
@@ -21,6 +25,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `partial_render`, `content_error_count`, and `content_errors` result fields.
 
 ### Changed
+
+- dbt-backed builds now parse project metadata and compile only the exact,
+  deduplicated models required by an artifact, while reusing one clone and
+  dependency installation per project identity.
+- Pandas compatibility now spans `>=2.2,<4.0`, with CI coverage for the oldest
+  supported 2.2 release and the latest supported 3.x release.
 
 - Google Slides, Docs, and Sheets providers now support service-account JSON,
   environment-supplied external-account / Workload Identity Federation JSON,

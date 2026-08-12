@@ -90,6 +90,13 @@ uv run python scripts/ci/check_secret_hygiene.py
 uv run pre-commit run detect-secrets --all-files
 ```
 
+## dbt compile-time access
+
+Scoped dbt compilation reduces the nodes whose Jinja and macros are evaluated,
+but dbt still parses the full project. Selected models and their compile-time
+macros may access the configured warehouse. Treat profiles and repository code
+as privileged, and use least-privilege compile credentials.
+
 ## Required scopes
 
 Google Slides provider scopes:
