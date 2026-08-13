@@ -46,8 +46,8 @@ def test_query_controller_enforces_limit_and_releases_after_failure():
                 finally:
                     with lock:
                         active -= 1
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            assert str(exc) == "expected"
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         list(executor.map(worker, range(8)))
