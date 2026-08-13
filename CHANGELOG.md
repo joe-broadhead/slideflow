@@ -229,9 +229,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Security
 
 - Resolved open dependency security advisories by refreshing locked versions for:
-  - `cryptography`
+  - `cryptography` to `50.0.0`
   - `dbt-common`
-  - `GitPython`
+  - `GitPython` to `3.1.58` and raised the `dbt` extra's minimum accordingly
   - `idna`
   - `pyasn1`
   - `pymdown-extensions`
