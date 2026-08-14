@@ -28,7 +28,7 @@ dependencies = [
     "pydantic>=2.0,<3.0",
     "pydantic[email]>=2.0,<3.0",
     "pyyaml>=6.0.3,<7.0",
-    "pandas>=2.2,<2.4",
+    "pandas>=2.2,<4.0",
     "numpy>=2.0,<2.6",
     "rich>=13.0,<15.0",
     "jinja2>=3.1,<4.0",
@@ -52,7 +52,7 @@ Changelog = "https://github.com/joe-broadhead/slideflow/blob/master/CHANGELOG.md
 [project.optional-dependencies]
 ai = ["openai>=2.50.0,<3.0", "google-genai>=1.0,<3.0"]
 databricks = ["databricks-sql-connector>=4.0,<5.0"]
-dbt = ["dbt-core>=1.10,<1.12", "dbt-databricks>=1.10,<1.13", "gitpython>=3.1.54,<4.0"]
+dbt = ["dbt-core>=1.10,<1.12", "dbt-databricks>=1.10,<1.13", "gitpython>=3.1.58,<4.0"]
 bigquery = ["google-cloud-bigquery>=3.42.2,<4.0", "dbt-bigquery>=1.11.1,<1.12"]
 duckdb = ["duckdb>=1.5.3,<2.0", "dbt-duckdb>=1.9,<1.12"]
 redshift = ["redshift-connector>=2.1.15,<2.2", "dbt-redshift>=1.10,<1.12"]

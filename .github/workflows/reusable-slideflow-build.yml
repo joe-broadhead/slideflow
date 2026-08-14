@@ -87,6 +87,11 @@ on:
         required: false
         default: ""
         type: string
+      query-threads:
+        description: "Optional process-wide --query-threads value (presentations + sheets)"
+        required: false
+        default: ""
+        type: string
       requests-per-second:
         description: "Optional --rps value (presentations + sheets)"
         required: false
@@ -432,6 +437,9 @@ jobs:
           if [[ -n "${{ inputs.threads }}" ]]; then
             build_cmd+=("--threads" "${{ inputs.threads }}")
           fi
+          if [[ -n "${{ inputs.query-threads }}" ]]; then
+            build_cmd+=("--query-threads" "${{ inputs.query-threads }}")
+          fi
           if [[ -n "${{ inputs.requests-per-second }}" ]]; then
             build_cmd+=("--rps" "${{ inputs.requests-per-second }}")
           fi
@@ -590,7 +598,7 @@ jobs:
           if isinstance(runtime, dict):
               summary["runtime"] = {
                   key: runtime[key]
-                  for key in ("threads", "requests_per_second")
+                  for key in ("threads", "query_threads", "requests_per_second")
                   if key in runtime
               }
 

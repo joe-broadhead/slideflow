@@ -64,6 +64,8 @@ from typing import Annotated, Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from slideflow.runtime import RuntimeConfig
+
 
 class ReplacementSpec(BaseModel):
     """Configuration specification for text replacements in presentations.
@@ -645,6 +647,10 @@ class PresentationConfig(BaseModel):
     citations: Annotated[
         CitationConfig,
         Field(default_factory=CitationConfig, description="Source citation settings"),
+    ]
+    runtime: Annotated[
+        RuntimeConfig,
+        Field(default_factory=RuntimeConfig, description="Build runtime controls"),
     ]
 
     @field_validator("registry", mode="before")

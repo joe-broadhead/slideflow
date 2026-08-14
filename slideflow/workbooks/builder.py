@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slideflow.ai.registry import create_provider as create_ai_provider
+from slideflow.data.connectors.dbt import prepare_dbt_sources
+from slideflow.runtime import BuildRuntimeContext
 from slideflow.utilities.config import ConfigLoader
 from slideflow.utilities.data_transforms import apply_data_transforms
 from slideflow.utilities.error_messages import redacted_error_line
@@ -203,10 +205,20 @@ def _history_summary_text(existing_text: str | None, generated_summary: str) -> 
 class WorkbookBuilder:
     """Build workbook artifacts from validated workbook configuration."""
 
-    def __init__(self, config: WorkbookConfig):
+    def __init__(
+        self,
+        config: WorkbookConfig,
+        runtime_context: Optional[BuildRuntimeContext] = None,
+    ):
         self.config = config
+        self.runtime_context = (
+            runtime_context
+            or BuildRuntimeContext.from_query_threads(config.runtime.query_threads)
+        )
         self.provider = WorkbookProviderFactory.create_provider(config.provider)
         self._summary_provider_cache: Dict[tuple[str, str], Any] = {}
+        for tab in config.workbook.tabs:
+            tab.data_source.bind_runtime_context(self.runtime_context)
 
     @classmethod
     def from_yaml(
@@ -224,8 +236,12 @@ class WorkbookBuilder:
         return cls(config)
 
     @classmethod
-    def from_config(cls, config: WorkbookConfig) -> "WorkbookBuilder":
-        return cls(config)
+    def from_config(
+        cls,
+        config: WorkbookConfig,
+        runtime_context: Optional[BuildRuntimeContext] = None,
+    ) -> "WorkbookBuilder":
+        return cls(config, runtime_context=runtime_context)
 
     def _build_tab_result(
         self,
@@ -434,6 +450,7 @@ class WorkbookBuilder:
         return "error" if has_errors else "success"
 
     def build(self, threads: int = 1) -> WorkbookBuildResult:
+        prepare_dbt_sources([tab.data_source for tab in self.config.workbook.tabs])
         workbook_id = self.provider.create_or_open_workbook(self.config.workbook.title)
         tab_results: List[WorkbookTabResult] = []
         summary_results: List[WorkbookSummaryResult] = []

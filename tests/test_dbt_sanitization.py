@@ -1,10 +1,13 @@
 import builtins
 import json
 import shutil
+import subprocess
+import sys
 import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -27,6 +30,8 @@ def _reset_dbt_caches() -> None:
     dbt_module._pending_cleanup_dirs.clear()
     dbt_module._manifest_index_cache.clear()
     dbt_module._manifest_index_inflight.clear()
+    dbt_module._compiled_project_coverage.clear()
+    dbt_module._selection_locks.clear()
 
 
 def _write_compiled_dbt_project(
@@ -53,6 +58,142 @@ def _write_compiled_dbt_project(
     }
     (project_dir / "target").mkdir(parents=True, exist_ok=True)
     (project_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+
+def test_prepare_models_batches_exact_sorted_selectors(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    invocations = []
+
+    def _fake_clone(_url, clone_dir, _branch):
+        (clone_dir / "target" / "compiled").mkdir(parents=True, exist_ok=True)
+        for name in ("model_a", "model_b"):
+            (clone_dir / "target" / "compiled" / f"{name}.sql").write_text(
+                f"select '{name}'"
+            )
+        manifest = {
+            "nodes": {
+                f"model.analytics.{name}": {
+                    "resource_type": "model",
+                    "alias": f"alias_{name}",
+                    "package_name": "analytics",
+                    "name": name,
+                    "compiled_path": f"target/compiled/{name}.sql",
+                }
+                for name in ("model_a", "model_b")
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(list(args))
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+    )
+
+    connector.prepare_models(
+        [
+            ("alias_model_b", None, None, None),
+            ("alias_model_a", None, None, None),
+            ("alias_model_a", None, None, None),
+        ]
+    )
+    assert [args[0] for args in invocations] == ["deps", "parse", "compile"]
+    compile_args = invocations[-1]
+    assert compile_args[compile_args.index("--select") + 1] == (
+        "analytics.model_a analytics.model_b"
+    )
+
+    assert connector.get_compiled_query("alias_model_a") == "select 'model_a'"
+    assert connector.get_compiled_query("alias_model_b") == "select 'model_b'"
+    assert [args[0] for args in invocations].count("compile") == 1
+
+
+@pytest.mark.integration
+def test_scoped_compile_ignores_unrelated_execute_time_failure(tmp_path):
+    try:
+        version("dbt-core")
+        version("dbt-duckdb")
+        version("gitpython")
+    except PackageNotFoundError:
+        pytest.skip("dbt and GitPython integration extras are not installed")
+
+    repo_dir = tmp_path / "source_repo"
+    models_dir = repo_dir / "models"
+    models_dir.mkdir(parents=True)
+    (repo_dir / "dbt_project.yml").write_text(
+        "name: analytics\nversion: '1.0'\nconfig-version: 2\n"
+        "profile: analytics\nmodel-paths: ['models']\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "profiles.yml").write_text(
+        "analytics:\n  target: dev\n  outputs:\n    dev:\n"
+        "      type: duckdb\n      path: warehouse.duckdb\n      threads: 1\n",
+        encoding="utf-8",
+    )
+    (models_dir / "ephemeral_parent.sql").write_text(
+        "{{ config(materialized='ephemeral') }} select 1 as value\n",
+        encoding="utf-8",
+    )
+    (models_dir / "model_a.sql").write_text(
+        "{{ config(alias='alias_a') }} "
+        "select * from {{ ref('ephemeral_parent') }}\n",
+        encoding="utf-8",
+    )
+    (models_dir / "model_b.sql").write_text(
+        "{{ config(alias='alias_b') }} select 2 as value\n",
+        encoding="utf-8",
+    )
+    (models_dir / "unrelated.sql").write_text(
+        "{% if execute %}{{ exceptions.raise_compiler_error('unrelated failure') }}"
+        "{% endif %} select 3 as value\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", str(repo_dir)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "config", "user.name", "Slideflow Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "commit", "-m", "fixture"],
+        check=True,
+        capture_output=True,
+    )
+
+    script = f"""
+from slideflow.data.connectors.dbt import DBTManifestConnector
+connector = DBTManifestConnector(
+    package_url={str(repo_dir)!r},
+    project_dir={str(tmp_path / 'workspace')!r},
+    target='dev',
+)
+connector.prepare_models([
+    ('alias_a', None, None, None),
+    ('alias_b', None, None, None),
+])
+print(connector.get_compiled_query('alias_a'))
+print(connector.get_compiled_query('alias_b'))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "select" in result.stdout.lower()
+    assert "select 2" in result.stdout.lower()
 
 
 def test_sanitize_git_url_redacts_embedded_credentials():
@@ -808,7 +949,7 @@ def test_manifest_lookup_reuses_manifest_index_for_repeated_queries(
 
     assert first == "select 1 as answer"
     assert second == "select 1 as answer"
-    assert load_calls == 1
+    assert load_calls == 2
 
 
 def test_manifest_index_is_rebuilt_when_cached_clone_dir_is_missing(

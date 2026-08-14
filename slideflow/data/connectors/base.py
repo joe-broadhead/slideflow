@@ -30,13 +30,15 @@ Example:
 
 import json
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from typing import Annotated, Any, ClassVar, Optional, Type
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from slideflow.citations import CitationEntry, fingerprint_text
 from slideflow.data.cache import get_data_cache
+from slideflow.runtime import BuildRuntimeContext, QueryConcurrencyController
 
 
 class DataConnector(ABC):
@@ -85,6 +87,21 @@ class DataConnector(ABC):
         ...     data = conn.fetch_data()
         ...     print(f"Fetched {len(data)} rows")
     """
+
+    _query_controller: Optional[QueryConcurrencyController] = None
+
+    def set_query_controller(
+        self, controller: Optional[QueryConcurrencyController]
+    ) -> None:
+        """Bind this connector to a build-scoped warehouse query controller."""
+        self._query_controller = controller
+
+    def warehouse_query_permit(self, backend: str):
+        """Return a permit context for a concrete warehouse operation."""
+        controller = getattr(self, "_query_controller", None)
+        if controller is None:
+            return nullcontext()
+        return controller.permit(backend)
 
     @abstractmethod
     def fetch_data(self) -> pd.DataFrame:
@@ -179,6 +196,19 @@ class SQLExecutor(ABC):
     results as a pandas DataFrame.
     """
 
+    _query_controller: Optional[QueryConcurrencyController] = None
+
+    def set_query_controller(
+        self, controller: Optional[QueryConcurrencyController]
+    ) -> None:
+        self._query_controller = controller
+
+    def configure_connector(self, connector: DataConnector) -> DataConnector:
+        bind = getattr(connector, "set_query_controller", None)
+        if callable(bind):
+            bind(self._query_controller)
+        return connector
+
     @abstractmethod
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL and return the resulting DataFrame."""
@@ -237,6 +267,18 @@ class BaseSourceConfig(BaseModel):
     connector_class: ClassVar[Type["DataConnector"]]
 
     model_config = ConfigDict(extra="forbid")
+    _runtime_context: Optional[BuildRuntimeContext] = PrivateAttr(default=None)
+
+    def bind_runtime_context(self, runtime_context: BuildRuntimeContext) -> None:
+        """Attach build-scoped controls without changing cache identity."""
+        self._runtime_context = runtime_context
+
+    def _configure_connector(self, connector: DataConnector) -> DataConnector:
+        controller = (
+            self._runtime_context.query_controller if self._runtime_context else None
+        )
+        connector.set_query_controller(controller)
+        return connector
 
     def get_connector(self) -> DataConnector:
         """Instantiate the connector from configuration parameters.
@@ -262,7 +304,7 @@ class BaseSourceConfig(BaseModel):
         kwargs = self.model_dump(
             include={f for f in type(self).model_fields if f not in ("type", "name")}
         )
-        return self.connector_class(**kwargs)
+        return self._configure_connector(self.connector_class(**kwargs))
 
     def fetch_data(self) -> pd.DataFrame:
         """Fetch data using the configured connector with caching.

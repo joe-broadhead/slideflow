@@ -42,6 +42,20 @@ Use one of:
 | `replacements` | `list` | no | `text`, `table`, `ai_text` specs |
 | `charts` | `list` | no | `plotly_go`, `template`, `custom` specs |
 
+## `runtime`
+
+Presentation and workbook configurations accept the same optional runtime block:
+
+```yaml
+runtime:
+  query_threads: 4
+```
+
+`query_threads` is a positive integer and defaults to `10`. It limits active
+warehouse SQL executions across the entire build process, independently from
+artifact/tab `--threads` and provider API `--rps`. A CLI `--query-threads`
+value overrides YAML for one invocation.
+
 ## `provider`
 
 ### `provider.type`
@@ -476,8 +490,12 @@ warehouse:
   type: "databricks"
 ```
 
-`dbt.compile: true` clones the repository, runs `dbt deps`, and runs
-`dbt compile`. Set `dbt.compile: false` only when `dbt.project_dir` already
+`dbt.compile: true` clones the repository, runs `dbt deps`, parses the project,
+resolves requested aliases to exact dbt nodes, and compiles the required nodes
+with one bounded `dbt compile --select` invocation per project batch. dbt still
+parses the full project; scoped compilation does not build or refresh upstream
+relations and does not add ancestor `+` selectors. Set `dbt.compile: false` only
+when `dbt.project_dir` already
 points at a compiled dbt project with `target/manifest.json` and the compiled
 SQL files referenced by that manifest; SlideFlow will not clone or invoke dbt in
 that mode.

@@ -256,20 +256,21 @@ class BigQueryConnector(DataConnector):
         """Execute SQL against BigQuery and return a DataFrame."""
         start_time = time.time()
         try:
-            client = self.connect()
-            query_start = time.time()
-            query_kwargs: dict[str, Any] = {}
-            if self.location:
-                query_kwargs["location"] = self.location
-            if self.timeout is not None:
-                query_kwargs["timeout"] = self.timeout
-            query_job = client.query(self.query, **query_kwargs)
-            if self.timeout is None:
-                result_df = query_job.to_dataframe()
-            else:
-                query_job.result(timeout=self.timeout)
-                result_df = query_job.to_dataframe(timeout=self.timeout)
-            query_duration = time.time() - query_start
+            with self.warehouse_query_permit("bigquery"):
+                client = self.connect()
+                query_start = time.time()
+                query_kwargs: dict[str, Any] = {}
+                if self.location:
+                    query_kwargs["location"] = self.location
+                if self.timeout is not None:
+                    query_kwargs["timeout"] = self.timeout
+                query_job = client.query(self.query, **query_kwargs)
+                if self.timeout is None:
+                    result_df = query_job.to_dataframe()
+                else:
+                    query_job.result(timeout=self.timeout)
+                    result_df = query_job.to_dataframe(timeout=self.timeout)
+                query_duration = time.time() - query_start
 
             total_duration = time.time() - start_time
             log_api_operation(
@@ -329,11 +330,14 @@ class BigQuerySQLExecutor(SQLExecutor):
 
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL via BigQueryConnector and return DataFrame results."""
-        return BigQueryConnector(
-            sql_query,
-            project_id=self.project_id,
-            location=self.location,
-            credentials_json=self.credentials_json,
-            credentials_path=self.credentials_path,
-            timeout=self.timeout,
-        ).fetch_data()
+        connector = self.configure_connector(
+            BigQueryConnector(
+                sql_query,
+                project_id=self.project_id,
+                location=self.location,
+                credentials_json=self.credentials_json,
+                credentials_path=self.credentials_path,
+                timeout=self.timeout,
+            )
+        )
+        return connector.fetch_data()

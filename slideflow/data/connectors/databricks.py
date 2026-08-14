@@ -347,11 +347,12 @@ class DatabricksConnector(DataConnector):
         """
         start_time = time.time()
         try:
-            with self.connect() as conn, conn.cursor() as cursor:
-                query_start = time.time()
-                cursor.execute(self.query)
-                result_df = cursor.fetchall_arrow().to_pandas()
-                query_duration = time.time() - query_start
+            with self.warehouse_query_permit("databricks"):
+                with self.connect() as conn, conn.cursor() as cursor:
+                    query_start = time.time()
+                    cursor.execute(self.query)
+                    result_df = cursor.fetchall_arrow().to_pandas()
+                    query_duration = time.time() - query_start
 
                 total_duration = time.time() - start_time
                 log_api_operation(
@@ -395,7 +396,8 @@ class DatabricksSQLExecutor(SQLExecutor):
 
     def execute(self, sql_query: str) -> pd.DataFrame:
         """Execute SQL via DatabricksConnector and return DataFrame results."""
-        return DatabricksConnector(sql_query).fetch_data()
+        connector = self.configure_connector(DatabricksConnector(sql_query))
+        return connector.fetch_data()
 
 
 class DatabricksSourceConfig(BaseSourceConfig):

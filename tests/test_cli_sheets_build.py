@@ -108,6 +108,12 @@ def test_sheets_build_writes_success_json(tmp_path, monkeypatch):
     assert payload["runtime"]["requests_per_second"]["requested"] is None
     assert payload["runtime"]["requests_per_second"]["applied"] == 1.0
     assert payload["runtime"]["requests_per_second"]["source"] == "provider_config"
+    assert payload["runtime"]["query_threads"] == {
+        "requested": None,
+        "applied": 10,
+        "source": "default",
+        "scope": "process",
+    }
     json_payload = json.loads(output_file.read_text(encoding="utf-8"))
     assert json_payload["command"] == "sheets build"
     assert json_payload["summary"]["workbook_id"] == "sheet_123"

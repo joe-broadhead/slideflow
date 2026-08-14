@@ -9,6 +9,7 @@ SlideFlow follows a feature-preservation policy for this program of work.
 3. Import namespace remains `slideflow`.
 4. CLI command remains `slideflow`.
 5. Existing feature surface stays supported.
+6. Supported pandas versions are `>=2.2,<4.0`; CI exercises pandas 2.2 and 3.x.
 
 ## Change rules
 

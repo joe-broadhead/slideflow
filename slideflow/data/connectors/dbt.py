@@ -58,7 +58,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Type
+from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Sequence, Type
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -108,6 +108,8 @@ _compiled_projects_in_use: dict[Path, int] = {}
 _pending_cleanup_dirs: set[Path] = set()
 _manifest_index_cache: dict[Path, "_ManifestIndex"] = {}
 _manifest_index_inflight: dict[Path, threading.Event] = {}
+_compiled_project_coverage: dict[tuple, frozenset[str]] = {}
+_selection_locks: dict[tuple, threading.Lock] = {}
 _cache_lock = threading.Lock()
 
 
@@ -567,6 +569,8 @@ def _prune_compiled_projects_cache_locked(max_entries: int) -> None:
 
             _compiled_projects_cache.pop(oldest_key, None)
             _compiled_projects_last_access.pop(oldest_key, None)
+            _compiled_project_coverage.pop(oldest_key, None)
+            _selection_locks.pop(oldest_key, None)
             _pending_cleanup_dirs.add(clone_dir)
             evicted = True
             break
@@ -652,6 +656,26 @@ def _build_clone_identity_key(
     ).hexdigest()[:16]
 
 
+def _project_cache_key(
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    target: str,
+    vars: Optional[dict[str, Any]],
+    profiles_dir: Optional[str],
+    profile_name: Optional[str],
+) -> tuple:
+    return (
+        package_url,
+        _canonical_project_dir(project_dir),
+        branch,
+        target,
+        json.dumps(vars or {}, sort_keys=True),
+        _canonical_profiles_dir(profiles_dir),
+        profile_name,
+    )
+
+
 def _resolve_managed_clone_dir(
     project_dir: str,
     package_url: str,
@@ -720,6 +744,7 @@ def _get_compiled_project(
     profile_name: Optional[str] = None,
     compile: bool = Defaults.DBT_COMPILE,
     acquire_lease: bool = False,
+    parse_only: bool = False,
 ) -> Path:
     """Get or create a compiled DBT project with caching.
 
@@ -764,12 +789,12 @@ def _get_compiled_project(
         )
 
     canonical_profiles_dir = _canonical_profiles_dir(profiles_dir)
-    cache_key = (
+    cache_key = _project_cache_key(
         package_url,
         canonical_project_dir,
         branch,
         target,
-        json.dumps(vars or {}, sort_keys=True),
+        vars,
         canonical_profiles_dir,
         profile_name,
     )
@@ -794,6 +819,7 @@ def _get_compiled_project(
                 _drop_manifest_index_locked(cached_dir)
                 _compiled_projects_cache.pop(cache_key, None)
                 _compiled_projects_last_access.pop(cache_key, None)
+                _compiled_project_coverage.pop(cache_key, None)
 
             failure_entry = _compilation_failures.get(cache_key)
             if failure_entry is not None:
@@ -876,9 +902,11 @@ def _get_compiled_project(
                 "dbt_deps", deps_duration, project=package_url, target=target
             )
 
-            # Log compilation
+            # Parse for scoped compilation discovery, or retain the legacy
+            # full-project compile path for internal/backward compatibility.
             compile_start = time.time()
-            args = ["compile", "--project-dir", str(clone_dir), "--target", target]
+            command = "parse" if parse_only else "compile"
+            args = [command, "--project-dir", str(clone_dir), "--target", target]
             if use_project_profiles_dir:
                 args.extend(["--profiles-dir", str(clone_dir)])
             if profile_name:
@@ -886,10 +914,11 @@ def _get_compiled_project(
             if vars:
                 args += ["--vars", json.dumps(vars)]
             compile_result = runner.invoke(args)
-            _ensure_dbt_invoke_success("compile", compile_result)
+            _ensure_dbt_invoke_success(command, compile_result)
+            _drop_manifest_index(clone_dir)
             compile_duration = time.time() - compile_start
             log_performance(
-                "dbt_compile",
+                f"dbt_{command}",
                 compile_duration,
                 project=package_url,
                 target=target,
@@ -910,6 +939,9 @@ def _get_compiled_project(
 
         with _cache_lock:
             _compiled_projects_cache[cache_key] = clone_dir
+            _compiled_project_coverage[cache_key] = (
+                frozenset() if parse_only else frozenset({"*"})
+            )
             _compiled_projects_last_access[cache_key] = time.time()
             _compilation_failures.pop(cache_key, None)
             _prune_compiled_projects_cache_locked(max_cache_entries)
@@ -923,6 +955,99 @@ def _get_compiled_project(
         return clone_dir
 
 
+def _ensure_selected_compilation(
+    *,
+    clone_dir: Path,
+    package_url: str,
+    project_dir: str,
+    branch: Optional[str],
+    target: str,
+    vars: Optional[dict[str, Any]],
+    profiles_dir: Optional[str],
+    profile_name: Optional[str],
+    selectors: tuple[str, ...],
+) -> None:
+    """Compile the deterministic union of requested selectors once per project."""
+    normalized = tuple(sorted(set(selectors)))
+    if not normalized:
+        return
+    cache_key = _project_cache_key(
+        package_url,
+        project_dir,
+        branch,
+        target,
+        vars,
+        profiles_dir,
+        profile_name,
+    )
+    with _cache_lock:
+        selection_lock = _selection_locks.setdefault(cache_key, threading.Lock())
+
+    with selection_lock:
+        with _cache_lock:
+            coverage = _compiled_project_coverage.get(cache_key, frozenset())
+        if "*" in coverage or set(normalized).issubset(coverage):
+            return
+
+        union = tuple(sorted(set(coverage).union(normalized)))
+        failure_key = cache_key + ("selected", union)
+        failure_backoff_s = _resolve_dbt_compile_failure_backoff_seconds()
+        failure_cache_max_entries = _resolve_dbt_failure_cache_max_entries()
+        with _cache_lock:
+            _prune_compilation_failures_locked(
+                max_entries=failure_cache_max_entries,
+                failure_backoff_s=failure_backoff_s,
+            )
+            failure_entry = _compilation_failures.get(failure_key)
+        if failure_entry is not None:
+            raise DataSourceError(failure_entry[1])
+
+        runner = _require_dbt_runner_class()()
+        args = [
+            "compile",
+            "--project-dir",
+            str(clone_dir),
+            "--target",
+            target,
+            "--select",
+            " ".join(union),
+        ]
+        project_profiles_path = clone_dir / "profiles.yml"
+        if profiles_dir or project_profiles_path.exists():
+            args.extend(["--profiles-dir", str(clone_dir)])
+        if profile_name:
+            args.extend(["--profile", profile_name])
+        if vars:
+            args.extend(["--vars", json.dumps(vars)])
+
+        started = time.time()
+        try:
+            result = runner.invoke(args)
+            _ensure_dbt_invoke_success("compile", result)
+            _drop_manifest_index(clone_dir)
+        except BaseException as error:
+            failure_message = str(error) or type(error).__name__
+            with _cache_lock:
+                _compilation_failures[failure_key] = (time.time(), failure_message)
+                _prune_compilation_failures_locked(
+                    max_entries=failure_cache_max_entries,
+                    failure_backoff_s=failure_backoff_s,
+                )
+            raise
+
+        log_performance(
+            "dbt_compile",
+            time.time() - started,
+            project=package_url,
+            target=target,
+            vars_count=len(vars) if vars else 0,
+            selection_count=len(union),
+        )
+        with _cache_lock:
+            _compiled_project_coverage[cache_key] = frozenset(union)
+            _compilation_failures.pop(failure_key, None)
+
+
 @contextmanager
 def _compiled_project_lease(
     package_url: str,
@@ -933,6 +1058,7 @@ def _compiled_project_lease(
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
     compile: bool = Defaults.DBT_COMPILE,
+    parse_only: bool = False,
 ) -> Iterator[Path]:
     """Acquire a temporary usage lease for a compiled DBT clone directory."""
     clone_dir = _get_compiled_project(
@@ -945,11 +1071,83 @@ def _compiled_project_lease(
         profile_name=profile_name,
         compile=compile,
         acquire_lease=True,
+        parse_only=parse_only,
     )
     try:
         yield clone_dir
     finally:
         _release_compiled_project_lease(clone_dir)
+
+
+def _resolve_model_from_index(
+    manifest_index: _ManifestIndex,
+    model_name: str,
+    *,
+    model_unique_id: Optional[str] = None,
+    model_package_name: Optional[str] = None,
+    model_selector_name: Optional[str] = None,
+) -> Optional[_ManifestNodeIndexEntry]:
+    candidates = list(manifest_index.by_alias.get(model_name, []))
+    if not candidates:
+        return None
+    selector_context = _format_selector_context(
+        model_unique_id=model_unique_id,
+        model_package_name=model_package_name,
+        model_name=model_selector_name,
+    )
+    if model_unique_id:
+        unique_candidate = manifest_index.by_unique_id.get(model_unique_id)
+        if unique_candidate is None:
+            raise DataSourceError(
+                f"No dbt node with unique_id '{model_unique_id}' for alias "
+                f"'{model_name}'."
+            )
+        if unique_candidate.alias != model_name:
+            raise DataSourceError(
+                f"unique_id '{model_unique_id}' resolved to alias "
+                f"'{unique_candidate.alias}', expected '{model_name}'."
+            )
+        candidates = [unique_candidate]
+    if model_package_name:
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.package_name == model_package_name
+        ]
+    if model_selector_name:
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.model_name == model_selector_name
+        ]
+    if not candidates:
+        raise DataSourceError(
+            f"No dbt model found for alias '{model_name}'{selector_context}."
+        )
+    if len(candidates) > 1:
+        rendered_candidates = ", ".join(
+            _format_manifest_candidate(candidate) for candidate in candidates
+        )
+        raise DataSourceError(
+            f"Ambiguous dbt model alias '{model_name}'. Provide one of "
+            "`model_unique_id`, `model_package_name`, or `model_selector_name` "
+            f"to disambiguate. Candidates: {rendered_candidates}"
+        )
+    return candidates[0]
+
+
+def _exact_selector(node: _ManifestNodeIndexEntry) -> str:
+    unique_id_parts = node.unique_id.split(".")
+    package_name = node.package_name
+    model_name = node.model_name
+    if len(unique_id_parts) >= 3:
+        package_name = package_name or unique_id_parts[-2]
+        model_name = model_name or unique_id_parts[-1]
+    if not model_name:
+        raise DataSourceError(
+            f"dbt node '{node.unique_id}' is missing a selector-compatible name."
+        )
+    return f"{package_name}.{model_name}" if package_name else model_name
 
 
 class DBTManifestConnector(BaseModel, DataConnector):
@@ -1002,6 +1200,64 @@ class DBTManifestConnector(BaseModel, DataConnector):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
+    def prepare_models(
+        self,
+        requests: Sequence[tuple[str, Optional[str], Optional[str], Optional[str]]],
+    ) -> None:
+        """Resolve and compile one exact, normalized model batch."""
+        if not self.compile or not requests:
+            return
+        with _compiled_project_lease(
+            package_url=self.package_url,
+            project_dir=self.project_dir,
+            branch=self.branch,
+            target=self.target,
+            vars=self.vars,
+            profiles_dir=self.profiles_dir,
+            profile_name=self.profile_name,
+            compile=True,
+            parse_only=True,
+        ) as clone_dir:
+            manifest_index = _get_manifest_index(clone_dir)
+            selections: list[_ManifestNodeIndexEntry] = []
+            for alias, unique_id, package_name, selector_name in requests:
+                selection = _resolve_model_from_index(
+                    manifest_index,
+                    alias,
+                    model_unique_id=unique_id,
+                    model_package_name=package_name,
+                    model_selector_name=selector_name,
+                )
+                if selection is None:
+                    raise DataSourceError(f"No dbt model found for alias '{alias}'.")
+                selections.append(selection)
+            selectors = tuple(_exact_selector(selection) for selection in selections)
+            _ensure_selected_compilation(
+                clone_dir=clone_dir,
+                package_url=self.package_url,
+                project_dir=self.project_dir,
+                branch=self.branch,
+                target=self.target,
+                vars=self.vars,
+                profiles_dir=self.profiles_dir,
+                profile_name=self.profile_name,
+                selectors=selectors,
+            )
+            refreshed = _get_manifest_index(clone_dir)
+            missing = []
+            for selection in selections:
+                compiled = refreshed.by_unique_id.get(selection.unique_id)
+                if compiled is None or compiled.compiled_path is None:
+                    missing.append(selection.unique_id)
+                    continue
+                if not (clone_dir / compiled.compiled_path).is_file():
+                    missing.append(selection.unique_id)
+            if missing:
+                raise DataSourceError(
+                    "Scoped dbt compilation omitted expected nodes: "
+                    + ", ".join(sorted(missing))
+                )
+
     def get_compiled_query(
         self,
         model_name: str,
@@ -1037,63 +1293,38 @@ class DBTManifestConnector(BaseModel, DataConnector):
             profiles_dir=self.profiles_dir,
             profile_name=self.profile_name,
             compile=self.compile,
+            parse_only=self.compile,
         ) as clone_dir:
             manifest_index = _get_manifest_index(clone_dir)
-            candidates = list(manifest_index.by_alias.get(model_name, []))
-            if not candidates:
-                return None
-
-            selector_context = _format_selector_context(
+            selected = _resolve_model_from_index(
+                manifest_index,
+                model_name,
                 model_unique_id=model_unique_id,
                 model_package_name=model_package_name,
-                model_name=model_selector_name,
+                model_selector_name=model_selector_name,
             )
-
-            if model_unique_id:
-                unique_candidate = manifest_index.by_unique_id.get(model_unique_id)
-                if unique_candidate is None:
+            if selected is None:
+                return None
+            if self.compile:
+                _ensure_selected_compilation(
+                    clone_dir=clone_dir,
+                    package_url=self.package_url,
+                    project_dir=self.project_dir,
+                    branch=self.branch,
+                    target=self.target,
+                    vars=self.vars,
+                    profiles_dir=self.profiles_dir,
+                    profile_name=self.profile_name,
+                    selectors=(_exact_selector(selected),),
+                )
+                refreshed_index = _get_manifest_index(clone_dir)
+                refreshed = refreshed_index.by_unique_id.get(selected.unique_id)
+                if refreshed is None:
                     raise DataSourceError(
-                        f"No dbt node with unique_id '{model_unique_id}'"
-                        f" for alias '{model_name}'."
+                        "Scoped dbt compilation did not retain expected node "
+                        f"'{selected.unique_id}' in manifest.json."
                     )
-                if unique_candidate.alias != model_name:
-                    raise DataSourceError(
-                        f"unique_id '{model_unique_id}' resolved to alias "
-                        f"'{unique_candidate.alias}', expected '{model_name}'."
-                    )
-                candidates = [unique_candidate]
-
-            if model_package_name:
-                candidates = [
-                    candidate
-                    for candidate in candidates
-                    if candidate.package_name == model_package_name
-                ]
-
-            if model_selector_name:
-                candidates = [
-                    candidate
-                    for candidate in candidates
-                    if candidate.model_name == model_selector_name
-                ]
-
-            if not candidates:
-                raise DataSourceError(
-                    f"No dbt model found for alias '{model_name}'{selector_context}."
-                )
-
-            if len(candidates) > 1:
-                rendered_candidates = ", ".join(
-                    _format_manifest_candidate(candidate) for candidate in candidates
-                )
-                raise DataSourceError(
-                    f"Ambiguous dbt model alias '{model_name}'. "
-                    "Provide one of `model_unique_id`, `model_package_name`, "
-                    "or `model_selector_name` to disambiguate. "
-                    f"Candidates: {rendered_candidates}"
-                )
-
-            selected = candidates[0]
+                selected = refreshed
             full = (
                 clone_dir / selected.compiled_path
                 if selected.compiled_path is not None
@@ -1211,7 +1442,11 @@ class _DBTWarehouseConnectorBase(BaseModel, DataConnector):
     def fetch_data(self) -> pd.DataFrame:
         """Compile DBT model and execute it on the configured warehouse."""
         sql_text = self._resolve_compiled_sql()
-        return self._create_sql_executor().execute(sql_text)
+        executor = self._create_sql_executor()
+        bind = getattr(executor, "set_query_controller", None)
+        if callable(bind):
+            bind(getattr(self, "_query_controller", None))
+        return executor.execute(sql_text)
 
 
 class DBTDatabricksConnector(_DBTWarehouseConnectorBase):
@@ -1720,93 +1955,101 @@ class DBTSourceConfig(BaseSourceConfig):
     def get_connector(self) -> DataConnector:
         """Resolve composable DBT config to a concrete connector."""
         if self.warehouse.type == "databricks":
-            return DBTDatabricksConnector(
-                model_alias=self.model_alias,
-                model_unique_id=self.model_unique_id,
-                model_package_name=self.model_package_name,
-                model_selector_name=self.model_selector_name,
-                package_url=self.dbt.package_url,
-                project_dir=self.dbt.project_dir,
-                profile_name=self.dbt.profile_name,
-                branch=self.dbt.branch,
-                target=self.dbt.target,
-                vars=self.dbt.vars,
-                compile=self.dbt.compile,
-                profiles_dir=self.dbt.profiles_dir,
+            return self._configure_connector(
+                DBTDatabricksConnector(
+                    model_alias=self.model_alias,
+                    model_unique_id=self.model_unique_id,
+                    model_package_name=self.model_package_name,
+                    model_selector_name=self.model_selector_name,
+                    package_url=self.dbt.package_url,
+                    project_dir=self.dbt.project_dir,
+                    profile_name=self.dbt.profile_name,
+                    branch=self.dbt.branch,
+                    target=self.dbt.target,
+                    vars=self.dbt.vars,
+                    compile=self.dbt.compile,
+                    profiles_dir=self.dbt.profiles_dir,
+                )
             )
         if self.warehouse.type == "bigquery":
-            return DBTBigQueryConnector(
-                model_alias=self.model_alias,
-                model_unique_id=self.model_unique_id,
-                model_package_name=self.model_package_name,
-                model_selector_name=self.model_selector_name,
-                package_url=self.dbt.package_url,
-                project_dir=self.dbt.project_dir,
-                profile_name=self.dbt.profile_name,
-                branch=self.dbt.branch,
-                target=self.dbt.target,
-                vars=self.dbt.vars,
-                compile=self.dbt.compile,
-                profiles_dir=self.dbt.profiles_dir,
-                project_id=self.warehouse.project_id,
-                location=self.warehouse.location,
-                credentials_json=self.warehouse.credentials_json,
-                credentials_path=self.warehouse.credentials_path,
-                timeout=self.warehouse.timeout,
+            return self._configure_connector(
+                DBTBigQueryConnector(
+                    model_alias=self.model_alias,
+                    model_unique_id=self.model_unique_id,
+                    model_package_name=self.model_package_name,
+                    model_selector_name=self.model_selector_name,
+                    package_url=self.dbt.package_url,
+                    project_dir=self.dbt.project_dir,
+                    profile_name=self.dbt.profile_name,
+                    branch=self.dbt.branch,
+                    target=self.dbt.target,
+                    vars=self.dbt.vars,
+                    compile=self.dbt.compile,
+                    profiles_dir=self.dbt.profiles_dir,
+                    project_id=self.warehouse.project_id,
+                    location=self.warehouse.location,
+                    credentials_json=self.warehouse.credentials_json,
+                    credentials_path=self.warehouse.credentials_path,
+                    timeout=self.warehouse.timeout,
+                )
             )
         if self.warehouse.type == "duckdb":
-            return DBTDuckDBConnector(
-                model_alias=self.model_alias,
-                model_unique_id=self.model_unique_id,
-                model_package_name=self.model_package_name,
-                model_selector_name=self.model_selector_name,
-                package_url=self.dbt.package_url,
-                project_dir=self.dbt.project_dir,
-                profile_name=self.dbt.profile_name,
-                branch=self.dbt.branch,
-                target=self.dbt.target,
-                vars=self.dbt.vars,
-                compile=self.dbt.compile,
-                profiles_dir=self.dbt.profiles_dir,
-                database=self.warehouse.database or ":memory:",
-                read_only=self.warehouse.read_only,
-                file_search_path=self.warehouse.file_search_path,
+            return self._configure_connector(
+                DBTDuckDBConnector(
+                    model_alias=self.model_alias,
+                    model_unique_id=self.model_unique_id,
+                    model_package_name=self.model_package_name,
+                    model_selector_name=self.model_selector_name,
+                    package_url=self.dbt.package_url,
+                    project_dir=self.dbt.project_dir,
+                    profile_name=self.dbt.profile_name,
+                    branch=self.dbt.branch,
+                    target=self.dbt.target,
+                    vars=self.dbt.vars,
+                    compile=self.dbt.compile,
+                    profiles_dir=self.dbt.profiles_dir,
+                    database=self.warehouse.database or ":memory:",
+                    read_only=self.warehouse.read_only,
+                    file_search_path=self.warehouse.file_search_path,
+                )
             )
         if self.warehouse.type == "redshift":
-            return DBTRedshiftConnector(
-                model_alias=self.model_alias,
-                model_unique_id=self.model_unique_id,
-                model_package_name=self.model_package_name,
-                model_selector_name=self.model_selector_name,
-                package_url=self.dbt.package_url,
-                project_dir=self.dbt.project_dir,
-                profile_name=self.dbt.profile_name,
-                branch=self.dbt.branch,
-                target=self.dbt.target,
-                vars=self.dbt.vars,
-                compile=self.dbt.compile,
-                profiles_dir=self.dbt.profiles_dir,
-                host=self.warehouse.host,
-                port=self.warehouse.port,
-                database=self.warehouse.database,
-                user=self.warehouse.user,
-                password=self.warehouse.password,
-                iam=self.warehouse.iam,
-                db_user=self.warehouse.db_user,
-                cluster_identifier=self.warehouse.cluster_identifier,
-                region=self.warehouse.region,
-                profile=self.warehouse.profile,
-                access_key_id=self.warehouse.access_key_id,
-                secret_access_key=self.warehouse.secret_access_key,
-                session_token=self.warehouse.session_token,
-                is_serverless=self.warehouse.is_serverless,
-                serverless_acct_id=self.warehouse.serverless_acct_id,
-                serverless_work_group=self.warehouse.serverless_work_group,
-                ssl=self.warehouse.ssl,
-                sslmode=self.warehouse.sslmode,
-                timeout=self.warehouse.timeout,
-                application_name=self.warehouse.application_name,
-                connection_options=self.warehouse.connection_options,
+            return self._configure_connector(
+                DBTRedshiftConnector(
+                    model_alias=self.model_alias,
+                    model_unique_id=self.model_unique_id,
+                    model_package_name=self.model_package_name,
+                    model_selector_name=self.model_selector_name,
+                    package_url=self.dbt.package_url,
+                    project_dir=self.dbt.project_dir,
+                    profile_name=self.dbt.profile_name,
+                    branch=self.dbt.branch,
+                    target=self.dbt.target,
+                    vars=self.dbt.vars,
+                    compile=self.dbt.compile,
+                    profiles_dir=self.dbt.profiles_dir,
+                    host=self.warehouse.host,
+                    port=self.warehouse.port,
+                    database=self.warehouse.database,
+                    user=self.warehouse.user,
+                    password=self.warehouse.password,
+                    iam=self.warehouse.iam,
+                    db_user=self.warehouse.db_user,
+                    cluster_identifier=self.warehouse.cluster_identifier,
+                    region=self.warehouse.region,
+                    profile=self.warehouse.profile,
+                    access_key_id=self.warehouse.access_key_id,
+                    secret_access_key=self.warehouse.secret_access_key,
+                    session_token=self.warehouse.session_token,
+                    is_serverless=self.warehouse.is_serverless,
+                    serverless_acct_id=self.warehouse.serverless_acct_id,
+                    serverless_work_group=self.warehouse.serverless_work_group,
+                    ssl=self.warehouse.ssl,
+                    sslmode=self.warehouse.sslmode,
+                    timeout=self.warehouse.timeout,
+                    application_name=self.warehouse.application_name,
+                    connection_options=self.warehouse.connection_options,
+                )
             )
         raise DataSourceError(f"Unsupported DBT warehouse type '{self.warehouse.type}'")
 
@@ -1850,3 +2093,45 @@ class DBTSourceConfig(BaseSourceConfig):
             },
             include_query_text=include_query_text,
         )
+
+
+def prepare_dbt_sources(sources: Sequence[BaseSourceConfig]) -> None:
+    """Batch-prepare dbt sources by normalized project identity."""
+    groups: dict[
+        tuple,
+        tuple[
+            DBTManifestConnector,
+            list[tuple[str, Optional[str], Optional[str], Optional[str]]],
+        ],
+    ] = {}
+    for source in sources:
+        if getattr(source, "type", None) not in {"dbt", "databricks_dbt"}:
+            continue
+        connector = source.get_connector()
+        if not isinstance(connector, _DBTWarehouseConnectorBase):
+            continue
+        manifest = (
+            connector._manifest_connector or connector._create_manifest_connector()
+        )
+        key = _project_cache_key(
+            manifest.package_url,
+            manifest.project_dir,
+            manifest.branch,
+            manifest.target,
+            manifest.vars,
+            manifest.profiles_dir,
+            manifest.profile_name,
+        ) + (manifest.compile,)
+        if key not in groups:
+            groups[key] = (manifest, [])
+        groups[key][1].append(
+            (
+                connector.model_alias,
+                connector.model_unique_id,
+                connector.model_package_name,
+                connector.model_selector_name,
+            )
+        )
+
+    for manifest, requests in groups.values():
+        manifest.prepare_models(requests)

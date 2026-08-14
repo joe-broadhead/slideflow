@@ -107,14 +107,18 @@ Frequent CI symptom:
 Frequent dbt model-resolution symptom:
 
 - `Ambiguous dbt model alias '...'`
+- `No dbt model found for alias '...'` or a missing compiled artifact after a
+  selected compile
 
 Fixes:
 
 - set `dbt.profiles_dir` in your `dbt` source config (or `profiles_dir` in legacy `databricks_dbt`), or
 - ensure `profiles.yml` exists at the dbt project root in the cloned repo.
-- if using `compile: false`, run `dbt deps` and `dbt compile` before SlideFlow
-  and point `project_dir` at that compiled project; SlideFlow expects
-  `target/manifest.json` and the selected node's compiled SQL file to exist.
+- if using `compile: false`, run `dbt deps` and `dbt compile` before SlideFlow,
+  point `project_dir` at that compiled project, and ensure
+  `target/manifest.json` references an existing compiled SQL file.
+- use `model_unique_id`, `model_package_name`, or `model_selector_name` when an
+  alias is ambiguous; SlideFlow converts the resolved node to an exact selector.
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.
