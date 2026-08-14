@@ -249,8 +249,13 @@ Behavior highlights:
 - The clone key covers repository, branch, and profile inputs. `target` and
   `vars` do not trigger another clone or `dbt deps` run.
 - Each unique `target`/`vars` combination writes to an isolated
-  `.slideflow_dbt_targets/<key>` directory inside the shared clone, preventing
-  one compile from overwriting another variant's manifest or compiled SQL.
+  `project_dir/.slideflow_dbt_targets/<workspace-key>/<variant-key>` directory.
+  This sibling tree prevents variants from overwriting each other and keeps
+  generated SQL outside the parsed dbt project, including for projects with
+  broad model paths such as `model-paths: ['.']`.
+- Managed artifact paths must be real contained directories. SlideFlow rejects
+  symlinks, non-directory collisions, and paths that resolve outside their
+  expected workspace before invoking dbt.
 - `project_dir` is treated as a workspace root, not a direct clone target.
 - Default `compile: true` runs `dbt deps`, parses the full project, resolves
   exact requested nodes, and runs one scoped `dbt compile --select` for the
@@ -412,8 +417,9 @@ disabled.
 Cache/compile tuning env vars:
 
 - `SLIDEFLOW_DATA_CACHE_MAX_ENTRIES` (global source cache cap)
-- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (bounds compiled variants and inactive
-  prepared workspaces; default from built-in constants)
+- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (bounds compiled variants under
+  `.slideflow_dbt_targets` and inactive prepared workspaces under
+  `.slideflow_dbt_clones`; default from built-in constants)
 - `SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S`
 - `SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES`
 

@@ -101,6 +101,8 @@ Common causes:
 - profile/target mismatch during dbt compile
 - a stale or externally deleted directory under `.slideflow_dbt_clones` or
   `.slideflow_dbt_targets`
+- a symlink or non-directory occupying a reserved path under
+  `.slideflow_dbt_targets`
 
 Frequent CI symptom:
 
@@ -124,6 +126,8 @@ Fixes:
 - keep sources that should share clone/dependency work on the same `project_dir`,
   `package_url`, branch, profiles path, and profile name. Different `vars` and
   targets are isolated automatically and do not require separate workspaces.
+- remove unexpected symlinks or files from `.slideflow_dbt_targets`; SlideFlow
+  intentionally fails closed rather than passing redirected paths to dbt.
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.

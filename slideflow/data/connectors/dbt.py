@@ -504,8 +504,11 @@ def _resolve_dbt_failure_cache_max_entries() -> int:
 
 def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
     """Best-effort removal of managed clone directories during cache eviction."""
+    workspace_root = clone_dir.parent.parent
+    workspace_artifact_dir = workspace_root / ".slideflow_dbt_targets" / clone_dir.name
     with _cache_lock:
         _drop_manifest_indexes_under_locked(clone_dir)
+        _drop_manifest_indexes_under_locked(workspace_artifact_dir)
     managed_root = clone_dir.parent
     if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
         clone_dir, managed_root
@@ -515,18 +518,28 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
         )
         return
 
-    if not clone_dir.exists():
-        return
-
     try:
-        shutil.rmtree(clone_dir)
-        workspace_log_dir = (
-            clone_dir.parent.parent / ".slideflow_dbt_logs" / clone_dir.name
+        if clone_dir.exists():
+            shutil.rmtree(clone_dir)
+        sibling_dirs = (
+            workspace_artifact_dir,
+            workspace_root / ".slideflow_dbt_logs" / clone_dir.name,
         )
-        if workspace_log_dir.exists() and _is_path_within(
-            workspace_log_dir, clone_dir.parent.parent / ".slideflow_dbt_logs"
-        ):
-            shutil.rmtree(workspace_log_dir)
+        for sibling_dir in sibling_dirs:
+            managed_root = sibling_dir.parent
+            if (
+                managed_root.is_symlink()
+                or (managed_root.exists() and not managed_root.is_dir())
+                or sibling_dir.is_symlink()
+                or not _is_path_within(sibling_dir, managed_root)
+            ):
+                logger.warning(
+                    "Refusing to delete unsafe managed DBT directory: %s",
+                    sibling_dir,
+                )
+                continue
+            if sibling_dir.exists():
+                shutil.rmtree(sibling_dir)
     except Exception as error:
         logger.warning(
             "Failed to remove evicted DBT clone directory '%s': %s", clone_dir, error
@@ -535,18 +548,19 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> None:
 
 def _cleanup_managed_compile_dir(compiled_dir: Path) -> None:
     """Best-effort removal of one managed dbt compile variant."""
-    _drop_manifest_index(compiled_dir)
     managed_root = compiled_dir.parent
-    clone_dir = managed_root.parent
     if (
-        managed_root.name != ".slideflow_dbt_targets"
-        or clone_dir.parent.name != ".slideflow_dbt_clones"
+        managed_root.parent.name != ".slideflow_dbt_targets"
+        or compiled_dir.is_symlink()
+        or managed_root.is_symlink()
+        or managed_root.parent.is_symlink()
         or not _is_path_within(compiled_dir, managed_root)
     ):
         logger.warning(
             "Refusing to delete unmanaged DBT compile directory: %s", compiled_dir
         )
         return
+    _drop_manifest_index(compiled_dir)
     if not compiled_dir.exists():
         return
     try:
@@ -561,11 +575,9 @@ def _cleanup_managed_compile_dir(compiled_dir: Path) -> None:
 
 def _source_clone_dir(compiled_dir: Path) -> Path:
     """Resolve the source clone for a managed compile variant."""
-    if (
-        compiled_dir.parent.name == ".slideflow_dbt_targets"
-        and compiled_dir.parent.parent.parent.name == ".slideflow_dbt_clones"
-    ):
-        return compiled_dir.parent.parent
+    if compiled_dir.parent.parent.name == ".slideflow_dbt_targets":
+        workspace_root = compiled_dir.parent.parent.parent
+        return workspace_root / ".slideflow_dbt_clones" / compiled_dir.parent.name
     return compiled_dir
 
 
@@ -632,7 +644,7 @@ def _collect_ready_cleanup_dirs_locked() -> tuple[list[Path], list[Path]]:
             continue
         _pending_workspace_cleanup_dirs.discard(clone_dir)
         for compiled_dir in list(_pending_cleanup_dirs):
-            if _is_path_within(compiled_dir, clone_dir):
+            if _source_clone_dir(compiled_dir) == clone_dir:
                 _pending_cleanup_dirs.discard(compiled_dir)
         ready_workspaces.append(clone_dir)
     return ready_compiles, ready_workspaces
@@ -776,6 +788,28 @@ def _ensure_dbt_invoke_success(command: str, invocation_result: Any) -> None:
         raise DataSourceError(f"dbt {command} failed.")
 
 
+def _optional_workspace_identity(value: Optional[str]) -> tuple[str, Optional[str]]:
+    """Encode optional identity values without colliding with literal sentinels."""
+    if value is None:
+        return ("absent", None)
+    return ("value", value)
+
+
+def _workspace_identity(
+    package_url: str,
+    branch: Optional[str],
+    profiles_dir: Optional[str] = None,
+    profile_name: Optional[str] = None,
+) -> tuple:
+    """Return the normalized identity shared by caches and physical paths."""
+    return (
+        package_url,
+        _optional_workspace_identity(branch or None),
+        _optional_workspace_identity(_canonical_profiles_dir(profiles_dir)),
+        _optional_workspace_identity(profile_name or None),
+    )
+
+
 def _build_clone_identity_key(
     package_url: str,
     branch: Optional[str],
@@ -784,20 +818,15 @@ def _build_clone_identity_key(
     profiles_dir: Optional[str] = None,
     profile_name: Optional[str] = None,
 ) -> str:
-    """Build a deterministic identity key for shared DBT workspaces.
+    """Build a deterministic directory key for a shared DBT workspace.
 
     ``target`` and ``vars`` remain accepted for internal compatibility but are
     deliberately excluded: they affect compilation artifacts, not repository
     checkout or dependency installation.
     """
-    payload = {
-        "package_url": package_url,
-        "branch": branch or "default",
-        "profiles_dir": profiles_dir or "",
-        "profile_name": profile_name or "",
-    }
+    identity = _workspace_identity(package_url, branch, profiles_dir, profile_name)
     return hashlib.sha1(
-        json.dumps(payload, sort_keys=True).encode("utf-8"),
+        json.dumps(identity, sort_keys=True).encode("utf-8"),
         usedforsecurity=False,
     ).hexdigest()[:16]
 
@@ -810,12 +839,8 @@ def _workspace_cache_key(
     profile_name: Optional[str],
 ) -> tuple:
     """Return the identity for clone and dependency preparation."""
-    return (
-        package_url,
-        _canonical_project_dir(project_dir),
-        branch,
-        _canonical_profiles_dir(profiles_dir),
-        profile_name,
+    return (_canonical_project_dir(project_dir),) + _workspace_identity(
+        package_url, branch, profiles_dir, profile_name
     )
 
 
@@ -890,15 +915,45 @@ def _resolve_managed_compile_dir(
     vars: Optional[dict[str, Any]],
 ) -> Path:
     """Resolve the isolated artifact root for one target/vars combination."""
-    managed_root = clone_dir / ".slideflow_dbt_targets"
-    if managed_root.is_symlink() or (
-        managed_root.exists() and not managed_root.is_dir()
-    ):
-        raise DataSourceError(
-            "Reserved DBT compile path must be a real directory: " f"{managed_root}"
-        )
+    clone_root = clone_dir.parent
+    if clone_root.name != ".slideflow_dbt_clones":
+        raise DataSourceError(f"Invalid managed DBT clone path: {clone_dir}")
+    managed_root = clone_root.parent / ".slideflow_dbt_targets" / clone_dir.name
     key = _build_compile_identity_key(target, vars)
     return managed_root / key
+
+
+def _validate_managed_compile_dir(
+    clone_dir: Path,
+    compiled_dir: Path,
+    *,
+    require_exists: bool,
+) -> None:
+    """Fail closed unless a compile path is a real contained managed directory."""
+    expected_dir = _resolve_managed_compile_dir(clone_dir, "identity-check", None)
+    managed_root = expected_dir.parent
+    target_root = managed_root.parent
+    if compiled_dir.parent != managed_root:
+        raise DataSourceError(f"Invalid managed DBT compile path: {compiled_dir}")
+
+    for directory in (target_root, managed_root, compiled_dir):
+        if directory.is_symlink():
+            raise DataSourceError(
+                f"Reserved DBT compile path must not be a symlink: {directory}"
+            )
+        if directory.exists() and not directory.is_dir():
+            raise DataSourceError(
+                f"Reserved DBT compile path must be a real directory: {directory}"
+            )
+
+    if not _is_path_within(compiled_dir, managed_root):
+        raise DataSourceError(
+            f"Reserved DBT compile path escapes its managed root: {compiled_dir}"
+        )
+    if require_exists and not compiled_dir.is_dir():
+        raise DataSourceError(
+            f"Reserved DBT compile path was not created safely: {compiled_dir}"
+        )
 
 
 def _resolve_existing_compiled_project_dir(
@@ -1015,12 +1070,6 @@ def _get_prepared_workspace(
             with _cache_lock:
                 _pending_workspace_cleanup_dirs.discard(clone_dir)
             _clone_repo(package_url, clone_dir, branch)
-            reserved_targets = clone_dir / ".slideflow_dbt_targets"
-            if reserved_targets.exists() or reserved_targets.is_symlink():
-                raise DataSourceError(
-                    "DBT repository contains reserved Slideflow path "
-                    f"{reserved_targets}. Remove it from the repository."
-                )
             _prepare_profiles(clone_dir, profiles_dir)
 
             runner = _require_dbt_runner_class()()
@@ -1121,6 +1170,11 @@ def _get_compiled_project(
             cached_dir = _compiled_projects_cache.get(cache_key)
             if cached_dir is not None:
                 if cached_dir.exists():
+                    _validate_managed_compile_dir(
+                        _source_clone_dir(cached_dir),
+                        cached_dir,
+                        require_exists=True,
+                    )
                     _compiled_projects_last_access[cache_key] = time.time()
                     if acquire_lease:
                         _acquire_compiled_project_lease_locked(cached_dir)
@@ -1161,11 +1215,20 @@ def _get_compiled_project(
             )
             workspace_leased = True
             compiled_dir = _resolve_managed_compile_dir(clone_dir, target, vars)
+            _validate_managed_compile_dir(clone_dir, compiled_dir, require_exists=False)
             with _cache_lock:
                 _pending_cleanup_dirs.discard(compiled_dir)
             if compiled_dir.exists():
                 _cleanup_managed_compile_dir(compiled_dir)
-            compiled_dir.mkdir(parents=True, exist_ok=True)
+                if compiled_dir.exists():
+                    raise DataSourceError(
+                        "Failed to safely reset managed DBT compile path: "
+                        f"{compiled_dir}"
+                    )
+            compiled_dir.parent.mkdir(parents=True, exist_ok=True)
+            _validate_managed_compile_dir(clone_dir, compiled_dir, require_exists=False)
+            compiled_dir.mkdir()
+            _validate_managed_compile_dir(clone_dir, compiled_dir, require_exists=True)
 
             runner = _require_dbt_runner_class()()
             compile_start = time.time()
@@ -1188,6 +1251,9 @@ def _get_compiled_project(
             if vars:
                 args += ["--vars", json.dumps(vars)]
             with _dbt_invocation_lock:
+                _validate_managed_compile_dir(
+                    clone_dir, compiled_dir, require_exists=True
+                )
                 compile_result = runner.invoke(args)
             _ensure_dbt_invoke_success(command, compile_result)
             _drop_manifest_index(compiled_dir)
@@ -1314,6 +1380,9 @@ def _ensure_selected_compilation(
         started = time.time()
         try:
             with _dbt_invocation_lock:
+                _validate_managed_compile_dir(
+                    source_dir, compiled_dir, require_exists=True
+                )
                 result = runner.invoke(args)
             _ensure_dbt_invoke_success("compile", result)
             _drop_manifest_index(compiled_dir)

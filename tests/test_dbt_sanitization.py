@@ -160,8 +160,7 @@ def test_scoped_compile_ignores_unrelated_execute_time_failure(tmp_path):
         encoding="utf-8",
     )
     (models_dir / "model_a.sql").write_text(
-        "{{ config(alias='alias_a') }} "
-        "select * from {{ ref('ephemeral_parent') }}\n",
+        "{{ config(alias='alias_a') }} select * from {{ ref('ephemeral_parent') }}\n",
         encoding="utf-8",
     )
     (models_dir / "model_b.sql").write_text(
@@ -193,7 +192,7 @@ def test_scoped_compile_ignores_unrelated_execute_time_failure(tmp_path):
 from slideflow.data.connectors.dbt import DBTManifestConnector
 connector = DBTManifestConnector(
     package_url={str(repo_dir)!r},
-    project_dir={str(tmp_path / 'workspace')!r},
+    project_dir={str(tmp_path / "workspace")!r},
     target='dev',
 )
 connector.prepare_models([
@@ -223,11 +222,11 @@ def test_multi_source_vars_share_workspace_and_isolate_artifacts(tmp_path):
         pytest.skip("dbt and GitPython integration extras are not installed")
 
     repo_dir = tmp_path / "source_repo"
-    models_dir = repo_dir / "models"
+    models_dir = repo_dir
     models_dir.mkdir(parents=True)
     (repo_dir / "dbt_project.yml").write_text(
         "name: analytics\nversion: '1.0'\nconfig-version: 2\n"
-        "profile: analytics\nmodel-paths: ['models']\n",
+        "profile: analytics\nmodel-paths: ['.']\n",
         encoding="utf-8",
     )
     (repo_dir / "profiles.yml").write_text(
@@ -290,7 +289,9 @@ payload = {{
 }}
 clones = list((workspace / '.slideflow_dbt_clones').iterdir())
 payload['clone_count'] = len(clones)
-payload['variant_count'] = len(list((clones[0] / '.slideflow_dbt_targets').iterdir()))
+variant_roots = list((workspace / '.slideflow_dbt_targets').iterdir())
+payload['variant_count'] = len(list(variant_roots[0].iterdir()))
+payload['artifacts_outside_clone'] = not variant_roots[0].is_relative_to(clones[0])
 print(json.dumps(payload))
 """
     result = subprocess.run(
@@ -302,6 +303,7 @@ print(json.dumps(payload))
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     assert payload["clone_count"] == 1
     assert payload["variant_count"] == 2
+    assert payload["artifacts_outside_clone"] is True
     assert all("'US' as region" in sql for sql in payload["US"])
     assert all("'CA' as region" in sql for sql in payload["CA"])
     assert "'a' as analysis" in payload["US"][0]
@@ -438,29 +440,34 @@ def test_resolve_managed_clone_dir_uses_managed_workspace(tmp_path):
     assert clone_dir.parent.exists()
 
 
-def test_get_compiled_project_rejects_reserved_target_path_from_repo(
+def test_get_compiled_project_allows_target_named_path_inside_repo(
     monkeypatch, tmp_path
 ):
     _reset_dbt_caches()
+    invocations = []
 
     def _fake_clone(_url, clone_dir, _branch):
         (clone_dir / ".slideflow_dbt_targets").mkdir(parents=True)
 
     class _Runner:
-        def invoke(self, _args):
-            raise AssertionError("dbt must not run for a reserved-path collision")
+        def invoke(self, args):
+            invocations.append(args)
+            return SimpleNamespace(success=True)
 
     monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
     monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
 
-    with pytest.raises(DataSourceError, match="reserved Slideflow path"):
-        dbt_module._get_compiled_project(
-            package_url="https://github.com/org/repo.git",
-            project_dir=str(tmp_path / "workspace"),
-            branch="main",
-            target="prod",
-            vars={"country": "US"},
-        )
+    compiled_dir = dbt_module._get_compiled_project(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        branch="main",
+        target="prod",
+        vars={"country": "US"},
+    )
+
+    assert [args[0] for args in invocations] == ["deps", "compile"]
+    assert compiled_dir.parent.parent.name == ".slideflow_dbt_targets"
+    assert ".slideflow_dbt_clones" not in compiled_dir.parts
 
 
 def test_resolve_managed_clone_dir_excludes_compile_variant_inputs(tmp_path):
@@ -518,6 +525,245 @@ def test_resolve_managed_clone_dir_excludes_compile_variant_inputs(tmp_path):
     ) != dbt_module._resolve_managed_compile_dir(
         baseline, "prod", {"as_of_date": "2026-02-19"}
     )
+
+
+def test_workspace_identity_distinguishes_absent_from_literal_defaults(tmp_path):
+    workspace = str(tmp_path / "workspace")
+    package_url = "https://github.com/org/repo.git"
+
+    absent_key = dbt_module._workspace_cache_key(
+        package_url, workspace, None, None, None
+    )
+    literal_key = dbt_module._workspace_cache_key(
+        package_url, workspace, "default", None, "default"
+    )
+    absent_dir = dbt_module._resolve_managed_clone_dir(workspace, package_url, None)
+    literal_dir = dbt_module._resolve_managed_clone_dir(
+        workspace, package_url, "default", profile_name="default"
+    )
+
+    assert absent_key != literal_key
+    assert absent_dir != literal_dir
+    assert (
+        dbt_module._workspace_cache_key(package_url, workspace, "", "", "")
+        == absent_key
+    )
+
+
+def test_concurrent_literal_default_and_absent_branch_use_distinct_workspaces(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_paths = []
+    clone_lock = threading.Lock()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        with clone_lock:
+            clone_paths.append(clone_dir)
+        clone_dir.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    def _worker(branch):
+        return dbt_module._get_compiled_project(
+            package_url="https://github.com/org/repo.git",
+            project_dir=str(tmp_path / "workspace"),
+            branch=branch,
+            target="prod",
+            vars=None,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        paths = list(executor.map(_worker, (None, "default")))
+
+    assert len(set(clone_paths)) == 2
+    assert dbt_module._source_clone_dir(paths[0]) != dbt_module._source_clone_dir(
+        paths[1]
+    )
+
+
+def test_managed_compile_dir_is_a_sibling_of_clone_tree(tmp_path):
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"),
+        "https://github.com/org/repo.git",
+        "main",
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(
+        clone_dir, "prod", {"country": "US"}
+    )
+
+    assert (
+        compiled_dir.parent.parent == tmp_path / "workspace" / ".slideflow_dbt_targets"
+    )
+    assert dbt_module._source_clone_dir(compiled_dir) == clone_dir
+    assert not compiled_dir.is_relative_to(clone_dir)
+
+
+def test_clone_cleanup_invalidates_sibling_manifest_indexes(tmp_path):
+    _reset_dbt_caches()
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"),
+        "https://github.com/org/repo.git",
+        "main",
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(
+        clone_dir, "prod", {"country": "US"}
+    )
+    clone_dir.mkdir(parents=True)
+    compiled_dir.mkdir(parents=True)
+    manifest_key = compiled_dir.resolve()
+    dbt_module._manifest_index_cache[manifest_key] = dbt_module._ManifestIndex({}, {})
+
+    dbt_module._cleanup_managed_clone_dir(clone_dir)
+
+    assert manifest_key not in dbt_module._manifest_index_cache
+    assert not clone_dir.exists()
+    assert not compiled_dir.exists()
+
+
+def test_clone_cleanup_does_not_follow_symlinked_artifact_namespace(tmp_path):
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"),
+        "https://github.com/org/repo.git",
+        "main",
+    )
+    clone_dir.mkdir(parents=True)
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve")
+    target_root = clone_dir.parent.parent / ".slideflow_dbt_targets"
+    target_root.symlink_to(external, target_is_directory=True)
+
+    dbt_module._cleanup_managed_clone_dir(clone_dir)
+
+    assert sentinel.read_text() == "preserve"
+    assert target_root.is_symlink()
+
+
+@pytest.mark.parametrize("symlink_level", ["namespace", "workspace", "variant"])
+def test_get_compiled_project_rejects_symlinked_artifact_paths(
+    monkeypatch, tmp_path, symlink_level
+):
+    _reset_dbt_caches()
+    workspace = tmp_path / "workspace"
+    package_url = "https://github.com/org/repo.git"
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(workspace), package_url, "main"
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(
+        clone_dir, "prod", {"country": "US"}
+    )
+    external = tmp_path / f"external-{symlink_level}"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve")
+
+    if symlink_level == "namespace":
+        compiled_dir.parent.parent.symlink_to(external, target_is_directory=True)
+    elif symlink_level == "workspace":
+        compiled_dir.parent.parent.mkdir()
+        compiled_dir.parent.symlink_to(external, target_is_directory=True)
+    else:
+        compiled_dir.parent.mkdir(parents=True)
+        compiled_dir.symlink_to(external, target_is_directory=True)
+
+    def _fake_clone(_url, path, _branch):
+        path.mkdir(parents=True)
+
+    invocations = []
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(args)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    with pytest.raises(DataSourceError, match="must not be a symlink"):
+        dbt_module._get_compiled_project(
+            package_url=package_url,
+            project_dir=str(workspace),
+            branch="main",
+            target="prod",
+            vars={"country": "US"},
+        )
+
+    assert [args[0] for args in invocations] == ["deps"]
+    assert sentinel.read_text() == "preserve"
+
+
+def test_cached_compile_path_rejects_symlink_replacement(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+    }
+    compiled_dir = dbt_module._get_compiled_project(**kwargs)
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve")
+    shutil.rmtree(compiled_dir)
+    compiled_dir.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(DataSourceError, match="must not be a symlink"):
+        dbt_module._get_compiled_project(**kwargs)
+
+    assert sentinel.read_text() == "preserve"
+
+
+def test_compile_stops_when_existing_variant_cannot_be_removed(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    workspace = str(tmp_path / "workspace")
+    package_url = "https://github.com/org/repo.git"
+    clone_dir = dbt_module._resolve_managed_clone_dir(workspace, package_url, "main")
+    compiled_dir = dbt_module._resolve_managed_compile_dir(clone_dir, "prod", None)
+    compiled_dir.mkdir(parents=True)
+
+    def _fake_clone(_url, path, _branch):
+        path.mkdir(parents=True)
+
+    invocations = []
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(args)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    monkeypatch.setattr(dbt_module.shutil, "rmtree", lambda _path: None)
+
+    with pytest.raises(DataSourceError, match="Failed to safely reset"):
+        dbt_module._get_compiled_project(
+            package_url=package_url,
+            project_dir=workspace,
+            branch="main",
+            target="prod",
+            vars=None,
+        )
+
+    assert [args[0] for args in invocations] == ["deps"]
 
 
 def test_get_compiled_project_reuses_clone_and_deps_across_isolated_vars(

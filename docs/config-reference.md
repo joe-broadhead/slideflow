@@ -494,8 +494,10 @@ warehouse:
 sharing the same repository, branch, workspace, and profile inputs. Every unique
 `target`/`vars` combination gets an isolated artifact directory, is parsed once,
 and compiles its requested aliases as one exact `dbt compile --select` batch.
-dbt still parses the full project; scoped compilation does not build or refresh
-upstream relations and does not add ancestor `+` selectors. Set
+Artifact directories live under `project_dir/.slideflow_dbt_targets`, outside
+the cloned project, so even broad dbt model paths cannot rediscover generated
+SQL. dbt still parses the full project; scoped compilation does not build or
+refresh upstream relations and does not add ancestor `+` selectors. Set
 `dbt.compile: false` only when `dbt.project_dir` already points at a compiled dbt
 project with `target/manifest.json` and the compiled SQL files referenced by that
 manifest; SlideFlow will not clone or invoke dbt in that mode.
