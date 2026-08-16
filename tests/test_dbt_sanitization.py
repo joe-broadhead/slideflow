@@ -24,15 +24,19 @@ from slideflow.utilities.exceptions import DataSourceError
 def _reset_dbt_caches() -> None:
     dbt_module._prepared_workspaces_cache.clear()
     dbt_module._prepared_workspaces_last_access.clear()
+    dbt_module._prepared_workspace_generations.clear()
     dbt_module._workspace_preparation_inflight.clear()
     dbt_module._prepared_workspaces_in_use.clear()
     dbt_module._pending_workspace_cleanup_dirs.clear()
     dbt_module._compiled_projects_cache.clear()
     dbt_module._compiled_projects_last_access.clear()
+    dbt_module._compiled_project_generations.clear()
     dbt_module._compilation_inflight.clear()
     dbt_module._compilation_failures.clear()
     dbt_module._compiled_projects_in_use.clear()
     dbt_module._pending_cleanup_dirs.clear()
+    dbt_module._cleanup_in_progress_dirs.clear()
+    dbt_module._cleanup_failures.clear()
     dbt_module._manifest_index_cache.clear()
     dbt_module._manifest_index_inflight.clear()
     dbt_module._compiled_project_coverage.clear()
@@ -818,6 +822,318 @@ def test_cached_compile_reprepares_externally_deleted_source_clone(
     assert invocations[-1][invocations[-1].index("--select") + 1] == (
         "model.project.new_selector"
     )
+
+
+def test_workspace_refresh_invalidates_every_compiled_variant(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    clone_generation = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        nonlocal clone_generation
+        clone_generation += 1
+        clone_dir.mkdir(parents=True)
+        (clone_dir / "generation.txt").write_text(str(clone_generation))
+
+    class _Runner:
+        def invoke(self, args):
+            if "--target-path" in args:
+                source = Path(args[args.index("--project-dir") + 1])
+                target_path = Path(args[args.index("--target-path") + 1])
+                target_path.mkdir(parents=True, exist_ok=True)
+                (target_path / "generation.txt").write_text(
+                    (source / "generation.txt").read_text()
+                )
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "parse_only": True,
+    }
+
+    us_path = dbt_module._get_compiled_project(vars={"country": "US"}, **kwargs)
+    ca_path = dbt_module._get_compiled_project(vars={"country": "CA"}, **kwargs)
+    ca_key = dbt_module._project_cache_key(
+        kwargs["package_url"],
+        kwargs["project_dir"],
+        kwargs["branch"],
+        kwargs["target"],
+        {"country": "CA"},
+        None,
+        None,
+    )
+    dbt_module._compiled_project_coverage[ca_key] = frozenset({"old.selector"})
+    source_dir = dbt_module._source_clone_dir(us_path)
+    shutil.rmtree(source_dir)
+
+    refreshed_us = dbt_module._get_compiled_project(vars={"country": "US"}, **kwargs)
+
+    assert ca_key not in dbt_module._compiled_projects_cache
+    assert ca_key not in dbt_module._compiled_project_coverage
+    assert not ca_path.exists()
+
+    refreshed_ca = dbt_module._get_compiled_project(vars={"country": "CA"}, **kwargs)
+    assert clone_generation == 2
+    assert (refreshed_us / "target" / "generation.txt").read_text() == "2"
+    assert (refreshed_ca / "target" / "generation.txt").read_text() == "2"
+
+
+def test_workspace_refresh_waits_for_active_sibling_variant_lease(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        nonlocal clone_calls
+        clone_calls += 1
+        clone_dir.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+    }
+    us_path = dbt_module._get_compiled_project(vars={"country": "US"}, **kwargs)
+    dbt_module._get_compiled_project(vars={"country": "CA"}, **kwargs)
+    refresh_finished = threading.Event()
+    refresh_errors = []
+
+    with dbt_module._compiled_project_lease(
+        vars={"country": "CA"}, **kwargs
+    ) as leased_ca:
+        shutil.rmtree(dbt_module._source_clone_dir(us_path))
+
+        def _refresh():
+            try:
+                dbt_module._get_compiled_project(vars={"country": "US"}, **kwargs)
+            except Exception as error:  # pragma: no cover - assertion helper path
+                refresh_errors.append(error)
+            finally:
+                refresh_finished.set()
+
+        refresh_thread = threading.Thread(target=_refresh)
+        refresh_thread.start()
+        assert not refresh_finished.wait(0.1)
+        assert leased_ca.exists()
+
+    refresh_thread.join(timeout=5)
+
+    assert refresh_finished.is_set()
+    assert refresh_errors == []
+    assert clone_calls == 2
+
+
+@pytest.mark.parametrize("child_name", ["target", "logs"])
+def test_selected_compile_rejects_concrete_output_symlink(
+    monkeypatch, tmp_path, child_name
+):
+    _reset_dbt_caches()
+    invocations: list[list[str]] = []
+
+    def _fake_clone(_url, clone_dir, _branch):
+        clone_dir.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(list(args))
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+        "parse_only": True,
+    }
+    compiled_dir = dbt_module._get_compiled_project(**kwargs)
+    child = compiled_dir / child_name
+    shutil.rmtree(child)
+    external = tmp_path / f"external-{child_name}"
+    external.mkdir()
+    child.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(DataSourceError, match="must not be a symlink"):
+        dbt_module._ensure_selected_compilation(
+            clone_dir=compiled_dir,
+            package_url=kwargs["package_url"],
+            project_dir=kwargs["project_dir"],
+            branch=kwargs["branch"],
+            target=kwargs["target"],
+            vars=kwargs["vars"],
+            profiles_dir=None,
+            profile_name=None,
+            selectors=("model.project.metrics",),
+        )
+
+    assert [args[0] for args in invocations] == ["deps", "parse"]
+
+
+def test_dbt_deps_rejects_concrete_log_symlink(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    workspace = str(tmp_path / "workspace")
+    package_url = "https://github.com/org/repo.git"
+    clone_dir = dbt_module._resolve_managed_clone_dir(workspace, package_url, "main")
+    deps_log = dbt_module._resolve_deps_log_dir(clone_dir)
+    deps_log.parent.mkdir(parents=True)
+    external = tmp_path / "external-deps"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve")
+    deps_log.symlink_to(external, target_is_directory=True)
+    invocations = []
+
+    def _fake_clone(_url, path, _branch):
+        path.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(args)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+
+    with pytest.raises(DataSourceError, match="must not be a symlink"):
+        dbt_module._get_compiled_project(
+            package_url=package_url,
+            project_dir=workspace,
+            branch="main",
+            target="prod",
+            vars=None,
+        )
+
+    assert invocations == []
+    assert sentinel.read_text() == "preserve"
+
+
+def test_prepared_workspace_marker_mismatch_reprepares_all_variants(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        nonlocal clone_calls
+        clone_calls += 1
+        clone_dir.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+    }
+    compiled_dir = dbt_module._get_compiled_project(**kwargs)
+    marker_path = dbt_module._prepared_marker_path(
+        dbt_module._source_clone_dir(compiled_dir)
+    )
+    marker = json.loads(marker_path.read_text())
+    marker["identity"] = "wrong-workspace"
+    marker_path.write_text(json.dumps(marker))
+
+    dbt_module._get_compiled_project(**kwargs)
+
+    assert clone_calls == 2
+
+
+def test_cleanup_reservation_blocks_reuse_until_deletion_finishes(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"),
+        "https://github.com/org/repo.git",
+        "main",
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(clone_dir, "prod", None)
+    compiled_dir.mkdir(parents=True)
+    started = threading.Event()
+    allow_delete = threading.Event()
+    real_rmtree = shutil.rmtree
+
+    def _blocking_rmtree(path):
+        if Path(path) == compiled_dir:
+            started.set()
+            assert allow_delete.wait(5)
+        real_rmtree(path)
+
+    monkeypatch.setattr(dbt_module.shutil, "rmtree", _blocking_rmtree)
+    with dbt_module._cache_lock:
+        dbt_module._pending_cleanup_dirs.add(compiled_dir)
+
+    cleanup_thread = threading.Thread(target=dbt_module._cleanup_ready_managed_dirs)
+    cleanup_thread.start()
+    assert started.wait(5)
+
+    waiter_finished = threading.Event()
+
+    def _waiter():
+        dbt_module._wait_for_managed_cleanup(compiled_dir, workspace=False)
+        waiter_finished.set()
+
+    waiter = threading.Thread(target=_waiter)
+    waiter.start()
+    assert not waiter_finished.wait(0.1)
+    allow_delete.set()
+    cleanup_thread.join(timeout=5)
+    waiter.join(timeout=5)
+
+    assert waiter_finished.is_set()
+    assert compiled_dir not in dbt_module._pending_cleanup_dirs
+    assert not compiled_dir.exists()
+
+
+def test_cleanup_failure_keeps_reservation_until_retry_succeeds(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"),
+        "https://github.com/org/repo.git",
+        "main",
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(clone_dir, "prod", None)
+    compiled_dir.mkdir(parents=True)
+    cleanup_attempts = 0
+    real_cleanup = dbt_module._cleanup_managed_compile_dir
+
+    def _flaky_cleanup(path):
+        nonlocal cleanup_attempts
+        cleanup_attempts += 1
+        if cleanup_attempts == 1:
+            return False
+        return real_cleanup(path)
+
+    monkeypatch.setattr(dbt_module, "_cleanup_managed_compile_dir", _flaky_cleanup)
+    with dbt_module._cache_lock:
+        dbt_module._pending_cleanup_dirs.add(compiled_dir)
+
+    dbt_module._wait_for_managed_cleanup(compiled_dir, workspace=False)
+
+    assert cleanup_attempts == 2
+    assert compiled_dir not in dbt_module._pending_cleanup_dirs
+    assert compiled_dir not in dbt_module._cleanup_failures
+    assert not compiled_dir.exists()
 
 
 def test_compile_stops_when_existing_variant_cannot_be_removed(monkeypatch, tmp_path):

@@ -30,8 +30,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   deduplicated models required by an artifact. Sources that differ only by
   `target` or `vars` now reuse one clone and dependency installation while
   writing manifests, compiled SQL, and logs to isolated sibling directories
-  outside the parsed dbt project. Managed paths reject symlinks and escaped
-  locations before dbt runs.
+  outside the parsed dbt project. Prepared generations invalidate sibling
+  variants together, cleanup remains lease-safe, and concrete dbt output paths
+  reject symlinks and escaped locations immediately before invocation.
 - Pandas compatibility now spans `>=2.2,<4.0`, with CI coverage for the oldest
   supported 2.2 release and the latest supported 3.x release.
 
