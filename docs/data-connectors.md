@@ -253,15 +253,22 @@ Behavior highlights:
   This sibling tree prevents variants from overwriting each other and keeps
   generated SQL outside the parsed dbt project, including for projects with
   broad model paths such as `model-paths: ['.']`.
+- A workspace-keyed filesystem lock under `project_dir/.slideflow_dbt_locks`
+  coordinates preparation, active artifact use, and cleanup across SlideFlow
+  processes. Threads in one process still share the existing lease and
+  single-flight coordination.
 - Managed artifact paths must be real contained directories. SlideFlow rejects
   symlinks, non-directory collisions, and paths that resolve outside their
   expected workspace. The concrete deps log, variant target, and variant log
   paths are revalidated immediately before every dbt invocation.
 - A private preparation marker is written after clone and `dbt deps` complete.
-  If the clone or marker is removed or changed, every cached target/vars variant
-  for that shared workspace is invalidated and rebuilt from one new generation.
+  Cache hits require a real `dbt_project.yml`, the same checked-out Git commit,
+  and the in-memory generation originally recorded for the marker. If any of
+  those values or the clone changes, every cached target/vars variant for that
+  shared workspace is invalidated and rebuilt from one new generation.
 - Evicted paths remain reserved until lease-safe cleanup finishes, preventing a
   concurrent request from recreating a directory that cleanup could later delete.
+  Cache bounds are checked again when active leases release.
 - `project_dir` is treated as a workspace root, not a direct clone target.
 - Default `compile: true` runs `dbt deps`, parses the full project, resolves
   exact requested nodes, and runs one scoped `dbt compile --select` for the

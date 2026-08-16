@@ -3162,6 +3162,7 @@ databricks = [
 dbt = [
     { name = "dbt-core" },
     { name = "dbt-databricks" },
+    { name = "filelock" },
     { name = "gitpython" },
 ]
 dev = [
@@ -3207,6 +3208,7 @@ requires-dist = [
     { name = "dbt-duckdb", marker = "extra == 'duckdb'", specifier = ">=1.9,<1.12" },
     { name = "dbt-redshift", marker = "extra == 'redshift'", specifier = ">=1.10,<1.12" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.5.3,<2.0" },
+    { name = "filelock", marker = "extra == 'dbt'", specifier = ">=3.20,<4.0" },
     { name = "gitpython", marker = "extra == 'dbt'", specifier = ">=3.1.58,<4.0" },
     { name = "google-api-python-client", specifier = ">=2.198.0,<3.0" },
     { name = "google-auth", specifier = ">=2.0,<3.0" },
