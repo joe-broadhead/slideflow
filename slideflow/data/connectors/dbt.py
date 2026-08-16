@@ -1033,7 +1033,7 @@ def _get_prepared_workspace(
             )
             cached_dir = _prepared_workspaces_cache.get(cache_key)
             if cached_dir is not None:
-                if cached_dir.exists():
+                if cached_dir.is_dir():
                     _prepared_workspaces_last_access[cache_key] = time.time()
                     if acquire_lease:
                         _acquire_prepared_workspace_lease_locked(cached_dir)
@@ -1169,9 +1169,10 @@ def _get_compiled_project(
             )
             cached_dir = _compiled_projects_cache.get(cache_key)
             if cached_dir is not None:
-                if cached_dir.exists():
+                source_dir = _source_clone_dir(cached_dir)
+                if cached_dir.is_dir() and source_dir.is_dir():
                     _validate_managed_compile_dir(
-                        _source_clone_dir(cached_dir),
+                        source_dir,
                         cached_dir,
                         require_exists=True,
                     )

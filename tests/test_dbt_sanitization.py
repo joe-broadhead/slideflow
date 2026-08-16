@@ -732,6 +732,94 @@ def test_cached_compile_path_rejects_symlink_replacement(monkeypatch, tmp_path):
     assert sentinel.read_text() == "preserve"
 
 
+def test_cached_compile_reprepares_externally_deleted_source_clone(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_calls = 0
+    invocations = []
+    project_dir_states = []
+
+    def _fake_clone(_url, clone_dir, _branch):
+        nonlocal clone_calls
+        clone_calls += 1
+        clone_dir.mkdir(parents=True)
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(list(args))
+            if "--project-dir" in args:
+                project_dir = Path(args[args.index("--project-dir") + 1])
+                project_dir_states.append(project_dir.is_dir())
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+        "vars": {"country": "US"},
+        "parse_only": True,
+    }
+
+    compiled_dir = dbt_module._get_compiled_project(**kwargs)
+    source_dir = dbt_module._source_clone_dir(compiled_dir)
+    dbt_module._ensure_selected_compilation(
+        clone_dir=compiled_dir,
+        package_url=kwargs["package_url"],
+        project_dir=kwargs["project_dir"],
+        branch=kwargs["branch"],
+        target=kwargs["target"],
+        vars=kwargs["vars"],
+        profiles_dir=None,
+        profile_name=None,
+        selectors=("model.project.existing_selector",),
+    )
+    shutil.rmtree(source_dir)
+
+    refreshed_dir = dbt_module._get_compiled_project(**kwargs)
+    cache_key = dbt_module._project_cache_key(
+        kwargs["package_url"],
+        kwargs["project_dir"],
+        kwargs["branch"],
+        kwargs["target"],
+        kwargs["vars"],
+        None,
+        None,
+    )
+    assert dbt_module._compiled_project_coverage[cache_key] == frozenset()
+    dbt_module._ensure_selected_compilation(
+        clone_dir=refreshed_dir,
+        package_url=kwargs["package_url"],
+        project_dir=kwargs["project_dir"],
+        branch=kwargs["branch"],
+        target=kwargs["target"],
+        vars=kwargs["vars"],
+        profiles_dir=None,
+        profile_name=None,
+        selectors=("model.project.new_selector",),
+    )
+
+    assert refreshed_dir == compiled_dir
+    assert source_dir.is_dir()
+    assert clone_calls == 2
+    assert [args[0] for args in invocations] == [
+        "deps",
+        "parse",
+        "compile",
+        "deps",
+        "parse",
+        "compile",
+    ]
+    assert all(project_dir_states)
+    assert str(source_dir) in invocations[-1]
+    assert invocations[-1][invocations[-1].index("--select") + 1] == (
+        "model.project.new_selector"
+    )
+
+
 def test_compile_stops_when_existing_variant_cannot_be_removed(monkeypatch, tmp_path):
     _reset_dbt_caches()
     workspace = str(tmp_path / "workspace")
