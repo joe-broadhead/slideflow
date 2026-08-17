@@ -1184,7 +1184,7 @@ def test_pending_workspace_cleanup_restarts_after_releasing_prepared_lease(
     monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
     monkeypatch.setattr(dbt_module, "_get_prepared_workspace", _inject_pending_cleanup)
     result: list[Path] = []
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
 
     def _worker():
         try:
@@ -1197,7 +1197,7 @@ def test_pending_workspace_cleanup_restarts_after_releasing_prepared_lease(
                     vars=None,
                 )
             )
-        except BaseException as error:  # pragma: no cover - assertion helper
+        except Exception as error:  # pragma: no cover - assertion helper
             errors.append(error)
 
     worker = threading.Thread(target=_worker)
@@ -1209,6 +1209,9 @@ def test_pending_workspace_cleanup_restarts_after_releasing_prepared_lease(
     assert len(result) == 1
     assert result[0].is_dir()
     assert dbt_module._prepared_workspaces_in_use == {}
+    assert dbt_module._compilation_inflight == {}
+    assert dbt_module._pending_workspace_cleanup_dirs == set()
+    assert dbt_module._pending_cleanup_dirs == set()
 
 
 @pytest.mark.parametrize("marker_payload", [[], "invalid", 7, None])
@@ -1441,13 +1444,13 @@ def test_workspace_failure_cleanup_finishes_before_retry_waiter_recreates_path(
         "target": "prod",
         "vars": None,
     }
-    first_errors: list[BaseException] = []
+    first_errors: list[Exception] = []
     retry_results: list[Path] = []
 
     def _first():
         try:
             dbt_module._get_compiled_project(**kwargs)
-        except BaseException as error:  # pragma: no cover - assertion helper
+        except Exception as error:  # pragma: no cover - assertion helper
             first_errors.append(error)
 
     def _retry():
@@ -1472,6 +1475,10 @@ def test_workspace_failure_cleanup_finishes_before_retry_waiter_recreates_path(
     assert clone_calls == 2
     assert len(retry_results) == 1
     assert retry_results[0].is_dir()
+    assert dbt_module._workspace_preparation_inflight == {}
+    assert dbt_module._compilation_inflight == {}
+    assert dbt_module._prepared_workspaces_in_use == {}
+    assert dbt_module._pending_workspace_cleanup_dirs == set()
 
 
 def test_compile_failure_cleanup_finishes_before_retry_waiter_reuses_variant(
@@ -1515,13 +1522,13 @@ def test_compile_failure_cleanup_finishes_before_retry_waiter_reuses_variant(
         "target": "prod",
         "vars": None,
     }
-    first_errors: list[BaseException] = []
+    first_errors: list[Exception] = []
     retry_results: list[Path] = []
 
     def _first():
         try:
             dbt_module._get_compiled_project(**kwargs)
-        except BaseException as error:  # pragma: no cover - assertion helper
+        except Exception as error:  # pragma: no cover - assertion helper
             first_errors.append(error)
 
     def _retry():
@@ -1546,6 +1553,9 @@ def test_compile_failure_cleanup_finishes_before_retry_waiter_reuses_variant(
     assert compile_calls == 2
     assert len(retry_results) == 1
     assert retry_results[0].is_dir()
+    assert dbt_module._compilation_inflight == {}
+    assert dbt_module._prepared_workspaces_in_use == {}
+    assert dbt_module._pending_cleanup_dirs == set()
 
 
 def test_compile_stops_when_existing_variant_cannot_be_removed(monkeypatch, tmp_path):

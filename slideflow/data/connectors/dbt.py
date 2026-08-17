@@ -662,6 +662,35 @@ def _release_prepared_workspace_lease_locked(clone_dir: Path) -> None:
     _cache_condition.notify_all()
 
 
+def _finalize_prepared_workspace_use_locked(
+    clone_dir: Optional[Path],
+    *,
+    lease_acquired: bool,
+    max_cache_entries: int,
+) -> None:
+    """Release compilation workspace state and re-apply cache bounds.
+
+    Requires caller to hold ``_cache_lock``.
+    """
+    if lease_acquired:
+        if clone_dir is None:
+            raise RuntimeError("Prepared DBT workspace lease has no clone directory")
+        _release_prepared_workspace_lease_locked(clone_dir)
+    _prune_compiled_projects_cache_locked(max_cache_entries)
+    _prune_prepared_workspaces_cache_locked(max_cache_entries)
+
+
+def _finish_compilation_owner_locked(cache_key: tuple) -> None:
+    """Release compilation ownership and wake all local waiters.
+
+    Requires caller to hold ``_cache_lock``.
+    """
+    event = _compilation_inflight.pop(cache_key, None)
+    if event is not None:
+        event.set()
+    _cache_condition.notify_all()
+
+
 def _workspace_has_compiled_references_locked(clone_dir: Path) -> bool:
     """Return whether cached or leased compile variants use a workspace."""
     for compiled_dir in _compiled_projects_cache.values():
@@ -1706,14 +1735,14 @@ def _get_compiled_project_unlocked(
                     or compiled_dir in _pending_cleanup_dirs
                 )
                 if cleanup_became_pending:
-                    _release_prepared_workspace_lease_locked(clone_dir)
-                    workspace_leased = False
+                    _finalize_prepared_workspace_use_locked(
+                        clone_dir,
+                        lease_acquired=True,
+                        max_cache_entries=max_cache_entries,
+                    )
+                    _finish_compilation_owner_locked(cache_key)
             if cleanup_became_pending:
                 _cleanup_ready_managed_dirs()
-                with _cache_lock:
-                    event = _compilation_inflight.pop(cache_key, None)
-                    if event is not None:
-                        event.set()
                 continue
             workspace_generation = _validate_prepared_workspace(
                 clone_dir, workspace_key
@@ -1782,12 +1811,11 @@ def _get_compiled_project_unlocked(
                 )
                 if compiled_dir is not None:
                     _pending_cleanup_dirs.add(compiled_dir)
-                if workspace_leased and clone_dir is not None:
-                    _release_prepared_workspace_lease_locked(clone_dir)
-                    workspace_leased = False
-                _prune_compiled_projects_cache_locked(max_cache_entries)
-                _prune_prepared_workspaces_cache_locked(max_cache_entries)
-                _cache_condition.notify_all()
+                _finalize_prepared_workspace_use_locked(
+                    clone_dir,
+                    lease_acquired=workspace_leased,
+                    max_cache_entries=max_cache_entries,
+                )
             try:
                 if compiled_dir is not None:
                     _cleanup_ready_managed_dirs()
@@ -1798,10 +1826,7 @@ def _get_compiled_project_unlocked(
                 pass
             finally:
                 with _cache_lock:
-                    event = _compilation_inflight.pop(cache_key, None)
-                    if event is not None:
-                        event.set()
-                    _cache_condition.notify_all()
+                    _finish_compilation_owner_locked(cache_key)
             raise
 
         assert compiled_dir is not None
@@ -1831,14 +1856,12 @@ def _get_compiled_project_unlocked(
                 _compilation_failures.pop(failure_key, None)
                 if acquire_lease:
                     _acquire_compiled_project_lease_locked(compiled_dir)
-                _prune_compiled_projects_cache_locked(max_cache_entries)
-            if workspace_leased and clone_dir is not None:
-                _release_prepared_workspace_lease_locked(clone_dir)
-            _prune_compiled_projects_cache_locked(max_cache_entries)
-            _prune_prepared_workspaces_cache_locked(max_cache_entries)
-            event = _compilation_inflight.pop(cache_key, None)
-            if event is not None:
-                event.set()
+            _finalize_prepared_workspace_use_locked(
+                clone_dir,
+                lease_acquired=workspace_leased,
+                max_cache_entries=max_cache_entries,
+            )
+            _finish_compilation_owner_locked(cache_key)
         _cleanup_ready_managed_dirs()
 
         if stale_generation:
