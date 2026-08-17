@@ -106,8 +106,8 @@ Frequent CI symptom:
 
 Frequent dbt model-resolution symptom:
 
-- `Ambiguous dbt model alias '...'`
-- `No dbt model found for alias '...'` or a missing compiled artifact after a
+- `Ambiguous dbt model identifier '...'`
+- `No dbt model found for identifier '...'` or a missing compiled artifact after a
   selected compile
 
 Fixes:
@@ -117,13 +117,18 @@ Fixes:
 - if using `compile: false`, run `dbt deps` and `dbt compile` before SlideFlow,
   point `project_dir` at that compiled project, and ensure
   `target/manifest.json` references an existing compiled SQL file.
+- set `model_alias` to the stable dbt node name when target-specific macros
+  transform the compiled alias; the field name is retained for config
+  compatibility and legacy exact aliases remain supported.
 - use `model_unique_id`, `model_package_name`, or `model_selector_name` when an
-  alias is ambiguous; SlideFlow converts the resolved node to an exact selector.
+  identifier is ambiguous; SlideFlow converts the resolved node to an exact
+  selector. This also resolves the fail-closed case where the same identifier
+  matches one node by name and a different node by alias.
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.
 
-If alias ambiguity occurs, add one of these selectors in your source config:
+If model identifier ambiguity occurs, add one of these selectors in your source config:
 
 - `model_unique_id` (most specific)
 - `model_package_name`

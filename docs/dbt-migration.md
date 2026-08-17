@@ -128,7 +128,7 @@ Redshift execution (`warehouse.type: redshift`):
 
 ## Common Migration Errors
 
-- `Ambiguous dbt model alias ...`
+- `Ambiguous dbt model identifier ...`
   - Add `model_unique_id`, `model_package_name`, or `model_selector_name`.
 - `dbt compile failed: Path '/home/runner/.dbt' does not exist`
   - Set `dbt.profiles_dir` or ensure `profiles.yml` exists in dbt project root.

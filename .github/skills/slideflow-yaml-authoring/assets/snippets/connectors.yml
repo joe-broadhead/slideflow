@@ -26,7 +26,8 @@ redshift_sql:
 dbt_preferred:
   type: "dbt"
   name: "dbt_model"
-  model_alias: "slide__revenue_model"
+  # Historical field name; prefer the stable dbt node.name here.
+  model_alias: "revenue_model"
   dbt:
     package_url: "https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git"
     project_dir: "/tmp/dbt_project"
@@ -40,7 +41,7 @@ dbt_preferred:
 dbt_redshift:
   type: "dbt"
   name: "dbt_model_redshift"
-  model_alias: "slide__revenue_model"
+  model_alias: "revenue_model"
   dbt:
     package_url: "https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git"
     project_dir: "/tmp/dbt_project"
@@ -55,7 +56,7 @@ dbt_redshift:
 databricks_dbt_legacy:
   type: "databricks_dbt"
   name: "dbt_model_legacy"
-  model_alias: "slide__revenue_model"
+  model_alias: "revenue_model"
   package_url: "https://$DBT_GIT_TOKEN@github.com/org/dbt-project.git"
   project_dir: "/tmp/dbt_project"
   branch: "main"

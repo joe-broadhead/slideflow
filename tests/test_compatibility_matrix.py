@@ -22,6 +22,7 @@ from slideflow.data.connectors import (
     JSONSourceConfig,
     RedshiftSourceConfig,
 )
+from slideflow.presentations.builder import PresentationBuilder
 from slideflow.presentations.charts import (
     ChartUnion,
     CustomChart,
@@ -34,6 +35,7 @@ from slideflow.replacements import (
     TableReplacement,
     TextReplacement,
 )
+from slideflow.workbooks.config import WorkbookTabSpec
 
 
 def test_public_identity_contracts_remain_stable():
@@ -121,6 +123,45 @@ def test_data_connector_matrix_remains_supported(payload, expected_type):
     parsed = adapter.validate_python(payload)
 
     assert isinstance(parsed, expected_type)
+
+
+def test_dbt_identity_selectors_survive_slide_and_workbook_config_building():
+    dbt_source = {
+        "type": "dbt",
+        "name": "source_dbt_composable",
+        "model_alias": "monthly_revenue",
+        "model_unique_id": "model.analytics.monthly_revenue",
+        "model_package_name": "analytics",
+        "model_selector_name": "monthly_revenue",
+        "dbt": {
+            "package_url": "https://github.com/example/dbt-project.git",
+            "project_dir": "/tmp/dbt_project",
+            "target": "dev",
+        },
+        "warehouse": {"type": "databricks"},
+    }
+
+    table = TypeAdapter(ReplacementUnion).validate_python(
+        {"type": "table", "prefix": "TABLE_", "data_source": dbt_source}
+    )
+    chart_source = PresentationBuilder._build_data_source(dbt_source)
+    chart = TypeAdapter(ChartUnion).validate_python(
+        {
+            "type": "plotly_go",
+            "traces": [{"type": "bar", "x": [1], "y": [2]}],
+            "data_source": chart_source,
+        }
+    )
+    workbook_tab = WorkbookTabSpec.model_validate(
+        {"name": "Metrics", "data_source": dbt_source}
+    )
+
+    for parsed in (table.data_source, chart.data_source, workbook_tab.data_source):
+        assert isinstance(parsed, DBTSourceConfig)
+        assert parsed.model_alias == "monthly_revenue"
+        assert parsed.model_unique_id == "model.analytics.monthly_revenue"
+        assert parsed.model_package_name == "analytics"
+        assert parsed.model_selector_name == "monthly_revenue"
 
 
 @pytest.mark.parametrize(

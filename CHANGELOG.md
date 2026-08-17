@@ -73,6 +73,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- dbt-backed slide and workbook configs now resolve models by stable manifest
+  node name before falling back to legacy compiled aliases, so target-dependent
+  alias macros no longer break model lookup. Name/alias collisions fail closed
+  with explicit selector guidance instead of silently changing the selected SQL.
 - Data-source cache reads now return isolated `DataFrame` copies, table
   formatting avoids mutating shared source frames, and cache `clear()`/`disable()`
   wake in-flight waiters without allowing stale loads to refill the cache.

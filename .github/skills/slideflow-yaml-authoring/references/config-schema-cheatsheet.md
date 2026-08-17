@@ -113,7 +113,8 @@ registry: []
 data_source:
   type: dbt
   name: dbt_model
-  model_alias: slide__example_model
+  # Historical field name; prefer the stable dbt node.name here.
+  model_alias: example_model
   dbt:
     package_url: https://$DBT_GIT_TOKEN@github.com/org/repo.git
     project_dir: /tmp/dbt_project
@@ -131,7 +132,8 @@ Preferred Redshift warehouse variant:
 data_source:
   type: dbt
   name: dbt_model_redshift
-  model_alias: slide__example_model
+  # Exact compiled aliases are also accepted for legacy configs.
+  model_alias: example_model
   dbt:
     package_url: https://$DBT_GIT_TOKEN@github.com/org/repo.git
     project_dir: /tmp/dbt_project

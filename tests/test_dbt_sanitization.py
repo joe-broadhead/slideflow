@@ -34,6 +34,11 @@ def _reset_dbt_caches() -> None:
     dbt_module._selection_locks.clear()
 
 
+def _write_fake_dbt_project(project_dir: Path) -> None:
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "dbt_project.yml").write_text("name: test_project\nversion: '1.0'\n")
+
+
 def _write_compiled_dbt_project(
     project_dir: Path,
     *,
@@ -194,6 +199,84 @@ print(connector.get_compiled_query('alias_b'))
     )
     assert "select" in result.stdout.lower()
     assert "select 2" in result.stdout.lower()
+
+
+@pytest.mark.integration
+def test_target_dependent_alias_macro_resolves_stable_model_name(tmp_path):
+    try:
+        version("dbt-core")
+        version("dbt-duckdb")
+        version("gitpython")
+    except PackageNotFoundError:
+        pytest.skip("dbt and GitPython integration extras are not installed")
+
+    repo_dir = tmp_path / "source_repo"
+    models_dir = repo_dir / "models"
+    macros_dir = repo_dir / "macros"
+    models_dir.mkdir(parents=True)
+    macros_dir.mkdir()
+    (repo_dir / "dbt_project.yml").write_text(
+        "name: analytics\nversion: '1.0'\nconfig-version: 2\n"
+        "profile: analytics\nmodel-paths: ['models']\nmacro-paths: ['macros']\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "profiles.yml").write_text(
+        "analytics:\n  target: dev\n  outputs:\n    dev:\n"
+        f"      type: duckdb\n      path: {tmp_path / 'warehouse.duckdb'}\n"
+        "      threads: 1\n",
+        encoding="utf-8",
+    )
+    (macros_dir / "generate_alias_name.sql").write_text(
+        "{% macro generate_alias_name(custom_alias_name=none, node=none) -%}\n"
+        "  {%- set base_name = custom_alias_name | trim "
+        "if custom_alias_name is not none else node.name -%}\n"
+        "  {%- if target.name == 'dev' -%}\n"
+        "    dev_cesar_{{ base_name }}\n"
+        "  {%- else -%}\n"
+        "    {{ base_name }}\n"
+        "  {%- endif -%}\n"
+        "{%- endmacro %}\n",
+        encoding="utf-8",
+    )
+    (models_dir / "monthly_revenue.sql").write_text(
+        "select 1 as revenue\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "init", str(repo_dir)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "config", "user.name", "Slideflow Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "commit", "-m", "fixture"],
+        check=True,
+        capture_output=True,
+    )
+
+    script = f"""
+from slideflow.data.connectors.dbt import DBTManifestConnector
+connector = DBTManifestConnector(
+    package_url={str(repo_dir)!r},
+    project_dir={str(tmp_path / 'workspace')!r},
+    target='dev',
+)
+model = connector.get_compiled_model_info('monthly_revenue')
+print(model.alias)
+print(model.sql_text)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "dev_cesar_monthly_revenue" in result.stdout
+    assert "select 1 as revenue" in result.stdout.lower()
 
 
 def test_sanitize_git_url_redacts_embedded_credentials():
@@ -839,8 +922,160 @@ def test_manifest_lookup_ambiguous_alias_requires_disambiguation(monkeypatch, tm
         vars={"country": "US"},
     )
 
-    with pytest.raises(DataSourceError, match="Ambiguous dbt model alias"):
+    with pytest.raises(DataSourceError, match="Ambiguous dbt model identifier"):
         connector.get_compiled_query("metrics_model")
+
+
+@pytest.mark.parametrize("resource_type", ["model", "analysis"])
+def test_manifest_lookup_prefers_stable_name_over_target_dependent_alias(
+    monkeypatch, tmp_path, resource_type
+):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        _write_fake_dbt_project(clone_dir)
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "metrics.sql").write_text("select 1 as answer")
+        manifest = {
+            "nodes": {
+                f"{resource_type}.analytics.metrics": {
+                    "resource_type": resource_type,
+                    "alias": "dev_cesar_metrics",
+                    "package_name": "analytics",
+                    "name": "metrics",
+                    "compiled_path": "target/metrics.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        target="dev",
+    )
+
+    model_info = connector.get_compiled_model_info("metrics")
+
+    assert model_info is not None
+    assert model_info.sql_text == "select 1 as answer"
+    assert model_info.unique_id == f"{resource_type}.analytics.metrics"
+    assert model_info.model_name == "metrics"
+    assert model_info.alias == "dev_cesar_metrics"
+
+
+@pytest.mark.parametrize(
+    ("selector_kwargs", "expected_sql"),
+    [
+        ({"model_unique_id": "model.pkg_b.metrics_eu"}, "select 'EU'"),
+        ({"model_selector_name": "metrics_eu"}, "select 'EU'"),
+    ],
+)
+def test_manifest_stable_selectors_do_not_depend_on_configured_alias(
+    monkeypatch, tmp_path, selector_kwargs, expected_sql
+):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        _write_fake_dbt_project(clone_dir)
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "eu.sql").write_text("select 'EU'")
+        manifest = {
+            "nodes": {
+                "model.pkg_b.metrics_eu": {
+                    "resource_type": "model",
+                    "alias": "dev_cesar_metrics",
+                    "package_name": "pkg_b",
+                    "name": "metrics_eu",
+                    "compiled_path": "target/eu.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        target="dev",
+    )
+
+    assert (
+        connector.get_compiled_query("prod_metrics_alias", **selector_kwargs)
+        == expected_sql
+    )
+
+
+def test_manifest_name_alias_collision_fails_closed_and_can_be_disambiguated(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        _write_fake_dbt_project(clone_dir)
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "stable.sql").write_text("select 'stable'")
+        (clone_dir / "target" / "legacy.sql").write_text("select 'legacy'")
+        manifest = {
+            "nodes": {
+                "model.stable.metrics": {
+                    "resource_type": "model",
+                    "alias": "dev_cesar_metrics",
+                    "package_name": "stable",
+                    "name": "metrics",
+                    "compiled_path": "target/stable.sql",
+                },
+                "model.legacy.other_model": {
+                    "resource_type": "model",
+                    "alias": "metrics",
+                    "package_name": "legacy",
+                    "name": "other_model",
+                    "compiled_path": "target/legacy.sql",
+                },
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        target="dev",
+    )
+
+    with pytest.raises(DataSourceError, match="matches different nodes"):
+        connector.get_compiled_query("metrics")
+
+    assert (
+        connector.get_compiled_query("metrics", model_package_name="stable")
+        == "select 'stable'"
+    )
+    assert (
+        connector.get_compiled_query(
+            "metrics", model_unique_id="model.legacy.other_model"
+        )
+        == "select 'legacy'"
+    )
+    assert (
+        connector.get_compiled_query("metrics", model_selector_name="other_model")
+        == "select 'legacy'"
+    )
 
 
 def test_manifest_lookup_supports_alias_disambiguation_selectors(monkeypatch, tmp_path):

@@ -56,7 +56,7 @@ import shutil
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Sequence, Type
 
@@ -131,6 +131,7 @@ class _ManifestIndex:
 
     by_alias: dict[str, list[_ManifestNodeIndexEntry]]
     by_unique_id: dict[str, _ManifestNodeIndexEntry]
+    by_name: dict[str, list[_ManifestNodeIndexEntry]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -212,6 +213,7 @@ def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
         manifest = json.load(f)
 
     by_alias: dict[str, list[_ManifestNodeIndexEntry]] = {}
+    by_name: dict[str, list[_ManifestNodeIndexEntry]] = {}
     by_unique_id: dict[str, _ManifestNodeIndexEntry] = {}
 
     for unique_id, node in manifest.get("nodes", {}).items():
@@ -237,9 +239,15 @@ def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
         )
 
         by_alias.setdefault(entry.alias, []).append(entry)
+        if entry.model_name:
+            by_name.setdefault(entry.model_name, []).append(entry)
         by_unique_id[entry.unique_id] = entry
 
-    return _ManifestIndex(by_alias=by_alias, by_unique_id=by_unique_id)
+    return _ManifestIndex(
+        by_alias=by_alias,
+        by_unique_id=by_unique_id,
+        by_name=by_name,
+    )
 
 
 def _get_manifest_index(clone_dir: Path) -> _ManifestIndex:
@@ -295,7 +303,7 @@ def _format_manifest_candidate(entry: _ManifestNodeIndexEntry) -> str:
 def _format_selector_context(
     model_unique_id: Optional[str],
     model_package_name: Optional[str],
-    model_name: Optional[str],
+    model_selector_name: Optional[str],
 ) -> str:
     """Format optional selector fields for user-facing error messages."""
     selectors = []
@@ -303,8 +311,8 @@ def _format_selector_context(
         selectors.append(f"model_unique_id='{model_unique_id}'")
     if model_package_name:
         selectors.append(f"model_package_name='{model_package_name}'")
-    if model_name:
-        selectors.append(f"model_name='{model_name}'")
+    if model_selector_name:
+        selectors.append(f"model_selector_name='{model_selector_name}'")
     if not selectors:
         return ""
     return " with selectors " + ", ".join(selectors)
@@ -1087,27 +1095,58 @@ def _resolve_model_from_index(
     model_package_name: Optional[str] = None,
     model_selector_name: Optional[str] = None,
 ) -> Optional[_ManifestNodeIndexEntry]:
-    candidates = list(manifest_index.by_alias.get(model_name, []))
-    if not candidates:
-        return None
     selector_context = _format_selector_context(
         model_unique_id=model_unique_id,
         model_package_name=model_package_name,
-        model_name=model_selector_name,
+        model_selector_name=model_selector_name,
     )
+
     if model_unique_id:
         unique_candidate = manifest_index.by_unique_id.get(model_unique_id)
         if unique_candidate is None:
             raise DataSourceError(
-                f"No dbt node with unique_id '{model_unique_id}' for alias "
-                f"'{model_name}'."
-            )
-        if unique_candidate.alias != model_name:
-            raise DataSourceError(
-                f"unique_id '{model_unique_id}' resolved to alias "
-                f"'{unique_candidate.alias}', expected '{model_name}'."
+                f"No dbt node with unique_id '{model_unique_id}' for model "
+                f"identifier '{model_name}'."
             )
         candidates = [unique_candidate]
+    elif model_selector_name:
+        candidates = list(manifest_index.by_name.get(model_selector_name, []))
+    else:
+        name_candidates = list(manifest_index.by_name.get(model_name, []))
+        alias_candidates = list(manifest_index.by_alias.get(model_name, []))
+
+        if model_package_name:
+            name_candidates = [
+                candidate
+                for candidate in name_candidates
+                if candidate.package_name == model_package_name
+            ]
+            alias_candidates = [
+                candidate
+                for candidate in alias_candidates
+                if candidate.package_name == model_package_name
+            ]
+
+        name_ids = {candidate.unique_id for candidate in name_candidates}
+        alias_ids = {candidate.unique_id for candidate in alias_candidates}
+        if name_ids and alias_ids and name_ids != alias_ids:
+            combined = {
+                candidate.unique_id: candidate
+                for candidate in name_candidates + alias_candidates
+            }
+            rendered_candidates = ", ".join(
+                _format_manifest_candidate(candidate) for candidate in combined.values()
+            )
+            raise DataSourceError(
+                f"dbt model identifier '{model_name}' matches different nodes by "
+                "stable name and compiled alias. Provide one of "
+                "`model_unique_id`, `model_package_name`, or "
+                "`model_selector_name` to select the intended node. "
+                f"Candidates: {rendered_candidates}"
+            )
+
+        candidates = name_candidates or alias_candidates
+
     if model_package_name:
         candidates = [
             candidate
@@ -1121,15 +1160,17 @@ def _resolve_model_from_index(
             if candidate.model_name == model_selector_name
         ]
     if not candidates:
+        if not selector_context:
+            return None
         raise DataSourceError(
-            f"No dbt model found for alias '{model_name}'{selector_context}."
+            f"No dbt model found for identifier '{model_name}'{selector_context}."
         )
     if len(candidates) > 1:
         rendered_candidates = ", ".join(
             _format_manifest_candidate(candidate) for candidate in candidates
         )
         raise DataSourceError(
-            f"Ambiguous dbt model alias '{model_name}'. Provide one of "
+            f"Ambiguous dbt model identifier '{model_name}'. Provide one of "
             "`model_unique_id`, `model_package_name`, or `model_selector_name` "
             f"to disambiguate. Candidates: {rendered_candidates}"
         )
@@ -1229,7 +1270,9 @@ class DBTManifestConnector(BaseModel, DataConnector):
                     model_selector_name=selector_name,
                 )
                 if selection is None:
-                    raise DataSourceError(f"No dbt model found for alias '{alias}'.")
+                    raise DataSourceError(
+                        f"No dbt model found for identifier '{alias}'."
+                    )
                 selections.append(selection)
             selectors = tuple(_exact_selector(selection) for selection in selections)
             _ensure_selected_compilation(
@@ -1266,7 +1309,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
         model_package_name: Optional[str] = None,
         model_selector_name: Optional[str] = None,
     ) -> Optional[str]:
-        """Extract compiled SQL query for a specific DBT model alias."""
+        """Extract compiled SQL for a dbt node name or legacy compiled alias."""
         model_info = self.get_compiled_model_info(
             model_name,
             model_unique_id=model_unique_id,
@@ -1462,7 +1505,7 @@ class DBTDatabricksConnector(_DBTWarehouseConnectorBase):
     3. Return results as a pandas DataFrame
 
     Attributes:
-        model_alias: The alias of the DBT model to execute.
+        model_alias: Stable dbt node name or legacy compiled alias to execute.
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
         profile_name: Optional dbt profile name to override project default.
@@ -1662,7 +1705,7 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
 
     Attributes:
         type: Always "databricks_dbt" for DBT-Databricks data sources.
-        model_alias: The alias of the DBT model to execute.
+        model_alias: Stable dbt node name or legacy compiled alias to execute.
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
         profile_name: Optional dbt profile name to override project default.
@@ -1715,7 +1758,10 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     type: Literal["databricks_dbt"] = Field(
         "databricks_dbt", description="dbt + Databricks data source"
     )
-    model_alias: str = Field(..., description="dbt model alias")
+    model_alias: str = Field(
+        ...,
+        description="dbt node name (preferred) or legacy compiled alias",
+    )
     model_unique_id: Optional[str] = Field(
         None, description="Optional dbt unique_id selector for alias disambiguation"
     )
@@ -1933,7 +1979,10 @@ class DBTSourceConfig(BaseSourceConfig):
     """
 
     type: Literal["dbt"] = Field("dbt", description="Composable dbt data source")
-    model_alias: str = Field(..., description="dbt model alias")
+    model_alias: str = Field(
+        ...,
+        description="dbt node name (preferred) or legacy compiled alias",
+    )
     model_unique_id: Optional[str] = Field(
         None, description="Optional dbt unique_id selector for alias disambiguation"
     )

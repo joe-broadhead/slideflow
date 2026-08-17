@@ -491,7 +491,7 @@ warehouse:
 ```
 
 `dbt.compile: true` clones the repository, runs `dbt deps`, parses the project,
-resolves requested aliases to exact dbt nodes, and compiles the required nodes
+resolves requested identifiers to exact dbt nodes, and compiles the required nodes
 with one bounded `dbt compile --select` invocation per project batch. dbt still
 parses the full project; scoped compilation does not build or refresh upstream
 relations and does not add ancestor `+` selectors. Set `dbt.compile: false` only
@@ -500,7 +500,13 @@ points at a compiled dbt project with `target/manifest.json` and the compiled
 SQL files referenced by that manifest; SlideFlow will not clone or invoke dbt in
 that mode.
 
-Optional alias disambiguation fields for `dbt`:
+`model_alias` keeps its historical field name for configuration compatibility.
+Prefer setting it to the target-invariant dbt `node.name`; exact compiled aliases
+remain supported for existing configs. If the identifier matches one node by name
+and another by alias, SlideFlow fails closed instead of silently executing a
+different model.
+
+Optional model disambiguation fields for `dbt`:
 
 - `model_unique_id` (most specific)
 - `model_package_name`

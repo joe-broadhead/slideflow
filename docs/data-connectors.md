@@ -261,11 +261,17 @@ Behavior highlights:
 - Clone/dependency/parse work for identical project identities is deduplicated.
   Compiled selector coverage expands as a sorted union, so cached supersets
   satisfy later subset requests without recompiling.
-- If multiple dbt nodes share `model_alias`, set one of:
+- `model_alias` retains its legacy field name, but a stable dbt `node.name` is
+  preferred so the same slide config works across targets whose
+  `generate_alias_name` macro produces different physical aliases. Existing
+  exact-alias configs remain supported.
+- If an identifier is ambiguous, including when it matches one node by stable
+  name and another by compiled alias, set one of:
   - `model_unique_id`
   - `model_package_name`
   - `model_selector_name`
-  to avoid ambiguity errors.
+  SlideFlow fails closed in this case rather than silently changing the model
+  used by an existing slide config.
 
 ## dbt on BigQuery (`dbt`)
 
@@ -422,7 +428,8 @@ Cache/compile tuning env vars:
 - Redshift auth/config errors: verify database, host/cluster/serverless endpoint,
   and either password auth or IAM region/identity settings.
 - dbt model not found: check `model_alias`, `branch`, and `target`.
-- dbt alias ambiguity: add `model_unique_id`, `model_package_name`, or `model_selector_name`.
+- dbt model identifier ambiguity: add `model_unique_id`,
+  `model_package_name`, or `model_selector_name`.
 - dbt Git clone fails: verify token variable in `package_url` and repo access.
 - dbt `compile:false` fails: ensure `project_dir/target/manifest.json` exists
   and every selected manifest node has a compiled SQL file on disk.
