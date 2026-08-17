@@ -148,6 +148,7 @@ class _ManifestNodeIndexEntry:
     package_name: Optional[str]
     model_name: Optional[str]
     compiled_path: Optional[str]
+    fqn: Optional[tuple[str, ...]] = None
     original_file_path: Optional[str] = None
 
 
@@ -276,12 +277,21 @@ def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
             continue
 
         compiled_path = node.get("compiled_path")
+        raw_fqn = node.get("fqn")
+        fqn = (
+            tuple(raw_fqn)
+            if isinstance(raw_fqn, list)
+            and raw_fqn
+            and all(isinstance(part, str) and part for part in raw_fqn)
+            else None
+        )
         entry = _ManifestNodeIndexEntry(
             unique_id=str(unique_id),
             alias=str(alias),
             package_name=node.get("package_name"),
             model_name=node.get("name"),
             compiled_path=str(compiled_path) if compiled_path else None,
+            fqn=fqn,
             original_file_path=(
                 str(node.get("original_file_path"))
                 if node.get("original_file_path")
@@ -2148,6 +2158,9 @@ def _resolve_model_from_index(
 
 
 def _exact_selector(node: _ManifestNodeIndexEntry) -> str:
+    if node.fqn:
+        return f"fqn:{'.'.join(node.fqn)}"
+
     unique_id_parts = node.unique_id.split(".")
     package_name = node.package_name
     model_name = node.model_name

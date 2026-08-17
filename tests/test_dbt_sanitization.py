@@ -133,14 +133,22 @@ def test_prepare_models_batches_exact_sorted_selectors(monkeypatch, tmp_path):
             )
         manifest = {
             "nodes": {
-                f"model.analytics.{name}": {
+                "model.analytics.model_a": {
                     "resource_type": "model",
-                    "alias": f"alias_{name}",
+                    "alias": "alias_model_a",
                     "package_name": "analytics",
-                    "name": name,
-                    "compiled_path": f"target/compiled/{name}.sql",
-                }
-                for name in ("model_a", "model_b")
+                    "name": "model_a",
+                    "fqn": ["analytics", "staging", "model_a"],
+                    "compiled_path": "target/compiled/model_a.sql",
+                },
+                "analysis.analytics.model_b": {
+                    "resource_type": "analysis",
+                    "alias": "alias_model_b",
+                    "package_name": "analytics",
+                    "name": "model_b",
+                    "fqn": ["analytics", "analysis", "reporting", "model_b"],
+                    "compiled_path": "target/compiled/model_b.sql",
+                },
             }
         }
         (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
@@ -170,12 +178,24 @@ def test_prepare_models_batches_exact_sorted_selectors(monkeypatch, tmp_path):
     assert [args[0] for args in invocations] == ["deps", "parse", "compile"]
     compile_args = invocations[-1]
     assert compile_args[compile_args.index("--select") + 1] == (
-        "analytics.model_a analytics.model_b"
+        "fqn:analytics.analysis.reporting.model_b fqn:analytics.staging.model_a"
     )
 
     assert connector.get_compiled_query("alias_model_a") == "select 'model_a'"
     assert connector.get_compiled_query("alias_model_b") == "select 'model_b'"
     assert [args[0] for args in invocations].count("compile") == 1
+
+
+def test_exact_selector_falls_back_when_manifest_fqn_is_missing():
+    node = dbt_module._ManifestNodeIndexEntry(
+        unique_id="model.analytics.metrics",
+        alias="metrics",
+        package_name="analytics",
+        model_name="metrics",
+        compiled_path=None,
+    )
+
+    assert dbt_module._exact_selector(node) == "analytics.metrics"
 
 
 @pytest.mark.integration
@@ -354,6 +374,80 @@ print(json.dumps(payload))
     assert all("'CA' as region" in sql for sql in payload["CA"])
     assert "'a' as analysis" in payload["US"][0]
     assert "'b' as analysis" in payload["US"][1]
+
+
+@pytest.mark.integration
+def test_scoped_compile_supports_nested_models_and_analyses(tmp_path):
+    try:
+        version("dbt-core")
+        version("dbt-duckdb")
+        version("gitpython")
+    except PackageNotFoundError:
+        pytest.skip("dbt and GitPython integration extras are not installed")
+
+    repo_dir = tmp_path / "source_repo"
+    models_dir = repo_dir / "models" / "staging"
+    analyses_dir = repo_dir / "analyses" / "webtraffic"
+    models_dir.mkdir(parents=True)
+    analyses_dir.mkdir(parents=True)
+    (repo_dir / "dbt_project.yml").write_text(
+        "name: analytics\nversion: '1.0'\nconfig-version: 2\n"
+        "profile: analytics\nmodel-paths: ['models']\n"
+        "analysis-paths: ['analyses']\n",
+        encoding="utf-8",
+    )
+    (repo_dir / "profiles.yml").write_text(
+        "analytics:\n  target: dev\n  outputs:\n    dev:\n"
+        f"      type: duckdb\n      path: {tmp_path / 'warehouse.duckdb'}\n"
+        "      threads: 1\n",
+        encoding="utf-8",
+    )
+    (models_dir / "nested_model.sql").write_text(
+        "{{ config(alias='nested_alias') }} select 1 as model_value\n",
+        encoding="utf-8",
+    )
+    (analyses_dir / "traffic_report.sql").write_text(
+        "select 2 as analysis_value\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", str(repo_dir)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "config", "user.name", "Slideflow Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "commit", "-m", "fixture"],
+        check=True,
+        capture_output=True,
+    )
+
+    script = f"""
+from slideflow.data.connectors.dbt import DBTManifestConnector
+connector = DBTManifestConnector(
+    package_url={str(repo_dir)!r},
+    project_dir={str(tmp_path / "workspace")!r},
+    target='dev',
+)
+connector.prepare_models([
+    ('nested_alias', None, None, None),
+    ('traffic_report', None, None, None),
+])
+print(connector.get_compiled_query('nested_alias'))
+print(connector.get_compiled_query('traffic_report'))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "select 1 as model_value" in result.stdout.lower()
+    assert "select 2 as analysis_value" in result.stdout.lower()
 
 
 def test_sanitize_git_url_redacts_embedded_credentials():
