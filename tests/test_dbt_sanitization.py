@@ -178,7 +178,9 @@ def test_prepare_models_batches_exact_sorted_selectors(monkeypatch, tmp_path):
     assert [args[0] for args in invocations] == ["deps", "parse", "compile"]
     compile_args = invocations[-1]
     assert compile_args[compile_args.index("--select") + 1] == (
-        "fqn:analytics.analysis.reporting.model_b fqn:analytics.staging.model_a"
+        "package:analytics,resource_type:analysis,"
+        "fqn:analytics.analysis.reporting.model_b "
+        "package:analytics,resource_type:model,fqn:analytics.staging.model_a"
     )
 
     assert connector.get_compiled_query("alias_model_a") == "select 'model_a'"
@@ -196,6 +198,82 @@ def test_exact_selector_falls_back_when_manifest_fqn_is_missing():
     )
 
     assert dbt_module._exact_selector(node) == "analytics.metrics"
+
+
+def test_exact_selector_intersects_package_for_versioned_nodes():
+    node = dbt_module._ManifestNodeIndexEntry(
+        unique_id="model.analytics.orders.v1",
+        alias="orders_v1",
+        package_name="analytics",
+        model_name="orders",
+        compiled_path=None,
+        fqn=("analytics", "orders", "v1"),
+        resource_type="model",
+    )
+
+    assert dbt_module._exact_selector(node) == (
+        "package:analytics,resource_type:model,fqn:analytics.orders.v1"
+    )
+
+
+@pytest.mark.parametrize(
+    "unsafe_component",
+    ["orders+", "orders*", "orders,other", "orders other", "orders?"],
+)
+def test_exact_selector_falls_back_for_selector_metacharacters(unsafe_component):
+    node = dbt_module._ManifestNodeIndexEntry(
+        unique_id=f"model.analytics.{unsafe_component}",
+        alias="orders",
+        package_name="analytics",
+        model_name=unsafe_component,
+        compiled_path=None,
+        fqn=("analytics", unsafe_component),
+        resource_type="model",
+    )
+
+    assert dbt_module._exact_selector(node) is None
+
+
+def test_unsafe_manifest_fqn_uses_full_compile_without_select(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    invocations = []
+
+    def _fake_clone(_url, clone_dir, _branch):
+        _write_fake_dbt_project(clone_dir)
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "orders.sql").write_text("select 1")
+        manifest = {
+            "nodes": {
+                "model.analytics.orders": {
+                    "resource_type": "model",
+                    "alias": "orders",
+                    "package_name": "analytics",
+                    "name": "orders",
+                    "fqn": ["analytics", "orders+"],
+                    "compiled_path": "target/orders.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, args):
+            invocations.append(list(args))
+            _copy_seeded_target_to_invocation(args)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        target="prod",
+    )
+
+    connector.prepare_models([("orders", None, None, None)])
+
+    compile_args = next(args for args in invocations if args[0] == "compile")
+    assert "--select" not in compile_args
 
 
 @pytest.mark.integration
@@ -836,7 +914,7 @@ def test_get_compiled_project_rejects_symlinked_artifact_paths(
             vars={"country": "US"},
         )
 
-    assert [args[0] for args in invocations] == ["deps"]
+    assert invocations == []
     assert sentinel.read_text() == "preserve"
 
 
@@ -1499,6 +1577,108 @@ def test_cleanup_failure_keeps_reservation_until_retry_succeeds(monkeypatch, tmp
     assert compiled_dir not in dbt_module._pending_cleanup_dirs
     assert compiled_dir not in dbt_module._cleanup_failures
     assert not compiled_dir.exists()
+
+
+def test_cleanup_lock_failure_releases_in_progress_reservation(monkeypatch, tmp_path):
+    _reset_dbt_caches()
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"), "https://github.com/org/repo.git", "main"
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(clone_dir, "prod", None)
+    compiled_dir.mkdir(parents=True)
+
+    @dbt_module.contextmanager
+    def _failing_lock(_clone_dir):
+        raise DataSourceError("lock acquisition failed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(dbt_module, "_workspace_process_lock", _failing_lock)
+    with dbt_module._cache_lock:
+        dbt_module._pending_cleanup_dirs.add(compiled_dir)
+
+    with pytest.raises(DataSourceError, match="lock acquisition failed"):
+        dbt_module._cleanup_ready_managed_dirs()
+
+    assert compiled_dir in dbt_module._pending_cleanup_dirs
+    assert compiled_dir not in dbt_module._cleanup_in_progress_dirs
+    assert compiled_dir in dbt_module._cleanup_failures
+
+
+def test_variant_waiter_propagates_parent_workspace_cleanup_failure(tmp_path):
+    _reset_dbt_caches()
+    clone_dir = dbt_module._resolve_managed_clone_dir(
+        str(tmp_path / "workspace"), "https://github.com/org/repo.git", "main"
+    )
+    compiled_dir = dbt_module._resolve_managed_compile_dir(clone_dir, "prod", None)
+    with dbt_module._cache_lock:
+        dbt_module._pending_cleanup_dirs.add(compiled_dir)
+        dbt_module._pending_workspace_cleanup_dirs.add(clone_dir)
+        dbt_module._cleanup_failures[clone_dir] = "parent cleanup failed"
+
+    with pytest.raises(DataSourceError, match="parent cleanup failed"):
+        dbt_module._wait_for_managed_cleanup(compiled_dir, workspace=False)
+
+
+def test_pre_owner_cleanup_wait_failure_releases_compilation_owner(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    real_wait = dbt_module._wait_for_managed_cleanup
+
+    def _failing_variant_wait(directory, *, workspace):
+        if not workspace:
+            raise DataSourceError("cleanup wait failed before owner body")
+        return real_wait(directory, workspace=workspace)
+
+    monkeypatch.setattr(dbt_module, "_wait_for_managed_cleanup", _failing_variant_wait)
+
+    with pytest.raises(DataSourceError, match="cleanup wait failed"):
+        dbt_module._get_compiled_project(
+            package_url="https://github.com/org/repo.git",
+            project_dir=str(tmp_path / "workspace"),
+            branch="main",
+            target="prod",
+            vars=None,
+        )
+
+    assert dbt_module._compilation_inflight == {}
+
+
+def test_cold_process_workspace_refresh_removes_all_old_variant_siblings(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+    clone_calls = 0
+
+    def _fake_clone(_url, clone_dir, _branch):
+        nonlocal clone_calls
+        clone_calls += 1
+        _write_fake_dbt_project(clone_dir)
+
+    class _Runner:
+        def invoke(self, _args):
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    kwargs = {
+        "package_url": "https://github.com/org/repo.git",
+        "project_dir": str(tmp_path / "workspace"),
+        "branch": "main",
+        "target": "prod",
+    }
+
+    us_dir = dbt_module._get_compiled_project(**kwargs, vars={"country": "US"})
+    ca_dir = dbt_module._get_compiled_project(**kwargs, vars={"country": "CA"})
+    assert us_dir.exists() and ca_dir.exists()
+
+    _reset_dbt_caches()
+    uk_dir = dbt_module._get_compiled_project(**kwargs, vars={"country": "UK"})
+
+    assert clone_calls == 2
+    assert uk_dir.exists()
+    assert not us_dir.exists()
+    assert not ca_dir.exists()
 
 
 def test_workspace_failure_cleanup_finishes_before_retry_waiter_recreates_path(
@@ -2270,8 +2450,51 @@ def test_manifest_lookup_ambiguous_alias_requires_disambiguation(monkeypatch, tm
         vars={"country": "US"},
     )
 
-    with pytest.raises(DataSourceError, match="Ambiguous dbt model alias"):
+    with pytest.raises(DataSourceError, match="Ambiguous dbt model identifier"):
         connector.get_compiled_query("metrics_model")
+
+
+def test_manifest_lookup_prefers_target_invariant_name_over_compiled_alias(
+    monkeypatch, tmp_path
+):
+    _reset_dbt_caches()
+
+    def _fake_clone(_url, clone_dir, _branch):
+        _write_fake_dbt_project(clone_dir)
+        (clone_dir / "target").mkdir(parents=True, exist_ok=True)
+        (clone_dir / "target" / "metrics.sql").write_text("select 1 as answer")
+        manifest = {
+            "nodes": {
+                "model.analytics.metrics": {
+                    "resource_type": "model",
+                    "alias": "dev_cesar_metrics",
+                    "package_name": "analytics",
+                    "name": "metrics",
+                    "compiled_path": "target/metrics.sql",
+                }
+            }
+        }
+        (clone_dir / "target" / "manifest.json").write_text(json.dumps(manifest))
+
+    class _Runner:
+        def invoke(self, args):
+            _copy_seeded_target_to_invocation(args)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(dbt_module, "_clone_repo", _fake_clone)
+    monkeypatch.setattr(dbt_module, "dbtRunner", _Runner)
+    connector = dbt_module.DBTManifestConnector(
+        package_url="https://github.com/org/repo.git",
+        project_dir=str(tmp_path / "workspace"),
+        target="dev",
+    )
+
+    model = connector.get_compiled_model_info("metrics")
+
+    assert model is not None
+    assert model.unique_id == "model.analytics.metrics"
+    assert model.alias == "dev_cesar_metrics"
+    assert model.sql_text == "select 1 as answer"
 
 
 def test_manifest_lookup_supports_alias_disambiguation_selectors(monkeypatch, tmp_path):

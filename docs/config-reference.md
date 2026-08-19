@@ -510,7 +510,8 @@ add ancestor `+` selectors. Set
 project with `target/manifest.json` and the compiled SQL files referenced by that
 manifest; SlideFlow will not clone or invoke dbt in that mode.
 
-Optional alias disambiguation fields for `dbt`:
+`model_alias` accepts a stable manifest node name (preferred) or a legacy
+compiled alias. Optional disambiguation fields for `dbt`:
 
 - `model_unique_id` (most specific)
 - `model_package_name`

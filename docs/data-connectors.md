@@ -287,7 +287,9 @@ Behavior highlights:
   requests without recompiling.
 - In-process dbt invocations are serialized because dbt-core maintains process
   globals; warehouse queries remain governed separately by `query_threads`.
-- If multiple dbt nodes share `model_alias`, set one of:
+- `model_alias` resolves a target-invariant manifest `name` first and retains
+  compiled `alias` as a compatibility fallback. If the identifier is
+  ambiguous, set one of:
   - `model_unique_id`
   - `model_package_name`
   - `model_selector_name`

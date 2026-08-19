@@ -57,7 +57,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Iterator, Literal, Optional, Sequence, Type
 
@@ -150,6 +150,7 @@ class _ManifestNodeIndexEntry:
     compiled_path: Optional[str]
     fqn: Optional[tuple[str, ...]] = None
     original_file_path: Optional[str] = None
+    resource_type: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,7 @@ class _ManifestIndex:
 
     by_alias: dict[str, list[_ManifestNodeIndexEntry]]
     by_unique_id: dict[str, _ManifestNodeIndexEntry]
+    by_name: dict[str, list[_ManifestNodeIndexEntry]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -266,6 +268,7 @@ def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
         manifest = json.load(f)
 
     by_alias: dict[str, list[_ManifestNodeIndexEntry]] = {}
+    by_name: dict[str, list[_ManifestNodeIndexEntry]] = {}
     by_unique_id: dict[str, _ManifestNodeIndexEntry] = {}
 
     for unique_id, node in manifest.get("nodes", {}).items():
@@ -297,12 +300,19 @@ def _load_manifest_index(clone_dir: Path) -> _ManifestIndex:
                 if node.get("original_file_path")
                 else None
             ),
+            resource_type=str(node.get("resource_type")),
         )
 
         by_alias.setdefault(entry.alias, []).append(entry)
+        if entry.model_name:
+            by_name.setdefault(entry.model_name, []).append(entry)
         by_unique_id[entry.unique_id] = entry
 
-    return _ManifestIndex(by_alias=by_alias, by_unique_id=by_unique_id)
+    return _ManifestIndex(
+        by_alias=by_alias,
+        by_unique_id=by_unique_id,
+        by_name=by_name,
+    )
 
 
 def _get_manifest_index(clone_dir: Path) -> _ManifestIndex:
@@ -359,7 +369,7 @@ def _format_manifest_candidate(entry: _ManifestNodeIndexEntry) -> str:
 def _format_selector_context(
     model_unique_id: Optional[str],
     model_package_name: Optional[str],
-    model_name: Optional[str],
+    model_selector_name: Optional[str],
 ) -> str:
     """Format optional selector fields for user-facing error messages."""
     selectors = []
@@ -367,8 +377,8 @@ def _format_selector_context(
         selectors.append(f"model_unique_id='{model_unique_id}'")
     if model_package_name:
         selectors.append(f"model_package_name='{model_package_name}'")
-    if model_name:
-        selectors.append(f"model_name='{model_name}'")
+    if model_selector_name:
+        selectors.append(f"model_selector_name='{model_selector_name}'")
     if not selectors:
         return ""
     return " with selectors " + ", ".join(selectors)
@@ -608,6 +618,30 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> bool:
         return False
 
 
+def _validate_existing_workspace_artifacts(clone_dir: Path) -> bool:
+    """Validate an old on-disk generation before cold-process cleanup.
+
+    Return whether any workspace path exists.  Every concrete child is checked
+    before deletion so cleanup cannot silently erase a symlink collision that
+    normal command-path validation would reject.
+    """
+    workspace_root = clone_dir.parent.parent
+    roots = (
+        workspace_root / ".slideflow_dbt_targets" / clone_dir.name,
+        workspace_root / ".slideflow_dbt_logs" / clone_dir.name,
+    )
+    found = clone_dir.exists() or clone_dir.is_symlink()
+    for root in roots:
+        namespace = root.parent
+        _validate_real_directory_chain(namespace, workspace_root, require_exists=False)
+        _validate_real_directory_chain(root, namespace, require_exists=False)
+        if root.exists():
+            found = True
+            for child in root.iterdir():
+                _validate_real_directory_chain(child, root, require_exists=True)
+    return found
+
+
 def _cleanup_managed_compile_dir(compiled_dir: Path) -> bool:
     """Remove one managed dbt compile variant without following links."""
     managed_root = compiled_dir.parent
@@ -791,12 +825,20 @@ def _cleanup_ready_managed_dirs() -> None:
             held_workspaces or None
         )
     for directory in sorted(ready_compiles):
-        with _workspace_process_lock(_source_clone_dir(directory)):
-            succeeded = _cleanup_managed_compile_dir(directory)
+        succeeded = False
+        try:
+            with _workspace_process_lock(_source_clone_dir(directory)):
+                succeeded = _cleanup_managed_compile_dir(directory)
+        finally:
+            # Reservation finalization must also cover lock acquisition and
+            # context-entry failures; otherwise this path can be stranded.
             _finish_cleanup(directory, workspace=False, succeeded=succeeded)
     for directory in sorted(ready_workspaces):
-        with _workspace_process_lock(directory):
-            succeeded = _cleanup_managed_clone_dir(directory)
+        succeeded = False
+        try:
+            with _workspace_process_lock(directory):
+                succeeded = _cleanup_managed_clone_dir(directory)
+        finally:
             _finish_cleanup(directory, workspace=True, succeeded=succeeded)
 
 
@@ -808,6 +850,14 @@ def _wait_for_managed_cleanup(directory: Path, *, workspace: bool) -> None:
         with _cache_condition:
             if directory not in pending:
                 return
+            if not workspace:
+                parent = _source_clone_dir(directory)
+                parent_failure = _cleanup_failures.get(parent)
+                if (
+                    parent in _pending_workspace_cleanup_dirs
+                    and parent_failure is not None
+                ):
+                    raise DataSourceError(parent_failure)
             failure = _cleanup_failures.pop(directory, None)
             if failure is not None:
                 if retried_failure:
@@ -1466,6 +1516,17 @@ def _get_prepared_workspace(
                 profile_name=profile_name,
             )
             _wait_for_managed_cleanup(clone_dir, workspace=True)
+            # A process with empty in-memory indexes must treat the complete
+            # on-disk workspace (clone, variants, and logs) as one generation.
+            # Clearing only the clone or requested variant leaves untracked
+            # sibling artifacts from the previous generation.
+            if _validate_existing_workspace_artifacts(
+                clone_dir
+            ) and not _cleanup_managed_clone_dir(clone_dir):
+                raise DataSourceError(
+                    "Failed to safely reset the managed DBT workspace before "
+                    f"preparation: {clone_dir}"
+                )
             _clone_repo(package_url, clone_dir, branch)
             _prepare_profiles(clone_dir, profiles_dir)
 
@@ -1724,12 +1785,13 @@ def _get_compiled_project_unlocked(
         compiled_dir: Path = _resolve_managed_compile_dir(
             expected_clone_dir, target, vars
         )
-        _wait_for_managed_cleanup(compiled_dir, workspace=False)
-
         clone_dir: Optional[Path] = None
         workspace_generation: Optional[str] = None
         workspace_leased = False
         try:
+            # Ownership is already registered, so every operation from this
+            # point onward must be covered by the owner finalizer below.
+            _wait_for_managed_cleanup(compiled_dir, workspace=False)
             clone_dir = _get_prepared_workspace(
                 package_url=package_url,
                 project_dir=canonical_project_dir,
@@ -1890,7 +1952,7 @@ def _ensure_selected_compilation(
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str],
     profile_name: Optional[str],
-    selectors: tuple[str, ...],
+    selectors: Optional[tuple[str, ...]],
 ) -> None:
     """Coordinate selected compilation with other local processes."""
     source_dir = _source_clone_dir(clone_dir)
@@ -1918,10 +1980,11 @@ def _ensure_selected_compilation_unlocked(
     vars: Optional[dict[str, Any]],
     profiles_dir: Optional[str],
     profile_name: Optional[str],
-    selectors: tuple[str, ...],
+    selectors: Optional[tuple[str, ...]],
 ) -> None:
     """Compile the deterministic union of requested selectors once per project."""
-    normalized = tuple(sorted(set(selectors)))
+    full_compile = selectors is None
+    normalized = ("*",) if selectors is None else tuple(sorted(set(selectors)))
     if not normalized:
         return
     cache_key = _project_cache_key(
@@ -1949,7 +2012,11 @@ def _ensure_selected_compilation_unlocked(
         if "*" in coverage or set(normalized).issubset(coverage):
             return
 
-        union = tuple(sorted(set(coverage).union(normalized)))
+        union = (
+            ("*",)
+            if full_compile or "*" in normalized
+            else tuple(sorted(set(coverage).union(normalized)))
+        )
         failure_key = ("selected",) + cache_key + (union,)
         failure_backoff_s = _resolve_dbt_compile_failure_backoff_seconds()
         failure_cache_max_entries = _resolve_dbt_failure_cache_max_entries()
@@ -1978,9 +2045,9 @@ def _ensure_selected_compilation_unlocked(
             str(compiled_dir / "target"),
             "--log-path",
             str(compiled_dir / "logs"),
-            "--select",
-            " ".join(union),
         ]
+        if "*" not in union:
+            args.extend(["--select", " ".join(union)])
         project_profiles_path = source_dir / "profiles.yml"
         if profiles_dir or project_profiles_path.exists():
             args.extend(["--profiles-dir", str(source_dir)])
@@ -2019,7 +2086,7 @@ def _ensure_selected_compilation_unlocked(
             project=package_url,
             target=target,
             vars_count=len(vars) if vars else 0,
-            selection_count=len(union),
+            selection_count=0 if "*" in union else len(union),
         )
         try:
             disk_generation = _validate_prepared_workspace(source_dir, workspace_key)
@@ -2108,27 +2175,56 @@ def _resolve_model_from_index(
     model_package_name: Optional[str] = None,
     model_selector_name: Optional[str] = None,
 ) -> Optional[_ManifestNodeIndexEntry]:
-    candidates = list(manifest_index.by_alias.get(model_name, []))
-    if not candidates:
-        return None
     selector_context = _format_selector_context(
         model_unique_id=model_unique_id,
         model_package_name=model_package_name,
-        model_name=model_selector_name,
+        model_selector_name=model_selector_name,
     )
+
     if model_unique_id:
         unique_candidate = manifest_index.by_unique_id.get(model_unique_id)
         if unique_candidate is None:
             raise DataSourceError(
-                f"No dbt node with unique_id '{model_unique_id}' for alias "
-                f"'{model_name}'."
-            )
-        if unique_candidate.alias != model_name:
-            raise DataSourceError(
-                f"unique_id '{model_unique_id}' resolved to alias "
-                f"'{unique_candidate.alias}', expected '{model_name}'."
+                f"No dbt node with unique_id '{model_unique_id}' for model "
+                f"identifier '{model_name}'."
             )
         candidates = [unique_candidate]
+    elif model_selector_name:
+        candidates = list(manifest_index.by_name.get(model_selector_name, []))
+    else:
+        name_candidates = list(manifest_index.by_name.get(model_name, []))
+        alias_candidates = list(manifest_index.by_alias.get(model_name, []))
+        if model_package_name:
+            name_candidates = [
+                candidate
+                for candidate in name_candidates
+                if candidate.package_name == model_package_name
+            ]
+            alias_candidates = [
+                candidate
+                for candidate in alias_candidates
+                if candidate.package_name == model_package_name
+            ]
+
+        name_ids = {candidate.unique_id for candidate in name_candidates}
+        alias_ids = {candidate.unique_id for candidate in alias_candidates}
+        if name_ids and alias_ids and name_ids != alias_ids:
+            combined = {
+                candidate.unique_id: candidate
+                for candidate in name_candidates + alias_candidates
+            }
+            rendered_candidates = ", ".join(
+                _format_manifest_candidate(candidate) for candidate in combined.values()
+            )
+            raise DataSourceError(
+                f"dbt model identifier '{model_name}' matches different nodes by "
+                "stable name and compiled alias. Provide one of "
+                "`model_unique_id`, `model_package_name`, or "
+                "`model_selector_name` to select the intended node. "
+                f"Candidates: {rendered_candidates}"
+            )
+        candidates = name_candidates or alias_candidates
+
     if model_package_name:
         candidates = [
             candidate
@@ -2142,24 +2238,44 @@ def _resolve_model_from_index(
             if candidate.model_name == model_selector_name
         ]
     if not candidates:
+        if not selector_context:
+            return None
         raise DataSourceError(
-            f"No dbt model found for alias '{model_name}'{selector_context}."
+            f"No dbt model found for identifier '{model_name}'{selector_context}."
         )
     if len(candidates) > 1:
         rendered_candidates = ", ".join(
             _format_manifest_candidate(candidate) for candidate in candidates
         )
         raise DataSourceError(
-            f"Ambiguous dbt model alias '{model_name}'. Provide one of "
+            f"Ambiguous dbt model identifier '{model_name}'. Provide one of "
             "`model_unique_id`, `model_package_name`, or `model_selector_name` "
             f"to disambiguate. Candidates: {rendered_candidates}"
         )
     return candidates[0]
 
 
-def _exact_selector(node: _ManifestNodeIndexEntry) -> str:
-    if node.fqn:
-        return f"fqn:{'.'.join(node.fqn)}"
+_SAFE_DBT_SELECTOR_COMPONENT = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _exact_selector(node: _ManifestNodeIndexEntry) -> Optional[str]:
+    """Render a provably bounded selector, or request a full compile.
+
+    dbt's CLI selector grammar treats whitespace, commas, globs, and graph
+    operators as syntax.  Never interpolate manifest data unless every
+    component is grammar-safe.  Package and resource-type intersections are
+    required because dbt's FQN matcher intentionally ignores package prefixes
+    for some versioned-node matches.
+    """
+    if node.fqn and node.package_name and node.resource_type:
+        components = (*node.fqn, node.package_name, node.resource_type)
+        if all(_SAFE_DBT_SELECTOR_COMPONENT.fullmatch(part) for part in components):
+            return (
+                f"package:{node.package_name},"
+                f"resource_type:{node.resource_type},"
+                f"fqn:{'.'.join(node.fqn)}"
+            )
+        return None
 
     unique_id_parts = node.unique_id.split(".")
     package_name = node.package_name
@@ -2171,7 +2287,12 @@ def _exact_selector(node: _ManifestNodeIndexEntry) -> str:
         raise DataSourceError(
             f"dbt node '{node.unique_id}' is missing a selector-compatible name."
         )
-    return f"{package_name}.{model_name}" if package_name else model_name
+    components = tuple(part for part in (package_name, model_name) if part)
+    if not components or not all(
+        _SAFE_DBT_SELECTOR_COMPONENT.fullmatch(part) for part in components
+    ):
+        return None
+    return ".".join(components)
 
 
 class DBTManifestConnector(BaseModel, DataConnector):
@@ -2253,9 +2374,20 @@ class DBTManifestConnector(BaseModel, DataConnector):
                     model_selector_name=selector_name,
                 )
                 if selection is None:
-                    raise DataSourceError(f"No dbt model found for alias '{alias}'.")
+                    raise DataSourceError(
+                        f"No dbt model found for identifier '{alias}'."
+                    )
                 selections.append(selection)
-            selectors = tuple(_exact_selector(selection) for selection in selections)
+            rendered_selectors = tuple(
+                _exact_selector(selection) for selection in selections
+            )
+            selectors = (
+                None
+                if any(selector is None for selector in rendered_selectors)
+                else tuple(
+                    selector for selector in rendered_selectors if selector is not None
+                )
+            )
             _ensure_selected_compilation(
                 clone_dir=clone_dir,
                 package_url=self.package_url,
@@ -2290,7 +2422,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
         model_package_name: Optional[str] = None,
         model_selector_name: Optional[str] = None,
     ) -> Optional[str]:
-        """Extract compiled SQL query for a specific DBT model alias."""
+        """Extract compiled SQL for a dbt node name or legacy compiled alias."""
         model_info = self.get_compiled_model_info(
             model_name,
             model_unique_id=model_unique_id,
@@ -2330,6 +2462,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
             if selected is None:
                 return None
             if self.compile:
+                selector = _exact_selector(selected)
                 _ensure_selected_compilation(
                     clone_dir=clone_dir,
                     package_url=self.package_url,
@@ -2339,7 +2472,7 @@ class DBTManifestConnector(BaseModel, DataConnector):
                     vars=self.vars,
                     profiles_dir=self.profiles_dir,
                     profile_name=self.profile_name,
-                    selectors=(_exact_selector(selected),),
+                    selectors=None if selector is None else (selector,),
                 )
                 refreshed_index = _get_manifest_index(clone_dir)
                 refreshed = refreshed_index.by_unique_id.get(selected.unique_id)
@@ -2486,7 +2619,7 @@ class DBTDatabricksConnector(_DBTWarehouseConnectorBase):
     3. Return results as a pandas DataFrame
 
     Attributes:
-        model_alias: The alias of the DBT model to execute.
+        model_alias: Stable dbt node name or legacy compiled alias to execute.
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
         profile_name: Optional dbt profile name to override project default.
@@ -2686,7 +2819,7 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
 
     Attributes:
         type: Always "databricks_dbt" for DBT-Databricks data sources.
-        model_alias: The alias of the DBT model to execute.
+        model_alias: Stable dbt node name or legacy compiled alias to execute.
         package_url: Git URL of the DBT project repository.
         project_dir: Local directory path for cloning the project.
         profile_name: Optional dbt profile name to override project default.
@@ -2739,7 +2872,10 @@ class DBTDatabricksSourceConfig(BaseSourceConfig):
     type: Literal["databricks_dbt"] = Field(
         "databricks_dbt", description="dbt + Databricks data source"
     )
-    model_alias: str = Field(..., description="dbt model alias")
+    model_alias: str = Field(
+        ...,
+        description="dbt node name (preferred) or legacy compiled alias",
+    )
     model_unique_id: Optional[str] = Field(
         None, description="Optional dbt unique_id selector for alias disambiguation"
     )
@@ -2957,7 +3093,10 @@ class DBTSourceConfig(BaseSourceConfig):
     """
 
     type: Literal["dbt"] = Field("dbt", description="Composable dbt data source")
-    model_alias: str = Field(..., description="dbt model alias")
+    model_alias: str = Field(
+        ...,
+        description="dbt node name (preferred) or legacy compiled alias",
+    )
     model_unique_id: Optional[str] = Field(
         None, description="Optional dbt unique_id selector for alias disambiguation"
     )

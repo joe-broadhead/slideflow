@@ -214,7 +214,7 @@ jobs:
 
       - name: Run pip-audit
         run: |
-          uv run pip-audit --progress-spinner off
+          uv run python scripts/ci/run_dependency_audit.py --progress-spinner off
 
   static-security:
     runs-on: ubuntu-latest

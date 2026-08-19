@@ -137,7 +137,8 @@ Fixes:
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.
 
-If alias ambiguity occurs, add one of these selectors in your source config:
+`model_alias` prefers the stable manifest node name and supports compiled aliases
+for compatibility. If identifier ambiguity occurs, add one of these selectors:
 
 - `model_unique_id` (most specific)
 - `model_package_name`
