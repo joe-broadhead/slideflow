@@ -2189,41 +2189,54 @@ def _resolve_model_from_index(
                 f"identifier '{model_name}'."
             )
         candidates = [unique_candidate]
-    elif model_selector_name:
-        candidates = list(manifest_index.by_name.get(model_selector_name, []))
     else:
         name_candidates = list(manifest_index.by_name.get(model_name, []))
         alias_candidates = list(manifest_index.by_alias.get(model_name, []))
-        if model_package_name:
-            name_candidates = [
-                candidate
-                for candidate in name_candidates
-                if candidate.package_name == model_package_name
-            ]
-            alias_candidates = [
-                candidate
-                for candidate in alias_candidates
-                if candidate.package_name == model_package_name
-            ]
+        identifier_candidates_exist = bool(name_candidates or alias_candidates)
 
-        name_ids = {candidate.unique_id for candidate in name_candidates}
-        alias_ids = {candidate.unique_id for candidate in alias_candidates}
-        if name_ids and alias_ids and name_ids != alias_ids:
-            combined = {
-                candidate.unique_id: candidate
-                for candidate in name_candidates + alias_candidates
-            }
-            rendered_candidates = ", ".join(
-                _format_manifest_candidate(candidate) for candidate in combined.values()
-            )
-            raise DataSourceError(
-                f"dbt model identifier '{model_name}' matches different nodes by "
-                "stable name and compiled alias. Provide one of "
-                "`model_unique_id`, `model_package_name`, or "
-                "`model_selector_name` to select the intended node. "
-                f"Candidates: {rendered_candidates}"
-            )
-        candidates = name_candidates or alias_candidates
+        if identifier_candidates_exist:
+            if model_package_name:
+                name_candidates = [
+                    candidate
+                    for candidate in name_candidates
+                    if candidate.package_name == model_package_name
+                ]
+                alias_candidates = [
+                    candidate
+                    for candidate in alias_candidates
+                    if candidate.package_name == model_package_name
+                ]
+
+            name_ids = {candidate.unique_id for candidate in name_candidates}
+            alias_ids = {candidate.unique_id for candidate in alias_candidates}
+            if name_ids and alias_ids and name_ids != alias_ids:
+                combined = {
+                    candidate.unique_id: candidate
+                    for candidate in name_candidates + alias_candidates
+                }
+                if not model_selector_name:
+                    rendered_candidates = ", ".join(
+                        _format_manifest_candidate(candidate)
+                        for candidate in combined.values()
+                    )
+                    raise DataSourceError(
+                        f"dbt model identifier '{model_name}' matches different "
+                        "nodes by stable name and compiled alias. Provide one of "
+                        "`model_unique_id`, `model_package_name`, or "
+                        "`model_selector_name` to select the intended node. "
+                        f"Candidates: {rendered_candidates}"
+                    )
+                candidates = list(combined.values())
+            else:
+                candidates = name_candidates or alias_candidates
+        elif model_selector_name:
+            # Compiled aliases can vary by target. Only fall back to a global
+            # stable-name lookup when the configured identifier has no name or
+            # alias matches at all; otherwise selector fields must disambiguate
+            # that identifier-scoped candidate set.
+            candidates = list(manifest_index.by_name.get(model_selector_name, []))
+        else:
+            candidates = []
 
     if model_package_name:
         candidates = [

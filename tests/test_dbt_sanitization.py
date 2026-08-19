@@ -2496,6 +2496,13 @@ def test_manifest_lookup_prefers_target_invariant_name_over_compiled_alias(
     assert model.alias == "dev_cesar_metrics"
     assert model.sql_text == "select 1 as answer"
 
+    fallback = connector.get_compiled_model_info(
+        "prod_cesar_metrics", model_selector_name="metrics"
+    )
+
+    assert fallback is not None
+    assert fallback.unique_id == "model.analytics.metrics"
+
 
 def test_manifest_lookup_supports_alias_disambiguation_selectors(monkeypatch, tmp_path):
     _reset_dbt_caches()
@@ -2518,6 +2525,13 @@ def test_manifest_lookup_supports_alias_disambiguation_selectors(monkeypatch, tm
                     "resource_type": "model",
                     "alias": "metrics_model",
                     "package_name": "pkg_b",
+                    "name": "metrics_eu",
+                    "compiled_path": "target/eu.sql",
+                },
+                "model.dep.metrics_eu": {
+                    "resource_type": "model",
+                    "alias": "dependency_metrics",
+                    "package_name": "dep",
                     "name": "metrics_eu",
                     "compiled_path": "target/eu.sql",
                 },
@@ -2555,6 +2569,13 @@ def test_manifest_lookup_supports_alias_disambiguation_selectors(monkeypatch, tm
         "metrics_model", model_selector_name="metrics_eu"
     )
     assert by_model_name == "select 'EU' as country"
+
+    by_package_and_model_name = connector.get_compiled_query(
+        "metrics_model",
+        model_package_name="pkg_b",
+        model_selector_name="metrics_eu",
+    )
+    assert by_package_and_model_name == "select 'EU' as country"
 
 
 def test_manifest_lookup_reuses_manifest_index_for_repeated_queries(
