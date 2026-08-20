@@ -490,17 +490,28 @@ warehouse:
   type: "databricks"
 ```
 
-`dbt.compile: true` clones the repository, runs `dbt deps`, parses the project,
-resolves requested aliases to exact dbt nodes, and compiles the required nodes
-with one bounded `dbt compile --select` invocation per project batch. dbt still
-parses the full project; scoped compilation does not build or refresh upstream
-relations and does not add ancestor `+` selectors. Set `dbt.compile: false` only
-when `dbt.project_dir` already
-points at a compiled dbt project with `target/manifest.json` and the compiled
-SQL files referenced by that manifest; SlideFlow will not clone or invoke dbt in
-that mode.
+`dbt.compile: true` clones the repository and runs `dbt deps` once for sources
+sharing the same repository, branch, workspace, and profile inputs. Every unique
+`target`/`vars` combination gets an isolated artifact directory, is parsed once,
+and compiles its requested aliases as one exact `dbt compile --select` batch.
+Artifact directories live under `project_dir/.slideflow_dbt_targets`, outside
+the cloned project, so even broad dbt model paths cannot rediscover generated
+SQL. A workspace-keyed lock under `project_dir/.slideflow_dbt_locks` prevents
+other SlideFlow processes from preparing, using, or cleaning the same physical
+workspace concurrently. SlideFlow marks each successfully prepared clone as one
+generation; cache hits require a real dbt project, the recorded Git checkout,
+and the original in-memory generation. A missing or altered clone invalidates
+every sibling artifact variant before the workspace is prepared again.
+Concrete target and log paths are required to be contained, non-symlink
+directories immediately before dbt runs. dbt still parses the full project;
+scoped compilation does not build or refresh upstream relations and does not
+add ancestor `+` selectors. Set
+`dbt.compile: false` only when `dbt.project_dir` already points at a compiled dbt
+project with `target/manifest.json` and the compiled SQL files referenced by that
+manifest; SlideFlow will not clone or invoke dbt in that mode.
 
-Optional alias disambiguation fields for `dbt`:
+`model_alias` accepts a stable manifest node name (preferred) or a legacy
+compiled alias. Optional disambiguation fields for `dbt`:
 
 - `model_unique_id` (most specific)
 - `model_package_name`

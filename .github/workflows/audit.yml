@@ -50,7 +50,8 @@ jobs:
       - name: Run pip-audit
         id: pip_audit
         run: |
-          uv run pip-audit --format=json --output pip-audit.json
+          uv run python scripts/ci/run_dependency_audit.py \
+            --format=json --output pip-audit.json
 
       - name: Warn on vulnerabilities
         if: always() && steps.pip_audit.outcome == 'failure'

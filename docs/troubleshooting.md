@@ -99,6 +99,10 @@ Common causes:
   region/cluster/serverless identity settings when using `warehouse.type: redshift`
 - invalid `package_url` or missing token env var used in URL
 - profile/target mismatch during dbt compile
+- a stale or externally deleted directory under `.slideflow_dbt_clones` or
+  `.slideflow_dbt_targets`
+- a symlink or non-directory occupying a reserved clone, target, or log path,
+  including `.slideflow_dbt_logs` or `.slideflow_dbt_locks`
 
 Frequent CI symptom:
 
@@ -119,11 +123,22 @@ Fixes:
   `target/manifest.json` references an existing compiled SQL file.
 - use `model_unique_id`, `model_package_name`, or `model_selector_name` when an
   alias is ambiguous; SlideFlow converts the resolved node to an exact selector.
+- keep sources that should share clone/dependency work on the same `project_dir`,
+  `package_url`, branch, profiles path, and profile name. Different `vars` and
+  targets are isolated automatically and do not require separate workspaces.
+- remove unexpected symlinks or files from `.slideflow_dbt_clones`,
+  `.slideflow_dbt_targets`, `.slideflow_dbt_logs`, or `.slideflow_dbt_locks`;
+  SlideFlow intentionally fails closed rather than passing redirected paths to
+  dbt or using an unsafe coordination file. Do not modify the private
+  `.slideflow-prepared.json` clone marker or the prepared Git checkout; a
+  missing project file, checkout mismatch, or marker mismatch invalidates every
+  cached variant for that shared workspace.
 
 For private dbt deps/repo access, ensure token env vars referenced by
 `package_url` or `env_var(...)` are present at runtime.
 
-If alias ambiguity occurs, add one of these selectors in your source config:
+`model_alias` prefers the stable manifest node name and supports compiled aliases
+for compatibility. If identifier ambiguity occurs, add one of these selectors:
 
 - `model_unique_id` (most specific)
 - `model_package_name`

@@ -75,8 +75,10 @@ data_source:
 
 ## Alias Ambiguity and Disambiguation
 
-If multiple dbt nodes share the same alias, SlideFlow now raises an explicit
-ambiguity error and asks you to disambiguate.
+SlideFlow resolves the configured identifier by stable manifest node name
+before falling back to compiled alias. If name and alias identify different
+nodes, or multiple nodes still match, SlideFlow raises an explicit ambiguity
+error and asks you to disambiguate.
 
 Available selectors:
 

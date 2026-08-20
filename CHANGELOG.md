@@ -27,8 +27,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - dbt-backed builds now parse project metadata and compile only the exact,
-  deduplicated models required by an artifact, while reusing one clone and
-  dependency installation per project identity.
+  deduplicated models required by an artifact. Sources that differ only by
+  `target` or `vars` now reuse one clone and dependency installation while
+  writing manifests, compiled SQL, and logs to isolated sibling directories
+  outside the parsed dbt project. Prepared generations invalidate sibling
+  variants together, workspace-keyed filesystem locks coordinate active use and
+  cleanup across processes, failed paths remain reserved until cleanup finishes,
+  markers verify the dbt project and Git checkout, lease release re-applies cache
+  bounds, and concrete dbt output paths reject symlinks and escaped locations
+  immediately before invocation. Model lookup now prefers target-invariant
+  manifest names while preserving compiled aliases as a compatibility fallback;
+  scoped selectors intersect package, resource type, and FQN, and unsafe
+  selector metadata falls back to a full variant compile.
 - Pandas compatibility now spans `>=2.2,<4.0`, with CI coverage for the oldest
   supported 2.2 release and the latest supported 3.x release.
 

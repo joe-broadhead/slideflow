@@ -246,6 +246,29 @@ data_source:
 Behavior highlights:
 
 - Repositories are cloned under `project_dir/.slideflow_dbt_clones/<key>`.
+- The clone key covers repository, branch, and profile inputs. `target` and
+  `vars` do not trigger another clone or `dbt deps` run.
+- Each unique `target`/`vars` combination writes to an isolated
+  `project_dir/.slideflow_dbt_targets/<workspace-key>/<variant-key>` directory.
+  This sibling tree prevents variants from overwriting each other and keeps
+  generated SQL outside the parsed dbt project, including for projects with
+  broad model paths such as `model-paths: ['.']`.
+- A workspace-keyed filesystem lock under `project_dir/.slideflow_dbt_locks`
+  coordinates preparation, active artifact use, and cleanup across SlideFlow
+  processes. Threads in one process still share the existing lease and
+  single-flight coordination.
+- Managed artifact paths must be real contained directories. SlideFlow rejects
+  symlinks, non-directory collisions, and paths that resolve outside their
+  expected workspace. The concrete deps log, variant target, and variant log
+  paths are revalidated immediately before every dbt invocation.
+- A private preparation marker is written after clone and `dbt deps` complete.
+  Cache hits require a real `dbt_project.yml`, the same checked-out Git commit,
+  and the in-memory generation originally recorded for the marker. If any of
+  those values or the clone changes, every cached target/vars variant for that
+  shared workspace is invalidated and rebuilt from one new generation.
+- Evicted paths remain reserved until lease-safe cleanup finishes, preventing a
+  concurrent request from recreating a directory that cleanup could later delete.
+  Cache bounds are checked again when active leases release.
 - `project_dir` is treated as a workspace root, not a direct clone target.
 - Default `compile: true` runs `dbt deps`, parses the full project, resolves
   exact requested nodes, and runs one scoped `dbt compile --select` for the
@@ -258,10 +281,15 @@ Behavior highlights:
   workspace and runs dbt with `--profiles-dir <clone_dir>`.
 - If `profiles_dir` is omitted but the cloned repo contains `profiles.yml` at
   project root, SlideFlow auto-uses that project-root profiles file.
-- Clone/dependency/parse work for identical project identities is deduplicated.
-  Compiled selector coverage expands as a sorted union, so cached supersets
-  satisfy later subset requests without recompiling.
-- If multiple dbt nodes share `model_alias`, set one of:
+- Clone/dependency work is single-flight across variants. Each variant is parsed
+  once, and all requested analyses/models for that variant are compiled as one
+  sorted, deduplicated selector batch. Cached supersets satisfy later subset
+  requests without recompiling.
+- In-process dbt invocations are serialized because dbt-core maintains process
+  globals; warehouse queries remain governed separately by `query_threads`.
+- `model_alias` resolves a target-invariant manifest `name` first and retains
+  compiled `alias` as a compatibility fallback. If the identifier is
+  ambiguous, set one of:
   - `model_unique_id`
   - `model_package_name`
   - `model_selector_name`
@@ -404,7 +432,9 @@ disabled.
 Cache/compile tuning env vars:
 
 - `SLIDEFLOW_DATA_CACHE_MAX_ENTRIES` (global source cache cap)
-- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (default from built-in constants)
+- `SLIDEFLOW_DBT_CACHE_MAX_ENTRIES` (bounds compiled variants under
+  `.slideflow_dbt_targets` and inactive prepared workspaces under
+  `.slideflow_dbt_clones`; default from built-in constants)
 - `SLIDEFLOW_DBT_COMPILE_FAILURE_BACKOFF_S`
 - `SLIDEFLOW_DBT_FAILURE_CACHE_MAX_ENTRIES`
 
