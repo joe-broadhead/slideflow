@@ -3236,7 +3236,7 @@ requires-dist = [
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=11.0.1" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
-    { name = "python-pptx", marker = "extra == 'powerpoint'", specifier = ">=1.0.0,<2.0" },
+    { name = "python-pptx", marker = "extra == 'powerpoint'", specifier = ">=1.0.2,<2.0" },
     { name = "pyyaml", specifier = ">=6.0.3,<7.0" },
     { name = "redshift-connector", marker = "extra == 'redshift'", specifier = ">=2.1.15,<2.2" },
     { name = "rich", specifier = ">=13.0,<15.0" },
