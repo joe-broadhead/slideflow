@@ -1,26 +1,2 @@
 [
-  {
-    "package": "sqlparse",
-    "vulnerability": "CVE-2026-71491",
-    "expires": "2026-11-18",
-    "reason": "dbt-core 1.11 and 1.12 require sqlparse<0.6.0; dbt projects are trusted executable inputs"
-  },
-  {
-    "package": "sqlparse",
-    "vulnerability": "CVE-2026-59894",
-    "expires": "2026-11-18",
-    "reason": "dbt-core 1.11 and 1.12 require sqlparse<0.6.0; SlideFlow does not use sqlparse output-language generation"
-  },
-  {
-    "package": "sqlparse",
-    "vulnerability": "CVE-2026-59893",
-    "expires": "2026-11-18",
-    "reason": "dbt-core 1.11 and 1.12 require sqlparse<0.6.0; dbt projects are trusted executable inputs"
-  },
-  {
-    "package": "sqlparse",
-    "vulnerability": "CVE-2026-54284",
-    "expires": "2026-11-18",
-    "reason": "dbt-core 1.11 and 1.12 require sqlparse<0.6.0; dbt projects are trusted executable inputs"
-  }
 ]
