@@ -617,7 +617,7 @@ wheels = [
 
 [[package]]
 name = "dbt-duckdb"
-version = "1.10.1"
+version = "1.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dbt-adapters" },
@@ -625,9 +625,9 @@ dependencies = [
     { name = "dbt-core" },
     { name = "duckdb" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/d3/0f9f6a4de94e0f95dcfabbba5e8ef7670de695483345edd9e5b36e93d024/dbt_duckdb-1.10.1.tar.gz", hash = "sha256:5d6df1589d4ba21fe20ac08454a32763d3263798c9f5914280eabd1dc285cbc0", size = 145907, upload-time = "2026-02-17T17:29:04.283Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/2e/cd495dbdee474eefb431156055dd7142b893258567e2167e414fceac0641/dbt_duckdb-1.11.0.tar.gz", hash = "sha256:4b087557e8559e2c141a8daae28f4a832a06f425d0b4567eca7c8ffb635cd0fe", size = 170805, upload-time = "2026-08-07T16:08:10.453Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/26/0ce2b1aeecdd1a18a9fac6f02d08f60c95944f036866f3fe37146298d4e4/dbt_duckdb-1.10.1-py3-none-any.whl", hash = "sha256:90658ecb367082786c5ea2ffbf9e35bb4116fa5ad1bc2f287c4dc1f3984bafa1", size = 85089, upload-time = "2026-02-17T17:29:03.117Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/79/52cf57da07b05ff2e6a055c44b249d6fde200af340641995daea22ed6e2c/dbt_duckdb-1.11.0-py3-none-any.whl", hash = "sha256:bac8c77771de890efa1af5b003af7c74de50c5ef67dba5891894e78348f7091b", size = 91227, upload-time = "2026-08-07T16:08:09.004Z" },
 ]
 
 [[package]]
@@ -3205,7 +3205,7 @@ requires-dist = [
     { name = "dbt-bigquery", marker = "extra == 'bigquery'", specifier = ">=1.11.1,<1.12" },
     { name = "dbt-core", marker = "extra == 'dbt'", specifier = ">=1.10,<1.12" },
     { name = "dbt-databricks", marker = "extra == 'dbt'", specifier = ">=1.10,<1.13" },
-    { name = "dbt-duckdb", marker = "extra == 'duckdb'", specifier = ">=1.9,<1.12" },
+    { name = "dbt-duckdb", marker = "extra == 'duckdb'", specifier = ">=1.11.0,<1.12" },
     { name = "dbt-redshift", marker = "extra == 'redshift'", specifier = ">=1.10,<1.12" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.5.3,<2.0" },
     { name = "filelock", marker = "extra == 'dbt'", specifier = ">=3.20.1,<4.0" },
