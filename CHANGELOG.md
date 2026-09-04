@@ -241,7 +241,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Resolved open dependency security advisories by refreshing locked versions for:
   - `cryptography` to `50.0.0`
   - `dbt-common`
-  - `GitPython` to `3.1.58` and raised the `dbt` extra's minimum accordingly
+  - `GitPython` to `3.1.61` and raised the `dbt` extra's minimum accordingly
+  - `sqlparse` advisories resolved by `sqlparse 0.6.0` (waiver entries removed from the dependency-audit exception policy(; the audit exception policy is now empty.
   - `idna`
   - `pyasn1`
   - `pymdown-extensions`
