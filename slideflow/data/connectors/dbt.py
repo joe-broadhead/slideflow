@@ -458,16 +458,22 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
         git_url = git_url.replace(f"${token_name}", token)
     safe_git_url = _sanitize_git_url(git_url)
 
+    clone_exists = clone_dir.exists() or clone_dir.is_symlink()
+    managed_clone_path = clone_exists or clone_dir.parent.name == ".slideflow_dbt_clones"
+    if managed_clone_path:
+        try:
+            _validate_managed_clone_path(clone_dir)
+        except DataSourceError as error:
+            if clone_exists:
+                message = "Refusing to delete unmanaged DBT clone directory."
+            else:
+                message = "Refusing to use unsafe DBT clone directory."
+            raise DataSourceError(
+                f"{message} clone_dir={clone_dir}"
+            ) from error
+
     if clone_dir.exists():
         _drop_manifest_index(clone_dir)
-        managed_root = clone_dir.parent
-        if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
-            clone_dir, managed_root
-        ):
-            raise DataSourceError(
-                "Refusing to delete unmanaged DBT clone directory. "
-                f"clone_dir={clone_dir}"
-            )
         shutil.rmtree(clone_dir)
     try:
         if branch:
@@ -576,38 +582,29 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> bool:
     """Remove a managed clone and sibling artifacts without following links."""
     workspace_root = clone_dir.parent.parent
     workspace_artifact_dir = workspace_root / ".slideflow_dbt_targets" / clone_dir.name
-    with _cache_lock:
-        _drop_manifest_indexes_under_locked(clone_dir)
-        _drop_manifest_indexes_under_locked(workspace_artifact_dir)
-    managed_root = clone_dir.parent
-    if managed_root.name != ".slideflow_dbt_clones" or not _is_path_within(
-        clone_dir, managed_root
-    ):
+    sibling_dirs = (
+        workspace_artifact_dir,
+        workspace_root / ".slideflow_dbt_logs" / clone_dir.name,
+    )
+    try:
+        _validate_managed_clone_path(clone_dir)
+        for sibling_dir in sibling_dirs:
+            _validate_real_directory_chain(
+                sibling_dir, workspace_root, require_exists=False
+            )
+    except DataSourceError:
         logger.warning(
-            "Refusing to delete unmanaged DBT clone directory: %s", clone_dir
+            "Refusing to delete unsafe managed DBT workspace: %s", clone_dir
         )
         return False
 
     try:
+        with _cache_lock:
+            _drop_manifest_indexes_under_locked(clone_dir)
+            _drop_manifest_indexes_under_locked(workspace_artifact_dir)
         if clone_dir.exists():
             shutil.rmtree(clone_dir)
-        sibling_dirs = (
-            workspace_artifact_dir,
-            workspace_root / ".slideflow_dbt_logs" / clone_dir.name,
-        )
         for sibling_dir in sibling_dirs:
-            managed_root = sibling_dir.parent
-            if (
-                managed_root.is_symlink()
-                or (managed_root.exists() and not managed_root.is_dir())
-                or sibling_dir.is_symlink()
-                or not _is_path_within(sibling_dir, managed_root)
-            ):
-                logger.warning(
-                    "Refusing to delete unsafe managed DBT directory: %s",
-                    sibling_dir,
-                )
-                return False
             if sibling_dir.exists():
                 shutil.rmtree(sibling_dir)
         return True
@@ -1128,7 +1125,9 @@ def _resolve_managed_clone_dir(
         )
 
     managed_root = workspace_root / ".slideflow_dbt_clones"
+    _validate_real_directory_chain(managed_root, workspace_root, require_exists=False)
     managed_root.mkdir(parents=True, exist_ok=True)
+    _validate_real_directory_chain(managed_root, workspace_root, require_exists=True)
     key = _build_clone_identity_key(
         package_url=package_url,
         branch=branch,
@@ -1216,6 +1215,15 @@ def _validate_real_directory_chain(
         )
     if require_exists and not directory.is_dir():
         raise DataSourceError(f"Reserved DBT directory does not exist: {directory}")
+
+
+def _validate_managed_clone_path(clone_dir: Path) -> None:
+    """Validate a clone path and every parent before filesystem mutation."""
+    managed_root = clone_dir.parent
+    workspace_root = managed_root.parent
+    if managed_root.name != ".slideflow_dbt_clones":
+        raise DataSourceError(f"Invalid managed DBT clone path: {clone_dir}")
+    _validate_real_directory_chain(clone_dir, workspace_root, require_exists=False)
 
 
 def _resolve_workspace_lock_path(clone_dir: Path) -> Path:

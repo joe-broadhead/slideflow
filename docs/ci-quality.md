@@ -71,6 +71,8 @@
     - GitHub Actions versions (`github-actions`)
   - groups patch/minor updates to reduce PR noise
   - leaves major updates ungrouped for explicit review
+  - refreshes `uv.lock` automatically for same-repository Python update PRs
+  - supports manual dispatch to backfill an existing Dependabot PR
 - `CodeQL` (`.github/workflows/codeql.yml`)
   - runs static security analysis for Python on:
     - pull requests to `master`/`main`/`release/**`
