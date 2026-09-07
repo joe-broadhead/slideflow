@@ -39,10 +39,12 @@ jobs:
           head_repo="$(jq -r '.head.repo.full_name // empty' <<<"${pr_json}")"
           base_ref="$(jq -r '.base.ref' <<<"${pr_json}")"
           head_ref="$(jq -r '.head.ref' <<<"${pr_json}")"
+          state="$(jq -r '.state' <<<"${pr_json}")"
           if [ "${author}" != "dependabot[bot]" ] || \
             [ "${head_repo}" != "${GITHUB_REPOSITORY}" ] || \
-            [ "${base_ref}" != "master" ]; then
-            echo "Refusing non-Dependabot or cross-repository PR #${PR_NUMBER}."
+            [ "${base_ref}" != "master" ] || \
+            [ "${state}" != "open" ]; then
+            echo "Refusing non-open Dependabot or cross-repository PR #${PR_NUMBER}."
             exit 1
           fi
           echo "checkout_ref=refs/pull/${PR_NUMBER}/head" >> "${GITHUB_OUTPUT}"
@@ -53,6 +55,7 @@ jobs:
         with:
           ref: ${{ steps.pull-request.outputs.checkout_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -87,4 +90,6 @@ jobs:
         if: steps.commit.outputs.changed == 'true'
         env:
           HEAD_REF: ${{ steps.pull-request.outputs.head_ref }}
-        run: git push origin "HEAD:${HEAD_REF}"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" push origin "HEAD:${HEAD_REF}"
