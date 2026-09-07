@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python `3.12+`
+- Python `3.12` or `3.13` (supported range: `>=3.12,<3.14`)
 - Google Cloud project with:
   - Google Slides API enabled
   - Google Docs API enabled (if using `google_docs` provider)

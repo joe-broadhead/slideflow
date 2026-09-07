@@ -44,7 +44,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: auth
         uses: google-github-actions/auth@v2
@@ -223,6 +223,13 @@ Audit enforcement policy:
 - Static Bandit medium/high severity findings are blocking. Low-signal findings
   should be converted into explicit suppressions or code changes before merge.
 
+The exception policy is intentionally time-bounded and reviewed with each
+release. It currently contains one transitive `google-cloud-aiplatform`
+exception for `CVE-2026-2473`, expiring `2026-12-31`, because the available
+patched releases are incompatible with the required `google-genai` 2.x line
+and supported `dbt-bigquery` releases. This is not a clean audit result; it is
+an explicit compatibility exception that must be re-evaluated before expiry.
+
 Default-branch dependency alert closure:
 
 - Treat the locked all-extras `pip-audit` result as the branch-side proof that a
@@ -240,7 +247,7 @@ Default-branch dependency alert closure:
 Useful checks:
 
 ```bash
-uv run pip-audit --progress-spinner off
+uv run python scripts/ci/run_dependency_audit.py --progress-spinner off
 gh api '/repos/OWNER/REPO/dependabot/alerts?state=open' --paginate
 gh pr list --author app/dependabot --state open
 ```

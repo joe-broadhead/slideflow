@@ -86,6 +86,10 @@ PyPI package identity:
 2. Update docs + changelog in the same release prep PR:
    - update user-facing docs for new behavior/flags/workflows
    - update `CHANGELOG.md` with release notes and known issues
+   - compare the latest release tag with `HEAD` so every user-visible change is
+     covered, and keep post-release changes under `[Unreleased]`
+   - review `.github/dependency-audit-exceptions.json`; every active exception
+     must have a current expiry, rationale, and a documented follow-up
 
 3. Ensure docs build cleanly:
 

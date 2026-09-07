@@ -17,8 +17,8 @@
   - builds wheel/sdist artifacts and verifies distribution identity (`slideflow-presentations`)
   - installs built wheel and runs quickstart smoke validation (`validate` + `build --dry-run`)
 - `Docs` (`.github/workflows/docs.yml`)
-  - builds docs on pull requests that touch docs, README, changelog, package
-    metadata, or docs dependencies
+  - builds docs on pull requests that touch docs, README, CONTRIBUTING, changelog,
+    package metadata, or docs dependencies
   - installs locked docs dependencies with `uv sync --extra docs --locked`
   - runs `uv run mkdocs build --strict`
   - deploys to GitHub Pages on `master`/`main`
@@ -33,7 +33,8 @@
     then creates the GitHub release
 - `Audit` (`.github/workflows/audit.yml`)
   - installs the locked project environment with `dev`, `ai`, `databricks`, `dbt`, `bigquery`, `duckdb`, `redshift`, and `powerpoint` extras
-  - runs blocking `pip-audit` from that locked environment
+  - runs the policy-aware `scripts/ci/run_dependency_audit.py` wrapper, which
+    applies only documented, expiring exceptions around `pip-audit`
   - runs blocking `bandit` medium/high severity scan from the locked dev environment
   - uploads audit reports as artifacts
 - `Live Google Slides` (`.github/workflows/live-google-slides.yml`)
@@ -72,7 +73,12 @@
   - groups patch/minor updates to reduce PR noise
   - leaves major updates ungrouped for explicit review
   - refreshes `uv.lock` automatically for same-repository Python update PRs
-  - supports manual dispatch to backfill an existing Dependabot PR
+  - supports manual dispatch to backfill an existing Dependabot PR; provide
+    the open PR number explicitly:
+
+    ```bash
+    gh workflow run dependabot-lockfile.yml -f pr_number=<number>
+    ```
 - `CodeQL` (`.github/workflows/codeql.yml`)
   - runs static security analysis for Python on:
     - pull requests to `master`/`main`/`release/**`
@@ -90,7 +96,7 @@ source .venv/bin/activate
 uv lock --check
 uv pip check
 uv run python scripts/ci/check_secret_hygiene.py
-uv run pip-audit
+uv run python scripts/ci/run_dependency_audit.py --progress-spinner off
 actionlint
 uv run python scripts/ci/check_numpy_binary_compatibility.py
 uvx --from black==26.3.1 black --check slideflow tests scripts

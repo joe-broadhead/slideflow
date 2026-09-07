@@ -10,7 +10,7 @@ This guide covers production execution patterns for SlideFlow in:
 
 For all orchestrated environments, ensure:
 
-- Python 3.12+
+- Python 3.12 or 3.13 (supported range: `>=3.12,<3.14`)
 - SlideFlow package installed (plus connector/provider extras used by your config)
 - Access to required data systems (Drive/Slides/Docs/Databricks/Git)
 - Correct environment variables and secrets
