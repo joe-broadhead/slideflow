@@ -102,4 +102,5 @@ jobs:
           HEAD_REF: ${{ steps.pull-request.outputs.head_ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" push origin "HEAD:${HEAD_REF}"
+          auth="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${auth}" push origin "HEAD:${HEAD_REF}"
