@@ -70,6 +70,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Restricted Google Slides/Docs chart-image cleanup is strict by default through
   `strict_restricted_chart_cleanup`, making temporary public-access revoke or
   cleanup failures fail the render unless explicitly opted out.
+- Google Slides/Docs chart-image uploads now default to restricted access, with
+  explicit public opt-in; cleanup summaries expose failed counts and file IDs.
 - Google Slides/Docs API rate limiters are keyed by configured rate instead of
   first writer winning process-wide, and CLI `--rps` overrides now install a
   provider-neutral limiter on the active provider.
@@ -78,6 +80,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `provider_args.timeout` overrides.
 - CI, audit, live-validation, and release workflows now use locked build/security
   environments for build, `twine`, Bandit, and live Google test dependencies.
+- Post-release dependency maintenance refreshed runtime, optional-connector,
+  documentation, build-tool, and GitHub Actions dependencies through the
+  tracked lockfile.
 - PyPI metadata now includes license, classifiers, keywords, project URLs, and a
   tested Python range of `>=3.12,<3.14`.
 
@@ -100,6 +105,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Documentation and the Slideflow YAML authoring skill now cover PowerPoint,
   Redshift env fallbacks, BigQuery timeouts, partial-render semantics, and the
   current reusable workflow defaults.
+- Dependabot lockfile refreshes now validate same-repository PR metadata and
+  push with an explicit authenticated header, so successful lockfile updates
+  are not lost to token-auth failures.
+
+### Security
+
+- Updated `cryptography` to `50.0.0` and GitPython to `3.1.61`, raised the
+  `dbt` extra's GitPython minimum to `3.1.59`, and resolved the stale `sqlparse`
+  advisories with `sqlparse 0.6.0`.
+- The audit policy currently contains one time-bounded exception for
+  transitive `google-cloud-aiplatform` `CVE-2026-2473`. No patched release is
+  currently compatible with the required `google-genai` 2.x line and supported
+  `dbt-bigquery` releases; the exception expires on `2026-12-31` and must be
+  re-evaluated before then.
 
 ## [0.0.7] - 2026-05-25
 
@@ -130,8 +149,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `provider.config.transfer_ownership_to`
   - `provider.config.transfer_ownership_strict`
 - Chart image sharing-mode controls for Google Slides/Docs:
-  - `provider.config.chart_image_sharing_mode` (`restricted` by default, explicit `public` opt-in)
-  - cleanup failure counts and file IDs in build results/output JSON
+  - `provider.config.chart_image_sharing_mode` (`public` | `restricted`)
 - Shared Google API utility layer for provider internals:
   - shared credential construction
   - shared rate-limited request execution helper
@@ -239,10 +257,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Security
 
 - Resolved open dependency security advisories by refreshing locked versions for:
-  - `cryptography` to `50.0.0`
+  - `cryptography`
   - `dbt-common`
-  - `GitPython` to `3.1.61` and raised the `dbt` extra's minimum accordingly
-  - `sqlparse` advisories resolved by `sqlparse 0.6.0` (waiver entries removed from the dependency-audit exception policy(; the audit exception policy is now empty.
+  - `GitPython`
   - `idna`
   - `pyasn1`
   - `pymdown-extensions`

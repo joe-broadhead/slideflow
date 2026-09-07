@@ -4,7 +4,7 @@ Thanks for contributing to SlideFlow.
 
 ## Development setup
 
-1. Use Python 3.12+.
+1. Use Python 3.12 or 3.13 (`>=3.12,<3.14`, matching the package metadata).
 2. Create and activate a virtual environment.
 3. Install project dependencies from the tracked lockfile.
 
