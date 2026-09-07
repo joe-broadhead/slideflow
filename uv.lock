@@ -3279,7 +3279,7 @@ requires-dist = [
     { name = "dbt-core", marker = "extra == 'dbt'", specifier = ">=1.12.3,<1.13" },
     { name = "dbt-databricks", marker = "extra == 'dbt'", specifier = ">=1.12.5,<1.13" },
     { name = "dbt-duckdb", marker = "extra == 'duckdb'", specifier = ">=1.11.0,<1.12" },
-    { name = "dbt-redshift", marker = "extra == 'redshift'", specifier = ">=1.10,<1.12" },
+    { name = "dbt-redshift", marker = "extra == 'redshift'", specifier = ">=1.11.1,<1.12" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.5.5,<2.0" },
     { name = "filelock", marker = "extra == 'dbt'", specifier = ">=3.20.1,<4.0" },
     { name = "gitpython", marker = "extra == 'dbt'", specifier = ">=3.1.59,<4.0" },
