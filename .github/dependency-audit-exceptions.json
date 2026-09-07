@@ -1,2 +1,8 @@
 [
+  {
+    "package": "google-cloud-aiplatform",
+    "vulnerability": "CVE-2026-2473",
+    "reason": "This is a transitive dbt-bigquery dependency. No patched google-cloud-aiplatform release is compatible with the required google-genai 2.x line and the supported dbt-bigquery releases. SlideFlow does not use google-cloud-aiplatform directly; re-evaluate when dbt-bigquery supports google-genai 2.x.",
+    "expires": "2026-12-31"
+  }
 ]

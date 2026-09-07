@@ -459,7 +459,9 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
     safe_git_url = _sanitize_git_url(git_url)
 
     clone_exists = clone_dir.exists() or clone_dir.is_symlink()
-    managed_clone_path = clone_exists or clone_dir.parent.name == ".slideflow_dbt_clones"
+    managed_clone_path = (
+        clone_exists or clone_dir.parent.name == ".slideflow_dbt_clones"
+    )
     if managed_clone_path:
         try:
             _validate_managed_clone_path(clone_dir)
@@ -468,9 +470,7 @@ def _clone_repo(git_url: str, clone_dir: Path, branch: Optional[str]) -> None:
                 message = "Refusing to delete unmanaged DBT clone directory."
             else:
                 message = "Refusing to use unsafe DBT clone directory."
-            raise DataSourceError(
-                f"{message} clone_dir={clone_dir}"
-            ) from error
+            raise DataSourceError(f"{message} clone_dir={clone_dir}") from error
 
     if clone_dir.exists():
         _drop_manifest_index(clone_dir)
@@ -593,9 +593,7 @@ def _cleanup_managed_clone_dir(clone_dir: Path) -> bool:
                 sibling_dir, workspace_root, require_exists=False
             )
     except DataSourceError:
-        logger.warning(
-            "Refusing to delete unsafe managed DBT workspace: %s", clone_dir
-        )
+        logger.warning("Refusing to delete unsafe managed DBT workspace: %s", clone_dir)
         return False
 
     try:
