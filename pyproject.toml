@@ -58,7 +58,11 @@ dbt = [
     "filelock>=3.20.1,<4.0",
     "gitpython>=3.1.59,<4.0",
 ]
-bigquery = ["google-cloud-bigquery>=3.42.2,<4.0", "dbt-bigquery>=1.11.1,<1.12"]
+bigquery = [
+    "google-cloud-bigquery>=3.42.2,<4.0",
+    "dbt-bigquery>=1.11.1,<1.12",
+    "google-cloud-aiplatform>=1.133.0,<2.0",
+]
 duckdb = ["duckdb>=1.5.5,<2.0", "dbt-duckdb>=1.11.0,<1.12"]
 redshift = ["redshift-connector>=2.1.15,<2.2", "dbt-redshift>=1.10,<1.12"]
 powerpoint = ["python-pptx>=1.0.2,<2.0"]

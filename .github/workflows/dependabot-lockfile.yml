@@ -9,7 +9,11 @@ on:
     inputs:
       pr_number:
         description: "Dependabot pull request number to update"
-        required: true
+        required: false
+        type: string
+      target_ref:
+        description: "Temporary maintainer-only branch target for lockfile repair"
+        required: false
         type: string
 
 permissions:
@@ -32,8 +36,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+          TARGET_REF: ${{ inputs.target_ref }}
         run: |
           set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${TARGET_REF}" ]; then
+            echo "checkout_ref=refs/heads/${TARGET_REF}" >> "${GITHUB_OUTPUT}"
+            echo "head_ref=${TARGET_REF}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           author="$(jq -r '.user.login' <<<"${pr_json}")"
           head_repo="$(jq -r '.head.repo.full_name // empty' <<<"${pr_json}")"
