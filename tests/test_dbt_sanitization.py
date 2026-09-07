@@ -865,6 +865,43 @@ def test_clone_cleanup_does_not_follow_symlinked_artifact_namespace(tmp_path):
     assert target_root.is_symlink()
 
 
+def test_clone_cleanup_refuses_symlinked_clone_namespace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve")
+    clone_namespace = workspace / ".slideflow_dbt_clones"
+    clone_namespace.symlink_to(external, target_is_directory=True)
+    clone_dir = clone_namespace / "clone"
+    (external / "clone").mkdir()
+
+    assert dbt_module._cleanup_managed_clone_dir(clone_dir) is False
+
+    assert sentinel.read_text() == "preserve"
+    assert (external / "clone").exists()
+    assert clone_namespace.is_symlink()
+
+
+def test_resolve_managed_clone_dir_refuses_symlinked_namespace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    clone_namespace = workspace / ".slideflow_dbt_clones"
+    clone_namespace.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(DataSourceError, match="must not be a symlink"):
+        dbt_module._resolve_managed_clone_dir(
+            str(workspace),
+            "https://github.com/org/repo.git",
+            "main",
+        )
+
+    assert clone_namespace.is_symlink()
+
+
 @pytest.mark.parametrize("symlink_level", ["namespace", "workspace", "variant"])
 def test_get_compiled_project_rejects_symlinked_artifact_paths(
     monkeypatch, tmp_path, symlink_level
@@ -3479,6 +3516,36 @@ def test_clone_repo_refuses_to_delete_unmanaged_existing_path(tmp_path):
             unmanaged_clone_dir,
             branch=None,
         )
+
+
+def test_clone_repo_refuses_symlinked_clone_namespace(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    sentinel.write_text("preserve")
+    clone_namespace = workspace / ".slideflow_dbt_clones"
+    clone_namespace.symlink_to(external, target_is_directory=True)
+    clone_dir = clone_namespace / "new-clone"
+    called = False
+
+    def _clone(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(dbt_module.Repo, "clone_from", staticmethod(_clone))
+
+    with pytest.raises(DataSourceError, match="unsafe DBT clone directory"):
+        dbt_module._clone_repo(
+            "https://github.com/org/repo.git",
+            clone_dir,
+            branch=None,
+        )
+
+    assert not called
+    assert sentinel.read_text() == "preserve"
+    assert clone_namespace.is_symlink()
 
 
 def test_clone_repo_allows_managed_clone_directory_cleanup(monkeypatch, tmp_path):

@@ -1,0 +1,90 @@
+name: Dependabot lockfile
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Dependabot pull request number to update"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  update-lockfile:
+    # This job only handles same-repository Dependabot branches. It checks out
+    # PR metadata to resolve dependencies, but never executes project code.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve Dependabot branch
+        id: pull-request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          author="$(jq -r '.user.login' <<<"${pr_json}")"
+          head_repo="$(jq -r '.head.repo.full_name // empty' <<<"${pr_json}")"
+          base_ref="$(jq -r '.base.ref' <<<"${pr_json}")"
+          head_ref="$(jq -r '.head.ref' <<<"${pr_json}")"
+          if [ "${author}" != "dependabot[bot]" ] || \
+            [ "${head_repo}" != "${GITHUB_REPOSITORY}" ] || \
+            [ "${base_ref}" != "master" ]; then
+            echo "Refusing non-Dependabot or cross-repository PR #${PR_NUMBER}."
+            exit 1
+          fi
+          echo "checkout_ref=refs/pull/${PR_NUMBER}/head" >> "${GITHUB_OUTPUT}"
+          echo "head_ref=${head_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout Dependabot branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pull-request.outputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Refresh lockfile
+        run: |
+          uv lock
+          uv lock --check
+
+      - name: Commit lockfile update
+        id: commit
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- uv.lock; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "chore: refresh uv lockfile for Dependabot update"
+          echo "changed=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Push lockfile update
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          HEAD_REF: ${{ steps.pull-request.outputs.head_ref }}
+        run: git push origin "HEAD:${HEAD_REF}"
