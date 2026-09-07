@@ -51,7 +51,7 @@ Changelog = "https://github.com/joe-broadhead/slideflow/blob/master/CHANGELOG.md
 
 [project.optional-dependencies]
 ai = ["openai>=2.50.0,<3.0", "google-genai>=2.22.0,<3.0"]
-databricks = ["databricks-sql-connector>=4.0,<5.0"]
+databricks = ["databricks-sql-connector>=4.5.0,<5.0"]
 dbt = [
     "dbt-core>=1.12.3,<1.13",
     "dbt-databricks>=1.12.5,<1.13",
