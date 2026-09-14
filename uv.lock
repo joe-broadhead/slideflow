@@ -3299,7 +3299,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "numpy", specifier = ">=2.5.2,<2.6" },
     { name = "openai", marker = "extra == 'ai'", specifier = ">=2.50.0,<3.0" },
-    { name = "pandas", specifier = ">=2.2,<4.0" },
+    { name = "pandas", specifier = ">=2.3.3,<4.0" },
     { name = "pandas-stubs", marker = "extra == 'dev'" },
     { name = "pip-audit", marker = "extra == 'dev'" },
     { name = "plotly", specifier = ">=7.0.0,<8.0" },
