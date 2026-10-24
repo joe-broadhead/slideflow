@@ -55,7 +55,7 @@ databricks = ["databricks-sql-connector>=4.0,<5.0"]
 dbt = [
     "dbt-core>=1.12.3,<1.13",
     "dbt-databricks>=1.12.5,<1.13",
-    "filelock>=3.20.1,<4.0",
+    "filelock>=4.2.1,<5.0",
     "gitpython>=3.1.59,<4.0",
 ]
 bigquery = ["google-cloud-bigquery>=3.42.2,<4.0", "dbt-bigquery>=1.11.1,<1.12"]
